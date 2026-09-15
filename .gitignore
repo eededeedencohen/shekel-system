@@ -1,0 +1,18 @@
+node_modules/
+
+# secrets — the Atlas connection string lives here; copy .env.example
+.env
+.env.*
+!.env.example
+
+# runtime data
+uploads/
+backups/
+coverage/
+*.log
+.DS_Store
+
+# one-off scratch: senzey scraping (session cookie + real attendance pages)
+נוכחות-סטודנטים-גרסה-נוספת/
+# migration artifacts (already applied)
+scripts/migration-reports/

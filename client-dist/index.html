@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap"
+    />
+    <title>שקל · מכללה לכל</title>
+    <script>
+      // Set data-theme before paint to avoid flash. Reads localStorage, else
+      // falls back to the OS-level preference, else "dark".
+      (function () {
+        try {
+          var t = localStorage.getItem("shekel-theme");
+          if (t !== "light" && t !== "dark") {
+            t = window.matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark";
+          }
+          document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-DC2h4DHo.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BWoLurfJ.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
