@@ -138,7 +138,9 @@ async function createBook({ world, data, by, cover }) {
   if (!barcode) throw AppError.of("BARCODE_INVALID", 400);
   if (!data.title || !String(data.title).trim()) throw AppError.of("MISSING_FIELDS", 400, "title");
 
-  let book = await Book.findOne({ world, barcode });
+  // The same book under any spelling of its code (leading zeros, ISBN
+  // twins) is the same record — refuse a live one, restore a deleted one.
+  let book = await Book.findOne({ world, barcode: { $in: lookup.barcodeVariants(barcode) } });
   if (book && !book.deletedAt) throw AppError.of("BOOK_EXISTS", 409);
   if (book) {
     book.deletedAt = null; // a deleted book comes back with its history
@@ -168,7 +170,7 @@ async function updateBook({ world, bookId, data, by, cover, removeCoverFlag }) {
     const barcode = lookup.normalizeBarcode(data.barcode);
     if (!barcode) throw AppError.of("BARCODE_INVALID", 400);
     if (barcode !== book.barcode) {
-      const clash = await Book.findOne({ world, barcode, _id: { $ne: book._id } });
+      const clash = await Book.findOne({ world, barcode: { $in: lookup.barcodeVariants(barcode) }, _id: { $ne: book._id } });
       if (clash) throw AppError.of("BOOK_EXISTS", 409);
       book.barcode = barcode;
     }

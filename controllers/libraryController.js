@@ -58,14 +58,18 @@ exports.getBook = catchAsync(async (req, res) => {
  *   nothing; `failed` = every source errored, so nothing is certain).
  */
 exports.lookupBarcode = catchAsync(async (req, res, next) => {
-  const barcode = lookup.normalizeBarcode(req.params.barcode);
-  if (!barcode) return next(AppError.of("BARCODE_INVALID", 400));
-  const book = await Book.findOne({ world: req.world, barcode, deletedAt: null });
+  // Every form the scan may have taken (leading zeros, UPC/EAN padding,
+  // ISBN twins) — a book stored as 36200054208 answers to "036200054208".
+  const variants = lookup.barcodeVariants(req.params.barcode);
+  if (!variants.length) return next(AppError.of("BARCODE_INVALID", 400));
+  const book = await Book.findOne({ world: req.world, barcode: { $in: variants }, deletedAt: null });
   if (book) {
     const loan = await Loan.findOne({ world: req.world, book: book._id, open: true }).populate(STUDENT_POP);
-    return res.status(200).json({ status: "success", data: { barcode, book, loan, info: null, failed: false } });
+    return res.status(200).json({ status: "success", data: { barcode: book.barcode, book, loan, info: null, failed: false } });
   }
-  const online = req.query.online === "false" ? { found: false, failed: false } : await lookup.lookupBook(barcode);
+  const online = req.query.online === "false" ? { found: false, failed: false } : await lookup.lookupBook(variants[0]);
+  // The form to store: what the shop recognised, else the canonical one.
+  const barcode = online.found ? online.barcode : lookup.canonicalBarcode(variants[0]);
   const info = online.found
     ? {
         source: online.source,

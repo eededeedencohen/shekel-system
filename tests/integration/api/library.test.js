@@ -15,6 +15,7 @@ process.env.UPLOAD_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "shekel-library-"
 const request = require("supertest");
 const app = require("../../../app");
 const Loan = require("../../../models/Loan");
+const Book = require("../../../models/Book");
 const lookup = require("../../../services/bookLookupService");
 const { makeStudent, makeBook } = require("../../helpers/factories");
 
@@ -105,6 +106,22 @@ describe("GET /api/library/lookup/:barcode", () => {
     expect(res.body.data.loan).toBeNull();
     expect(calls).toBe(0);
   });
+
+  it("the camera's leading zero still finds the shelf book (and the shop's book)", async () => {
+    const book = await makeBook({ barcode: "36200054208" });
+    for (const scanned of ["036200054208", "0036200054208", "36200054208"]) {
+      const res = await request(app).get(`/api/library/lookup/${scanned}`);
+      expect(res.body.data.book._id).toBe(String(book._id));
+      expect(res.body.data.barcode).toBe("36200054208");
+    }
+    // Not in the library: booknet is asked without the zero, and the add
+    // form gets the shop's form of the code.
+    await Book.deleteMany({});
+    const res = await request(app).get("/api/library/lookup/036200054208");
+    expect(res.body.data.book).toBeNull();
+    expect(res.body.data.info.title).toBe("הזוג מהבית השכן");
+    expect(res.body.data.barcode).toBe("36200054208");
+  });
 });
 
 describe("POST /api/library/books", () => {
@@ -131,6 +148,9 @@ describe("POST /api/library/books", () => {
     expect(cover.status).toBe(200);
     expect(cover.headers["content-type"]).toMatch(/image\/png/);
 
+    const dupZero = await request(app).post("/api/library/books").send({ barcode: "036200054208", title: "כפול עם אפס" });
+    expect(dupZero.status).toBe(409);
+    expect(dupZero.body.code).toBe("BOOK_EXISTS");
     const dup = await request(app).post("/api/library/books").send({ barcode: "36200054208", title: "כפול" });
     expect(dup.status).toBe(409);
     expect(dup.body.code).toBe("BOOK_EXISTS");

@@ -13,7 +13,10 @@
  *   3. download the cover (checked to be an image).
  *
  * Plus a second source the notebook did not have — Google Books by ISBN —
- * for the books booknet doesn't list. No HTML library: the two pages are
+ * for the books booknet doesn't list. A code is looked up in every form it
+ * may arrive in (`barcodeVariants`: leading zeros on or off, UPC-A / EAN-13
+ * padding, ISBN-10 ⇄ ISBN-13) — a camera reads the sticker of booknet's
+ * 36200054208 as "036200054208". No HTML library: the two pages are
  * regular enough for a handful of regexes, and this keeps the server
  * dependency-free. `fetch` is Node's own (v18+); tests swap it via
  * `setFetch()` so nothing touches the network.
@@ -72,6 +75,60 @@ function normalizeBarcode(raw) {
   if (s.length < 6 || s.length > 20) return null;
   if (!/^\d+X?$/.test(s)) return null;
   return s;
+}
+
+/* ISBN check digits (ISBN-10: weights 10..2 mod 11; ISBN-13: 1,3 mod 10). */
+function isbn10Check(nine) {
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += (10 - i) * Number(nine[i]);
+  const r = (11 - (sum % 11)) % 11;
+  return r === 10 ? "X" : String(r);
+}
+
+function isbn13Check(twelve) {
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += Number(twelve[i]) * (i % 2 === 0 ? 1 : 3);
+  return String((10 - (sum % 10)) % 10);
+}
+
+const isValidIsbn10 = (s) => /^\d{9}[\dX]$/.test(s) && isbn10Check(s.slice(0, 9)) === s[9];
+const isValidIsbn13 = (s) => /^97[89]\d{10}$/.test(s) && isbn13Check(s.slice(0, 12)) === s[12];
+
+/**
+ * Every form the same code arrives in, most likely first. A phone camera
+ * reads the sticker of booknet's 36200054208 as the UPC-A "036200054208"
+ * (or the EAN-13 "0036200054208"), a USB scanner types it without the
+ * zeros, and an old book carries an ISBN-10 where the shop lists the
+ * ISBN-13 — so: as scanned, without leading zeros, zero-padded to 12 / 13
+ * digits, and the ISBN-10 ⇄ ISBN-13 twins. [] when it isn't a barcode.
+ */
+function barcodeVariants(raw) {
+  const s = normalizeBarcode(raw);
+  if (!s) return [];
+  const out = [];
+  const add = (v) => {
+    if (v && v.length >= 6 && v.length <= 20 && !out.includes(v)) out.push(v);
+  };
+  add(s);
+  const stripped = s.replace(/^0+/, "");
+  add(stripped);
+  if (/^\d+$/.test(stripped)) {
+    if (stripped.length < 12) add(stripped.padStart(12, "0"));
+    if (stripped.length < 13) add(stripped.padStart(13, "0"));
+  }
+  for (const v of [s, stripped]) {
+    if (isValidIsbn13(v) && v.startsWith("978")) add(v.slice(3, 12) + isbn10Check(v.slice(3, 12)));
+    if (isValidIsbn10(v)) add("978" + v.slice(0, 9) + isbn13Check("978" + v.slice(0, 9)));
+  }
+  return out;
+}
+
+/** The form we store when nothing else decides it: no leading zeros (booknet's own style). */
+function canonicalBarcode(raw) {
+  const v = barcodeVariants(raw);
+  if (!v.length) return null;
+  const stripped = v[0].replace(/^0+/, "");
+  return stripped.length >= 6 ? stripped : v[0];
 }
 
 /* ───────────────────────── booknet parsing ───────────────────────── */
@@ -227,30 +284,41 @@ async function downloadCover(imageUrl) {
 
 /**
  * The main entry (the notebook's fetch_book): booknet first, Google Books
- * second, the cover downloaded when one is known.
+ * second, the cover downloaded when one is known. Each source is asked
+ * with the forms it can know (see `barcodeVariants`): booknet with the
+ * code as scanned and without its leading zeros, Google Books with every
+ * variant that is a valid ISBN. `barcode` in the answer is the form the
+ * source recognised.
  *
  * → { found: false, failed } when nothing was found (`failed` = every
- *   source errored, so "not found" is unknown rather than certain), or
- *   { found: true, source, title, author, summary, imageUrl, productUrl,
- *     publisher?, year?, pages?, cover: {mime, buffer} | null }
+ *   request errored, so "not found" is unknown rather than certain), or
+ *   { found: true, barcode, source, title, author, summary, imageUrl,
+ *     productUrl, publisher?, year?, pages?, cover: {mime, buffer} | null }
  */
 async function lookupBook(rawBarcode, { withCover = true } = {}) {
-  const barcode = normalizeBarcode(rawBarcode);
-  if (!barcode) return { found: false, failed: false };
+  const variants = barcodeVariants(rawBarcode);
+  if (!variants.length) return { found: false, failed: false };
+  const forBooknet = variants.filter((v) => /^\d+$/.test(v) && !v.startsWith("0")).slice(0, 2);
+  if (!forBooknet.length) forBooknet.push(variants[0]);
+  const forGoogle = variants.filter((v) => isValidIsbn13(v) || isValidIsbn10(v));
+  const attempts = [
+    ...forBooknet.map((code) => [lookupBooknet, code]),
+    ...forGoogle.map((code) => [lookupGoogle, code]),
+  ];
   let errors = 0;
   let info = null;
-  for (const source of [lookupBooknet, lookupGoogle]) {
+  for (const [source, code] of attempts) {
     try {
-      const r = await source(barcode);
+      const r = await source(code);
       if (r.found) {
-        info = r;
+        info = { barcode: code, ...r };
         break;
       }
     } catch {
       errors++;
     }
   }
-  if (!info) return { found: false, failed: errors === 2 };
+  if (!info) return { found: false, failed: attempts.length > 0 && errors === attempts.length };
   let cover = null;
   if (withCover && info.imageUrl) {
     try {
@@ -259,7 +327,7 @@ async function lookupBook(rawBarcode, { withCover = true } = {}) {
       cover = null;
     }
   }
-  return { barcode, ...info, cover };
+  return { ...info, cover };
 }
 
 module.exports = {
@@ -267,6 +335,10 @@ module.exports = {
   MAX_COVER_BYTES,
   setFetch,
   normalizeBarcode,
+  barcodeVariants,
+  canonicalBarcode,
+  isValidIsbn10,
+  isValidIsbn13,
   decodeEntities,
   textOf,
   parseBooknetSearch,

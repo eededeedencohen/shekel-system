@@ -43,6 +43,37 @@ describe("normalizeBarcode", () => {
   });
 });
 
+describe("barcodeVariants", () => {
+  it("a camera's UPC-A read of a booknet sticker → the shop's own number first among the twins", () => {
+    const v = lookup.barcodeVariants("036200054208");
+    expect(v[0]).toBe("036200054208");
+    expect(v).toContain("36200054208");
+    expect(v).toContain("0036200054208");
+    expect(new Set(v).size).toBe(v.length);
+  });
+  it("a bare number gets its zero-padded UPC-A / EAN-13 forms", () => {
+    expect(lookup.barcodeVariants("36200054208")).toEqual(["36200054208", "036200054208", "0036200054208"]);
+  });
+  it("ISBN-13 ⇄ ISBN-10 twins (check digits computed, X included)", () => {
+    expect(lookup.barcodeVariants("9780306406157")).toContain("0306406152");
+    expect(lookup.barcodeVariants("0-306-40615-2")).toContain("9780306406157");
+    expect(lookup.barcodeVariants("9780441013593")).toContain("0441013597");
+    expect(lookup.barcodeVariants("0441013597")).toContain("9780441013593");
+    expect(lookup.barcodeVariants("9780306406157")).toContain("0306406152");
+    expect(lookup.isValidIsbn13("9780441013593")).toBe(true);
+    expect(lookup.isValidIsbn13("9780441013594")).toBe(false);
+    expect(lookup.isValidIsbn10("0441013597")).toBe(true);
+    expect(lookup.isValidIsbn10("044101359X")).toBe(false);
+    expect(lookup.isValidIsbn10("080442957X")).toBe(true);
+  });
+  it("junk → no variants; canonical = no leading zeros", () => {
+    expect(lookup.barcodeVariants("abc")).toEqual([]);
+    expect(lookup.canonicalBarcode("0036200054208")).toBe("36200054208");
+    expect(lookup.canonicalBarcode("9789655660012")).toBe("9789655660012");
+    expect(lookup.canonicalBarcode("000000")).toBe("000000");
+  });
+});
+
 describe("parseBooknetSearch", () => {
   it("finds the product link that carries the barcode and מוצרים (percent-encoded)", () => {
     const url = lookup.parseBooknetSearch(SEARCH_HTML, BARCODE);
@@ -105,6 +136,41 @@ describe("lookupBook (fake network)", () => {
     expect(r.cover.mime).toBe("image/png");
     expect(r.cover.buffer.length).toBe(PNG.length);
     expect(calls.some((u) => u.includes("googleapis"))).toBe(false);
+  });
+
+  it("finds a booknet book scanned with a leading zero — asks for it without the zero", async () => {
+    const searches = [];
+    lookup.setFetch(async (url) => {
+      if (url.includes("%D7%97%D7%99%D7%A4%D7%95%D7%A9")) {
+        searches.push(decodeURIComponent(url.split("q=")[1]));
+        return url.endsWith("q=36200054208") ? respond(200, SEARCH_HTML) : respond(200, "<html>אין תוצאות</html>");
+      }
+      if (url.includes("/Images/")) return respond(200, PNG, "image/png");
+      if (url.includes("36200054208")) return respond(200, PRODUCT_HTML);
+      return respond(404, "");
+    });
+    const r = await lookup.lookupBook("036200054208");
+    expect(r.found).toBe(true);
+    expect(r.barcode).toBe("36200054208");
+    expect(r.title).toBe('הזוג "מהבית" השכן');
+    expect(searches).toEqual(["36200054208"]);
+  });
+
+  it("asks Google Books with the ISBN-13 when the scan was the ISBN-10", async () => {
+    const isbns = [];
+    lookup.setFetch(async (url) => {
+      if (url.includes("googleapis")) {
+        isbns.push(url.split("isbn:")[1].split("&")[0]);
+        return isbns.at(-1) === "9780441013593"
+          ? respond(200, JSON.stringify({ items: [{ volumeInfo: { title: "Dune" } }] }), "application/json")
+          : respond(200, "{}", "application/json");
+      }
+      return respond(200, "<html></html>");
+    });
+    const r = await lookup.lookupBook("0441013597", { withCover: false });
+    expect(r.found).toBe(true);
+    expect(r.barcode).toBe("9780441013593");
+    expect(isbns).toEqual(["0441013597", "9780441013593"]);
   });
 
   it("falls back to Google Books when booknet has nothing", async () => {

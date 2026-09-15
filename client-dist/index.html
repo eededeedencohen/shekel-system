@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#fcfcfb" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -23,13 +24,17 @@
               : "dark";
           }
           document.documentElement.setAttribute("data-theme", t);
+          // Phone browsers paint the address bar with theme-color — match the
+          // topbar surface of the active theme.
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", t === "dark" ? "#1a1a19" : "#fcfcfb");
         } catch (e) {
           document.documentElement.setAttribute("data-theme", "dark");
         }
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-DC2h4DHo.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-BWoLurfJ.css">
+    <script type="module" crossorigin src="/assets/index-Hg9_dZtq.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-NJ3QoulJ.css">
   </head>
   <body>
     <div id="root"></div>
