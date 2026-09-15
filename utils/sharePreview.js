@@ -15,7 +15,9 @@
  * Nothing personal ever goes into a preview: student and teacher pages
  * describe the section, never the person.
  *
- * Images live in client/public/og/*.png (1200×630, generated from the logo).
+ * The picture is always the logo — client/public/og/logo.png (1200×630,
+ * rendered from public/logo.svg by client/scripts/brand-assets.mjs; chats
+ * do not show SVG). The title and the text are what change per page.
  */
 
 const Event = require("../models/Event");
@@ -25,7 +27,7 @@ const Book = require("../models/Book");
 const { EVENT_CATEGORIES } = require("./domain");
 
 const SITE = "שק״ל";
-const IMG = { home: "home.png", college: "college.png", culture: "culture.png", join: "join.png", library: "library.png" };
+const OG_IMAGE = "logo.png"; // served from client-dist/og/
 const DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 const TZ = "Asia/Jerusalem";
 
@@ -33,23 +35,23 @@ const COLLEGE_DESC = "מערכת הניהול של מכללה לכל: קורסי
 
 /** Static previews by section — the fallback for every URL without a record. */
 const STATIC = {
-  home: { title: `${SITE} · מכללה לכל`, description: "מערכת הניהול של מכללה לכל ותרבות לכל: מערכת שבועית, קליטה ושיבוץ, נוכחות, הספרייה ואירועי תרבות.", image: IMG.home },
-  join: { title: "הצטרפות לשק״ל", description: "כמה שאלות קצרות ואנחנו מתחילים — מכללה לכל ותרבות לכל בירושלים. ממלאים לבד, עם ההורים או עם מתאם/ת הטיפול.", image: IMG.join },
-  joinDocs: { title: "המסמכים שלי · שק״ל", description: "העלאת המסמכים לתיק הקליטה — מהטלפון, בכל זמן. רואים מה כבר התקבל ומה חסר.", image: IMG.join },
-  schedule: { title: "מערכת שבועית · מכללה לכל", description: "כל המפגשים של השבוע — לפי יום, מורה, קטגוריה והוסטל.", image: IMG.college },
-  gantt: { title: "ציר זמן · מכללה לכל", description: "הקורסים על פני השנה — מתי כל מחזור מתחיל ומסתיים.", image: IMG.college },
-  rooms: { title: "זמינות חדרים · מכללה לכל", description: "מי בכל חדר, מתי, ואיפה יש מקום פנוי.", image: IMG.college },
-  pipeline: { title: "קליטה ושיבוץ · מכללה לכל", description: "המסלול של כל מתעניין/ת — מהשיחה הראשונה ועד שיבוץ לקורס.", image: IMG.college },
-  intake: { title: "קליטה (אינטייק) · שק״ל", description: "הלוח של העו״ס — ממתינים לשיחה, פגישות אינטייק, מסמכים ונקלטו.", image: IMG.college },
-  matching: { title: "שולחן ההתאמות · מכללה לכל", description: "סטודנט, קורס ומורה — מי מתאים למי, לפי זמינות, גיל ורמת תפקוד.", image: IMG.college },
-  hostels: { title: "הוסטלים · מכללה לכל", description: "הקורסים והסטודנטים של כל הוסטל.", image: IMG.college },
-  culture: { title: "תרבות לכל · שק״ל", description: "אירועים, שוברים והסטודנטים של התוכנית — לוח שנה עברי-לועזי עם החגים.", image: IMG.culture },
-  courses: { title: "קורסים · מכללה לכל", description: COLLEGE_DESC, image: IMG.college },
-  students: { title: "סטודנטים · מכללה לכל", description: "הסטודנטים של מכללה לכל ותרבות לכל — פרטים, תוכניות, מערכת ונוכחות.", image: IMG.college },
-  teachers: { title: "מורים · מכללה לכל", description: "המורים, הקורסים שלהם וזמינות לשיבוץ.", image: IMG.college },
-  library: { title: "הספרייה · שק״ל", description: "סריקה, השאלה והחזרה — עותק אחד לכל ספר, וההחזרה בלי שישי ושבת.", image: IMG.library },
-  database: { title: "בסיס הנתונים · שק״ל", description: "מבט חי על האוספים והשדות של המערכת.", image: IMG.home },
-  settings: { title: "הגדרות · שק״ל", description: "העדפות תצוגה אישיות.", image: IMG.home },
+  home: { title: `${SITE} · מכללה לכל`, description: "מערכת הניהול של מכללה לכל ותרבות לכל: מערכת שבועית, קליטה ושיבוץ, נוכחות, הספרייה ואירועי תרבות." },
+  join: { title: "הצטרפות לשק״ל", description: "כמה שאלות קצרות ואנחנו מתחילים — מכללה לכל ותרבות לכל בירושלים. ממלאים לבד, עם ההורים או עם מתאם/ת הטיפול." },
+  joinDocs: { title: "המסמכים שלי · שק״ל", description: "העלאת המסמכים לתיק הקליטה — מהטלפון, בכל זמן. רואים מה כבר התקבל ומה חסר." },
+  schedule: { title: "מערכת שבועית · מכללה לכל", description: "כל המפגשים של השבוע — לפי יום, מורה, קטגוריה והוסטל." },
+  gantt: { title: "ציר זמן · מכללה לכל", description: "הקורסים על פני השנה — מתי כל מחזור מתחיל ומסתיים." },
+  rooms: { title: "זמינות חדרים · מכללה לכל", description: "מי בכל חדר, מתי, ואיפה יש מקום פנוי." },
+  pipeline: { title: "קליטה ושיבוץ · מכללה לכל", description: "המסלול של כל מתעניין/ת — מהשיחה הראשונה ועד שיבוץ לקורס." },
+  intake: { title: "קליטה (אינטייק) · שק״ל", description: "הלוח של העו״ס — ממתינים לשיחה, פגישות אינטייק, מסמכים ונקלטו." },
+  matching: { title: "שולחן ההתאמות · מכללה לכל", description: "סטודנט, קורס ומורה — מי מתאים למי, לפי זמינות, גיל ורמת תפקוד." },
+  hostels: { title: "הוסטלים · מכללה לכל", description: "הקורסים והסטודנטים של כל הוסטל." },
+  culture: { title: "תרבות לכל · שק״ל", description: "אירועים, שוברים והסטודנטים של התוכנית — לוח שנה עברי-לועזי עם החגים." },
+  courses: { title: "קורסים · מכללה לכל", description: COLLEGE_DESC },
+  students: { title: "סטודנטים · מכללה לכל", description: "הסטודנטים של מכללה לכל ותרבות לכל — פרטים, תוכניות, מערכת ונוכחות." },
+  teachers: { title: "מורים · מכללה לכל", description: "המורים, הקורסים שלהם וזמינות לשיבוץ." },
+  library: { title: "הספרייה · שק״ל", description: "סריקה, השאלה והחזרה — עותק אחד לכל ספר, וההחזרה בלי שישי ושבת." },
+  database: { title: "בסיס הנתונים · שק״ל", description: "מבט חי על האוספים והשדות של המערכת." },
+  settings: { title: "הגדרות · שק״ל", description: "העדפות תצוגה אישיות." },
 };
 
 const clip = (s, n = 200) => {
@@ -66,7 +68,7 @@ const isoDay = (d) => new Intl.DateTimeFormat("en-CA", { year: "numeric", month:
 const categoryLabel = (key) => EVENT_CATEGORIES.find((c) => c.key === key)?.label || null;
 
 /**
- * The static preview for a URL: `{ key, title, description, image, params }`.
+ * The static preview for a URL: `{ key, title, description, params }`.
  * `params` carries the record id/name a later `enrich` may look up.
  */
 function previewFor(pathname, query = {}) {
@@ -151,9 +153,9 @@ const esc = (s) =>
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-/** The <meta> lines: Open Graph + the Twitter card, absolute URLs. */
-function renderHead({ title, description, image }, { origin, url }) {
-  const img = `${origin}/og/${image}`;
+/** The <meta> lines: Open Graph + the Twitter card, absolute URLs; the picture is always the logo. */
+function renderHead({ title, description }, { origin, url }) {
+  const img = `${origin}/og/${OG_IMAGE}`;
   return [
     `<meta name="description" content="${esc(description)}" />`,
     `<meta property="og:type" content="website" />`,
@@ -192,4 +194,4 @@ function requestUrls(req) {
   return { origin, url: origin + req.originalUrl };
 }
 
-module.exports = { STATIC, previewFor, enrich, renderHead, injectPreview, requestUrls, isoDay };
+module.exports = { STATIC, OG_IMAGE, previewFor, enrich, renderHead, injectPreview, requestUrls, isoDay };

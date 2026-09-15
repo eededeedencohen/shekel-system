@@ -8,13 +8,13 @@ const share = require("../../../utils/sharePreview");
 const CTX = { origin: "https://shekel.example", url: "https://shekel.example/join" };
 
 describe("previewFor", () => {
-  it("maps every section to its own title / image", () => {
-    expect(share.previewFor("/join")).toMatchObject({ key: "join", image: "join.png" });
-    expect(share.previewFor("/join/docs/abc123")).toMatchObject({ key: "joinDocs", image: "join.png" });
-    expect(share.previewFor("/")).toMatchObject({ key: "home", image: "home.png" });
-    expect(share.previewFor("/culture")).toMatchObject({ key: "culture", image: "culture.png" });
-    expect(share.previewFor("/courses")).toMatchObject({ key: "courses", image: "college.png" });
-    expect(share.previewFor("/library")).toMatchObject({ key: "library", image: "library.png" });
+  it("maps every section to its own title", () => {
+    expect(share.previewFor("/join")).toMatchObject({ key: "join", title: "הצטרפות לשק״ל" });
+    expect(share.previewFor("/join/docs/abc123").key).toBe("joinDocs");
+    expect(share.previewFor("/").key).toBe("home");
+    expect(share.previewFor("/culture")).toMatchObject({ key: "culture", title: "תרבות לכל · שק״ל" });
+    expect(share.previewFor("/courses").key).toBe("courses");
+    expect(share.previewFor("/library").key).toBe("library");
     expect(share.previewFor("/pipeline", { view: "intake" }).key).toBe("intake");
     expect(share.previewFor("/pipeline").key).toBe("pipeline");
     expect(share.previewFor("/no/such/page").key).toBe("home");
@@ -34,9 +34,9 @@ describe("previewFor", () => {
 });
 
 describe("renderHead / injectPreview", () => {
-  it("renders absolute image + url, escaped", () => {
-    const head = share.renderHead({ title: 'הזוג "מהבית" <השכן>', description: "a & b", image: "library.png" }, CTX);
-    expect(head).toContain('<meta property="og:image" content="https://shekel.example/og/library.png" />');
+  it("renders the logo as an absolute image + the url, escaped", () => {
+    const head = share.renderHead({ title: 'הזוג "מהבית" <השכן>', description: "a & b" }, CTX);
+    expect(head).toContain('<meta property="og:image" content="https://shekel.example/og/logo.png" />');
     expect(head).toContain('<meta property="og:url" content="https://shekel.example/join" />');
     expect(head).toContain('content="הזוג &quot;מהבית&quot; &lt;השכן&gt;"');
     expect(head).toContain('content="a &amp; b"');

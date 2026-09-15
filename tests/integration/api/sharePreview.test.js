@@ -19,22 +19,26 @@ const og = (html, prop) => {
 };
 
 d("share previews on the served page", () => {
-  it("each section gets its own title, text and picture; the URL is absolute", async () => {
+  it("each section gets its own title and text; the picture is the logo and the URL is absolute", async () => {
     const join = await request(app).get("/join").set("X-Forwarded-Proto", "https").set("X-Forwarded-Host", "shekel.example");
     expect(join.status).toBe(200);
     expect(join.headers["content-type"]).toMatch(/text\/html/);
     expect(join.headers["cache-control"]).toBe("no-cache");
     expect(og(join.text, "title")).toBe("הצטרפות לשק״ל");
-    expect(og(join.text, "image")).toBe("https://shekel.example/og/join.png");
+    expect(og(join.text, "image")).toBe("https://shekel.example/og/logo.png");
     expect(og(join.text, "url")).toBe("https://shekel.example/join");
     expect(join.text).toContain("<title>הצטרפות לשק״ל</title>");
 
     const culture = await request(app).get("/culture?tab=vouchers");
-    expect(og(culture.text, "image")).toMatch(/\/og\/culture\.png$/);
+    expect(og(culture.text, "image")).toMatch(/\/og\/logo\.png$/);
     expect(og(culture.text, "title")).toBe("תרבות לכל · שק״ל");
+    expect(og(culture.text, "description")).not.toBe(og(join.text, "description"));
 
     const home = await request(app).get("/");
-    expect(og(home.text, "image")).toMatch(/\/og\/home\.png$/);
+    expect(og(home.text, "title")).toBe("שק״ל · מכללה לכל");
+    const picture = await request(app).get("/og/logo.png");
+    expect(picture.status).toBe(200);
+    expect(picture.headers["content-type"]).toMatch(/image\/png/);
   });
 
   it("an event link names the event (day · time · kind · place), a course its subject, a book its title", async () => {
@@ -53,7 +57,6 @@ d("share previews on the served page", () => {
     const bookPage = await request(app).get(`/library?book=${book._id}`);
     expect(og(bookPage.text, "title")).toBe("הזוג מהבית השכן · הספרייה");
     expect(og(bookPage.text, "description")).toMatch(/^שרי לפניה/);
-    expect(og(bookPage.text, "image")).toMatch(/\/og\/library\.png$/);
   });
 
   it("a student page never names the person; an unknown id falls back to the section", async () => {
