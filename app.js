@@ -21,6 +21,7 @@ const morgan = require("morgan");
 const AppError = require("./utils/AppError");
 const globalErrorHandler = require("./controllers/errorController");
 const { WORLDS } = require("./utils/domain");
+const share = require("./utils/sharePreview");
 
 const app = express();
 
@@ -89,20 +90,37 @@ app.use("/api/db", require("./routes/dbRoutes"));
 // cached for a year, index.html never, and every non-/api GET falls back to
 // index.html so React Router owns the URL (/students/…, /join, …). Without
 // a build (a bare API checkout) "/" answers the health check instead.
+//
+// The fallback is not a plain file send: each URL gets its own share
+// preview (<title> + Open Graph + the section image) stamped into the HTML
+// — WhatsApp reads the page without running JavaScript, so this is the
+// only place a per-page preview can come from (utils/sharePreview.js).
 const CLIENT_DIST = path.join(__dirname, "client-dist");
-if (fs.existsSync(path.join(CLIENT_DIST, "index.html"))) {
+const INDEX_HTML = path.join(CLIENT_DIST, "index.html");
+if (fs.existsSync(INDEX_HTML)) {
   app.use(
     express.static(CLIENT_DIST, {
       index: false,
       maxAge: "1y",
       immutable: true,
       setHeaders(res, filePath) {
-        if (filePath.endsWith(".html")) res.setHeader("Cache-Control", "no-cache");
+        // The page, the service worker and the manifest must always be fresh.
+        if (/\.(html|webmanifest)$/.test(filePath) || filePath.endsWith("sw.js")) {
+          res.setHeader("Cache-Control", "no-cache");
+        }
       },
     })
   );
-  app.get(/^(?!\/api(?:\/|$)).*/, (req, res) => {
-    res.sendFile(path.join(CLIENT_DIST, "index.html"), { headers: { "Cache-Control": "no-cache" } });
+  let indexHtml = null; // read once, after the first request (the build may be redeployed under a running dev server)
+  app.get(/^(?!\/api(?:\/|$)).*/, async (req, res, next) => {
+    try {
+      if (indexHtml === null || process.env.NODE_ENV === "development") indexHtml = fs.readFileSync(INDEX_HTML, "utf8");
+      const preview = await share.enrich(share.previewFor(req.path, req.query), req.world);
+      res.set("Cache-Control", "no-cache");
+      res.type("html").send(share.injectPreview(indexHtml, preview, share.requestUrls(req)));
+    } catch (err) {
+      next(err);
+    }
   });
 } else {
   app.get("/", health);
