@@ -23,7 +23,10 @@
  *        "Placed". A reserved seat for a NeedsReplacement student puts
  *        them at AwaitingPlacement (the date is still missing).
  *    A seat for a student AT Intake changes nothing — the intake file
- *    decides. moveToStage() does the writing; the client only refreshes.
+ *    decides. And the way back: marking the ONLY seat of a Placed student
+ *    "left" sends the college profile to "NeedsReplacement" (the board
+ *    forbids dragging a placed card — leaving is a course fact).
+ *    moveToStage() does the writing; the client only refreshes.
  */
 
 const Cycle = require("../models/Cycle");
@@ -81,6 +84,22 @@ async function advancePlacement(personId, movedBy, enrollment) {
       await college.moveToStage("AwaitingPlacement", movedBy, `שוריין מקום ב"${name}" — נשאר לקבוע תאריך התחלה`);
     }
   }
+}
+
+/**
+ * Leaving a course — the college profile of a PLACED student who holds no
+ * other seat goes back to the search column as "דרוש שיבוץ מחדש" (the
+ * board's rule, 2026-09-17: a placed card never moves by drag; leaving is
+ * recorded on the course, and THAT sends the card back).
+ */
+async function dropPlacement(personId, movedBy, enrollment) {
+  const profiles = await studentProfilesOf(personId);
+  const college = profiles.find((p) => p.kind === "StudentCollege");
+  if (!college || college.pipeline?.stage !== "Placed") return;
+  const others = await Enrollment.countDocuments({ student: personId, status: { $in: OCCUPYING_STATUSES } });
+  if (others > 0) return;
+  const name = await cycleName(enrollment.cycle);
+  await college.moveToStage("NeedsReplacement", movedBy, `ירד/ה מ"${name}" — דרוש שיבוץ מחדש`);
 }
 
 /** Occupied seats (active + reserved) for a cycle. */
@@ -227,6 +246,8 @@ async function updateStatus({ enrollmentId, world, status, leftAt, joinedAt, not
 
   if (OCCUPYING_STATUSES.includes(status)) {
     await advancePlacement(enrollment.student, movedBy, saved);
+  } else if (status === "left") {
+    await dropPlacement(enrollment.student, movedBy, saved);
   }
   return saved;
 }

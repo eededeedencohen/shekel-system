@@ -153,6 +153,31 @@ describe("PATCH /api/enrollments/:id", () => {
     expect(res.body.data.enrollment.leftAt).toBeTruthy();
   });
 
+  it("leaving the only course sends a Placed student back as 'דרוש שיבוץ מחדש'", async () => {
+    const s = await makeStudent();
+    await s.moveToStage("AwaitingPlacement", "בדיקה");
+    const cycle = await makeCycle({ subject: (await makeSubject({ name: "יוגה" }))._id });
+    const created = await request(app).post("/api/enrollments").send({ cycle: cycle._id, student: s._id });
+    expect((await request(app).get(`/api/people/${s._id}`)).body.data.person.pipeline.stage).toBe("Placed");
+    await request(app)
+      .patch(`/api/enrollments/${created.body.data.enrollment._id}`)
+      .send({ status: "left", movedBy: "חגי" });
+    const after = await request(app).get(`/api/people/${s._id}`);
+    expect(after.body.data.person.pipeline.stage).toBe("NeedsReplacement");
+    expect(after.body.data.person.stageHistory.at(-1)).toMatchObject({ stage: "NeedsReplacement", movedBy: "חגי" });
+    expect(after.body.data.person.stageHistory.at(-1).note).toMatch(/יוגה/);
+  });
+
+  it("leaving one of two courses keeps a Placed student placed", async () => {
+    const s = await makeStudent();
+    await s.moveToStage("AwaitingPlacement", "בדיקה");
+    const [c1, c2] = await Promise.all([makeCycle(), makeCycle()]);
+    const first = await request(app).post("/api/enrollments").send({ cycle: c1._id, student: s._id });
+    await request(app).post("/api/enrollments").send({ cycle: c2._id, student: s._id });
+    await request(app).patch(`/api/enrollments/${first.body.data.enrollment._id}`).send({ status: "left" });
+    expect((await request(app).get(`/api/people/${s._id}`)).body.data.person.pipeline.stage).toBe("Placed");
+  });
+
   it("frees the seat when a student leaves", async () => {
     const cycle = await makeCycle({ matching: { capacity: 1 } });
     const [a, b] = await Promise.all([makeStudent(), makeStudent()]);
