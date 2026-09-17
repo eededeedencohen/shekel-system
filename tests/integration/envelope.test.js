@@ -44,13 +44,16 @@ describe("Response envelope", () => {
     const res = await request(app).get("/api/meta/domain");
     expect(res.status).toBe(200);
     const { domain } = res.body.data;
-    expect(domain.pipelineStages.map((s) => s.key)).toContain("Matching");
-    // The intake stages of Eden's 2026-09 diagram + the checklist the page renders
-    expect(domain.pipelineStages.map((s) => s.key)).toEqual(
-      expect.arrayContaining(["ReservedSeat", "Intake", "AwaitingDocuments", "Placed"])
-    );
-    expect(domain.intakeStages).toEqual(["Intake", "AwaitingDocuments"]);
-    expect(domain.intakeDocuments.map((d) => d.key)).toContain("waiver");
+    // Eden's מכללה לכל pipeline (2026-09-17): five stops + the replacement side door
+    expect(domain.pipelineStages.map((s) => s.key)).toEqual([
+      "Interested", "Matching", "Intake", "AwaitingPlacement", "NeedsReplacement", "Placed",
+    ]);
+    expect(domain.intakeStages).toEqual(["Intake"]);
+    expect(domain.legacyStageMap).toEqual({ ReservedSeat: "Intake", AwaitingDocuments: "Intake" });
+    // the four documents + the office's approval, and the three-valued social-worker status
+    expect(domain.intakeDocuments.map((d) => d.key)).toEqual(["psychiatric", "psychosocial", "socialClub", "waiver", "shkedia"]);
+    expect(domain.intakeDocuments.find((d) => d.key === "shkedia").approval).toBe(true);
+    expect(domain.intakeSwStatuses.map((s) => s.key)).toEqual(["new", "scheduled", "done"]);
     expect(domain.profileKinds.map((k) => k.key)).toContain("SocialWorker");
     expect(domain.enrollmentStatuses.map((s) => s.key)).toEqual([
       "reserved",

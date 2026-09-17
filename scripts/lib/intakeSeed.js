@@ -3,18 +3,21 @@
  * @module scripts/lib/intakeSeed
  *
  * Builds, through the REAL services (intakeService.submitLanding / schedule /
- * markDone / documents, enrollmentService.enroll), a small set of people
- * in every state of Eden's 2026-09 diagram, so the test world's intake
- * board is populated the moment it opens:
+ * markDone / documents, enrollmentService.enroll / updateStatus), a small
+ * set of people in every state of Eden's 2026-09-17 pipeline, so the test
+ * world's boards are populated the moment they open:
  *
- *   ממתינים לשיחה   — culture leads from the landing page (one with a
- *                     parent filling the form, one with documents already
- *                     uploaded), a college lead the managers already gave a
- *                     seat to (ReservedSeat), one person who chose BOTH
+ *   ממתינים לשיחה ראשונית — culture leads from the landing page (one with a
+ *                     parent filling the form, one with a document already
+ *                     uploaded), a college lead the managers reserved a seat
+ *                     for (→ Intake, no call yet), one person who chose BOTH
  *   בהמתנה לאינטייק — an overdue meeting, one today, one in three days
- *   ממתינים למסמכים — intake done, documents missing (one rejected upload)
- *   נקלטו לאחרונה   — completed: a culture member, a college student whose
- *                     held seat got activated
+ *   בוצע אינטייק · משלימים תיק — the meeting was held; the approval and/or
+ *                     documents are missing (one rejected upload)
+ *   נקלטו לאחרונה   — complete files: a culture member (Placed), a college
+ *                     student whose held seat waits for a START DATE
+ *                     (AwaitingPlacement — the managers' step), and one
+ *                     whose start date is set for next week (Placed)
  *   + a walk-in the staff opened without the landing page, and ייטב
  *     herself as a SocialWorker profile.
  *
@@ -25,10 +28,11 @@
 const fs = require("fs");
 const path = require("path");
 const Intake = require("../../models/Intake");
+const Enrollment = require("../../models/Enrollment");
 const { Profile } = require("../../models/profiles");
 const { createPersonWithProfile } = require("../../services/profileService");
 const intake = require("../../services/intakeService");
-const { enroll } = require("../../services/enrollmentService");
+const { enroll, updateStatus } = require("../../services/enrollmentService");
 
 const DAY = 86400000;
 
@@ -56,6 +60,13 @@ async function backdate(personId, days) {
     p.markModified("pipeline");
     p.markModified("log");
     await p.save();
+  }
+  for (const e of await Enrollment.find({ student: personId })) {
+    // reservedAt/joinedAt slide with everything else — except a start date
+    // in the future (the "מתחיל/ה ב…" demo), which must stay ahead of today.
+    if (e.reservedAt) e.reservedAt = shift(e.reservedAt);
+    if (e.joinedAt && e.joinedAt.getTime() < Date.now()) e.joinedAt = shift(e.joinedAt);
+    await e.save();
   }
   const i = await Intake.findOne({ person: personId });
   if (i) {
@@ -116,7 +127,7 @@ async function seedIntakes({ world, lastName, findSeat, subjectIds = [], log = (
       const seat = findSeat();
       if (!seat) return null;
       try {
-        await enroll({ cycleId: seat, studentId, world, status: "reserved", createdBy: by, note: "מקום שמור עד סיום קליטה" });
+        await enroll({ cycleId: seat, studentId, world, status: "reserved", createdBy: by, note: "מקום שמור — תאריך התחלה ייקבע בסיום הקליטה" });
         return seat;
       } catch (e) {
         if (e.code !== "CYCLE_FULL") throw e;
@@ -126,14 +137,16 @@ async function seedIntakes({ world, lastName, findSeat, subjectIds = [], log = (
   };
   const upload = async (rec, key, file, name) =>
     intake.uploadDocument({ intake: rec, key, fileName: name, mime: file === PDF ? "application/pdf" : "image/png", data: file, staff: false });
-  const tick = (rec, key, status, note) => intake.setDocumentStatus({ intake: rec, key, status, by: BY, note });
+  // An approval (אישור שקדייה) is received with its "valid until" date — a year ahead here.
+  const tick = (rec, key, status, note) =>
+    intake.setDocumentStatus({ intake: rec, key, status, by: BY, note, ...(key === "shkedia" && status === "received" && { validUntil: at(365, 0) }) });
   const record = (personId) => Intake.findOne({ world, person: personId });
   const remember = (state, person) => {
     out.people.push({ state, person });
     out.byState[state] = (out.byState[state] || 0) + 1;
   };
 
-  /* ── 1 · ממתינים לשיחה ── */
+  /* ── 1 · ממתינים לשיחה ראשונית ── */
   {
     const r = await landing({
       firstName: "ליאור", gender: "male", birthDate: new Date("1998-04-12"),
@@ -142,7 +155,7 @@ async function seedIntakes({ world, lastName, findSeat, subjectIds = [], log = (
       residenceLabel: "דירה עצמאית בקהילה", city: "ירושלים",
       preferences: { categories: ["standup", "movie", "outing"], notes: "אוהב סטנדאפ, מעדיף ערבים" },
     });
-    await upload(await record(r.person._id), "idCopy", PNG, "teudat-zehut.png");
+    await upload(await record(r.person._id), "psychiatric", PDF, "psychiatric-report.pdf");
     await backdate(r.person._id, 2);
     remember("queue", r.person);
   }
@@ -179,9 +192,9 @@ async function seedIntakes({ world, lastName, findSeat, subjectIds = [], log = (
       preferences: { subjects: subjectIds.slice(1, 3), categories: ["concert", "party", "festival"], days: [1, 3], dayParts: ["afternoon", "evening"] },
     });
     const rec = await record(r.person._id);
-    await upload(rec, "idCopy", PNG, "id.png");
-    await upload(rec, "eligibility", PDF, "zakaut.pdf");
-    await upload(rec, "medical", PDF, "medical.pdf");
+    await upload(rec, "psychiatric", PDF, "psychiatric.pdf");
+    await upload(rec, "psychosocial", PDF, "psychosocial.pdf");
+    await upload(rec, "socialClub", PNG, "moadon.png");
     await backdate(r.person._id, 1);
     remember("queue", r.person);
   }
@@ -216,14 +229,14 @@ async function seedIntakes({ world, lastName, findSeat, subjectIds = [], log = (
       preferences: { categories: ["museum", "lecture", "trip"] },
     });
     const rec = await record(r.person._id);
-    await upload(rec, "idCopy", PNG, "id.png");
-    await upload(rec, "registrationForm", PDF, "harshama.pdf");
+    await upload(rec, "psychiatric", PDF, "psychiatric.pdf");
+    await upload(rec, "waiver", PDF, "vitur-sodiyut.pdf");
     await intake.schedule({ intake: rec, at: at(3, 10), by: BY });
     await backdate(r.person._id, 4);
     remember("scheduled", r.person);
   }
 
-  /* ── 3 · ממתינים למסמכים ── */
+  /* ── 3 · בוצע אינטייק · משלימים תיק ── */
   {
     const r = await landing({
       firstName: "רותם", gender: "female", birthDate: new Date("1995-05-15"),
@@ -231,10 +244,10 @@ async function seedIntakes({ world, lastName, findSeat, subjectIds = [], log = (
       preferences: { categories: ["workshop", "community", "volunteering"] },
     });
     const rec = await record(r.person._id);
-    await upload(rec, "idCopy", PNG, "id.png");
+    await upload(rec, "socialClub", PNG, "moadon.png");
     await intake.schedule({ intake: rec, at: at(-5, 12), by: BY });
-    await intake.markDone({ intake: rec, at: at(-4, 12), by: BY, waiverSigned: true, summary: "שיחה נעימה, מתאימה לסדנאות ולערבי קהילה. חסרים אישור זכאות וסיכום רפואי — תביא בשבוע הבא." });
-    await tick(rec, "eligibility", "received");
+    await intake.markDone({ intake: rec, at: at(-4, 12), by: BY, waiverSigned: true, summary: "שיחה נעימה, מתאימה לסדנאות ולערבי קהילה. חסרים הדוחות ואישור שקדייה — תביא בשבוע הבא." });
+    await tick(rec, "socialClub", "received");
     await backdate(r.person._id, 12);
     remember("documents", r.person);
   }
@@ -247,14 +260,15 @@ async function seedIntakes({ world, lastName, findSeat, subjectIds = [], log = (
     });
     await holdSeat(r.person._id, "נעה");
     const rec = await record(r.person._id);
-    await upload(rec, "idCopy", PNG, "id-blurry.png");
-    await upload(rec, "medical", PDF, "medical.pdf");
-    await upload(rec, "registrationForm", PDF, "form.pdf");
+    await upload(rec, "psychiatric", PNG, "psychiatric-blurry.png");
+    await upload(rec, "psychosocial", PDF, "psychosocial.pdf");
+    await upload(rec, "socialClub", PDF, "moadon.pdf");
     await intake.schedule({ intake: rec, at: at(-2, 9, 30), by: BY });
-    await intake.markDone({ intake: rec, at: at(-1, 9, 30), by: BY, waiverSigned: true, summary: "מתאים לקבוצה קטנה. צילום ת\"ז לא קריא — ביקשתי לצלם שוב." });
-    await tick(rec, "idCopy", "rejected", "הצילום לא קריא — נא לצלם שוב באור טוב");
-    await tick(rec, "medical", "received");
-    await tick(rec, "registrationForm", "received");
+    await intake.markDone({ intake: rec, at: at(-1, 9, 30), by: BY, waiverSigned: true, summary: "מתאים לקבוצה קטנה. הדוח הפסיכיאטרי לא קריא — ביקשתי לצלם שוב." });
+    await tick(rec, "psychiatric", "rejected", "הצילום לא קריא — נא לצלם שוב באור טוב");
+    await tick(rec, "psychosocial", "received");
+    await tick(rec, "socialClub", "received");
+    await tick(rec, "shkedia", "received");
     await backdate(r.person._id, 10);
     remember("documents", r.person);
   }
@@ -267,15 +281,17 @@ async function seedIntakes({ world, lastName, findSeat, subjectIds = [], log = (
       preferences: { categories: ["theatre", "movie", "restaurant"] },
     });
     const rec = await record(r.person._id);
-    for (const [k, f, n] of [["idCopy", PNG, "id.png"], ["eligibility", PDF, "zakaut.pdf"], ["medical", PDF, "medical.pdf"], ["registrationForm", PDF, "form.pdf"]]) {
+    for (const [k, f, n] of [["psychiatric", PDF, "psychiatric.pdf"], ["psychosocial", PDF, "psychosocial.pdf"], ["socialClub", PNG, "moadon.png"], ["waiver", PDF, "vitur.pdf"]]) {
       await upload(rec, k, f, n);
     }
+    await tick(rec, "shkedia", "received");
     await intake.schedule({ intake: rec, at: at(-7, 10), by: BY });
-    await intake.markDone({ intake: rec, at: at(-6, 10), by: BY, waiverSigned: true, summary: "הכל בתיק — משובצת לתרבות לכל." });
+    await intake.markDone({ intake: rec, at: at(-6, 10), by: BY, summary: "הכל בתיק — משובצת לתרבות לכל." });
     await backdate(r.person._id, 16);
     remember("done", r.person);
   }
   {
+    // מכללה לכל: the file is complete, the seat is held — waiting for נעה/חגי to enter the start date
     const r = await landing({
       firstName: "עידו", gender: "male", birthDate: new Date("1992-06-16"),
       programs: ["StudentCollege"], filledBy: { role: "self" },
@@ -286,8 +302,30 @@ async function seedIntakes({ world, lastName, findSeat, subjectIds = [], log = (
     const rec = await record(r.person._id);
     await intake.schedule({ intake: rec, at: at(-12, 10), by: BY });
     await intake.markDone({ intake: rec, at: at(-11, 10), by: BY, waiverSigned: true, summary: "הביא את כל המסמכים לפגישה." });
-    for (const k of ["idCopy", "eligibility", "medical", "registrationForm"]) await tick(rec, k, "received");
+    for (const k of ["psychiatric", "psychosocial", "socialClub", "shkedia"]) await tick(rec, k, "received");
     await backdate(r.person._id, 20);
+    remember("done", r.person);
+  }
+  {
+    // מכללה לכל: the start date is set for next week — משובץ/ת, "מתחיל/ה ב…"
+    const r = await landing({
+      firstName: "תמר", gender: "female", birthDate: new Date("1997-09-09"),
+      programs: ["StudentCollege"], filledBy: { role: "coordinator", name: "נטע — דיור מוגן" },
+      residenceLabel: "דיור מוגן",
+      preferences: { subjects: subjectIds.slice(1, 2), days: [1, 3], dayParts: ["morning"] },
+    });
+    const seat = await holdSeat(r.person._id, "נעה");
+    const rec = await record(r.person._id);
+    await intake.schedule({ intake: rec, at: at(-16, 10), by: BY });
+    await intake.markDone({ intake: rec, at: at(-15, 10), by: BY, waiverSigned: true, summary: "מתאימה מאוד לקבוצה; הביאה את כל המסמכים." });
+    for (const k of ["psychiatric", "psychosocial", "socialClub", "shkedia"]) await tick(rec, k, "received");
+    if (seat) {
+      const held = await Enrollment.findOne({ world, student: r.person._id, cycle: seat, status: "reserved" });
+      if (held) {
+        await updateStatus({ enrollmentId: held._id, world, status: "active", joinedAt: at(7, 0), movedBy: "נעה", note: "עודכנו המסגרת והסטודנטית" });
+      }
+    }
+    await backdate(r.person._id, 24);
     remember("done", r.person);
   }
 

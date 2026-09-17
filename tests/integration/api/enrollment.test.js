@@ -7,7 +7,7 @@
 const request = require("supertest");
 const app = require("../../../app");
 const Enrollment = require("../../../models/Enrollment");
-const { makeStudent, makeCycle } = require("../../helpers/factories");
+const { makeStudent, makeCycle, makeSubject } = require("../../helpers/factories");
 
 describe("POST /api/enrollments", () => {
   it("enrolls a student (201) and stamps world from the cycle", async () => {
@@ -59,24 +59,61 @@ describe("POST /api/enrollments", () => {
     expect(await Enrollment.countDocuments({ cycle: cycle._id })).toBe(1);
   });
 
-  it("a seat for a lead the social worker has not met parks them at ReservedSeat", async () => {
+  it("a reserved seat for a lead the social worker has not met parks them at Intake", async () => {
     const s = await makeStudent();
     await s.moveToStage("Matching", "בדיקה");
+    const cycle = await makeCycle({ subject: (await makeSubject({ name: "ציור" }))._id });
+    await request(app).post("/api/enrollments").send({ cycle: cycle._id, student: s._id, status: "reserved", createdBy: "נעה" });
+    const after = await request(app).get(`/api/people/${s._id}`);
+    expect(after.body.data.person.pipeline.stage).toBe("Intake");
+    const hist = after.body.data.person.stageHistory;
+    expect(hist[hist.length - 1]).toMatchObject({ stage: "Intake", movedBy: "נעה" });
+    expect(hist[hist.length - 1].note).toMatch(/ציור/);
+  });
+
+  it("a seat for a student AT Intake changes nothing — the file decides", async () => {
+    const s = await makeStudent();
+    await s.moveToStage("Intake", "בדיקה");
     const cycle = await makeCycle();
     await request(app).post("/api/enrollments").send({ cycle: cycle._id, student: s._id });
     const after = await request(app).get(`/api/people/${s._id}`);
-    expect(after.body.data.person.pipeline.stage).toBe("ReservedSeat");
-    const hist = after.body.data.person.stageHistory;
-    expect(hist[hist.length - 1]).toMatchObject({ stage: "ReservedSeat" });
+    expect(after.body.data.person.pipeline.stage).toBe("Intake");
   });
 
-  it("auto-advances a student waiting AFTER intake straight to Placed", async () => {
+  it("auto-advances a student waiting AFTER intake straight to Placed when the seat is active", async () => {
     const s = await makeStudent();
     await s.moveToStage("AwaitingPlacement", "בדיקה");
     const cycle = await makeCycle();
     await request(app).post("/api/enrollments").send({ cycle: cycle._id, student: s._id });
     const after = await request(app).get(`/api/people/${s._id}`);
     expect(after.body.data.person.pipeline.stage).toBe("Placed");
+  });
+
+  it("a RESERVED seat after intake keeps the student waiting; the start date makes them Placed", async () => {
+    const s = await makeStudent();
+    await s.moveToStage("AwaitingPlacement", "בדיקה");
+    const cycle = await makeCycle();
+    const held = await request(app).post("/api/enrollments").send({ cycle: cycle._id, student: s._id, status: "reserved" });
+    expect((await request(app).get(`/api/people/${s._id}`)).body.data.person.pipeline.stage).toBe("AwaitingPlacement");
+    const bad = await request(app).patch(`/api/enrollments/${held.body.data.enrollment._id}`).send({ status: "active", joinedAt: "not-a-date" });
+    expect(bad.body.code).toBe("INVALID_DATE");
+    const res = await request(app)
+      .patch(`/api/enrollments/${held.body.data.enrollment._id}`)
+      .send({ status: "active", joinedAt: "2026-11-01T00:00:00", movedBy: "חגי" });
+    expect(res.status).toBe(200);
+    expect(res.body.data.enrollment.status).toBe("active");
+    expect(res.body.data.enrollment.joinedAt).toMatch(/^2026-1[01]-/);
+    const after = await request(app).get(`/api/people/${s._id}`);
+    expect(after.body.data.person.pipeline.stage).toBe("Placed");
+    expect(after.body.data.person.stageHistory.at(-1)).toMatchObject({ stage: "Placed", movedBy: "חגי" });
+  });
+
+  it("a reserved seat for a NeedsReplacement student → AwaitingPlacement (the date is still missing)", async () => {
+    const s = await makeStudent();
+    await s.moveToStage("NeedsReplacement", "בדיקה");
+    const cycle = await makeCycle();
+    await request(app).post("/api/enrollments").send({ cycle: cycle._id, student: s._id, status: "reserved" });
+    expect((await request(app).get(`/api/people/${s._id}`)).body.data.person.pipeline.stage).toBe("AwaitingPlacement");
   });
 
   it("rejects cross-world enrollment with WORLD_MISMATCH", async () => {

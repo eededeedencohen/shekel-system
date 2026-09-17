@@ -86,7 +86,11 @@ exports.markDone = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: { intake: await populated(doc), moved } });
 });
 
-/** PATCH /api/intakes/:id/documents/:key — { status, by, note } */
+/**
+ * PATCH /api/intakes/:id/documents/:key — { status, by, note, validUntil }
+ * status ∈ received (an approval needs `validUntil`) | waived | rejected |
+ * missing (delete) | comment (a reply the student sees; the status stays).
+ */
 exports.setDocument = catchAsync(async (req, res) => {
   const doc = await load(req);
   const { moved } = await intake.setDocumentStatus({
@@ -95,16 +99,17 @@ exports.setDocument = catchAsync(async (req, res) => {
     status: req.body.status,
     by: req.body.by,
     note: req.body.note,
+    validUntil: req.body.validUntil,
   });
   res.status(200).json({ status: "success", data: { intake: await populated(doc), moved } });
 });
 
-/** POST /api/intakes/:id/documents — { key, fileName, mime, data(base64), by } (staff upload = received). */
+/** POST /api/intakes/:id/documents — { key, fileName, mime, data(base64), by, validUntil? } (staff upload = received). */
 exports.uploadDocument = catchAsync(async (req, res, next) => {
   const doc = await load(req);
-  const { key, fileName, mime, data, by } = req.body || {};
+  const { key, fileName, mime, data, by, validUntil } = req.body || {};
   if (!key || !data) return next(AppError.of("MISSING_FIELDS", 400, "key, data"));
-  const { moved } = await intake.uploadDocument({ intake: doc, key, fileName, mime, data, by, staff: true });
+  const { moved } = await intake.uploadDocument({ intake: doc, key, fileName, mime, data, by, staff: true, validUntil });
   res.status(200).json({ status: "success", data: { intake: await populated(doc), moved } });
 });
 

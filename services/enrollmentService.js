@@ -12,13 +12,18 @@
  *    index still backstops double-enrollment even without one).
  *  - slotId must exist on the cycle's schedule (SLOT_NOT_FOUND).
  *  - reservation fulfillment = status flip on the SAME document.
- *  - placement auto-advance (Eden's diagram, 2026-09-09): a seat — held or
- *    active — for a student the social worker has NOT taken in yet moves
- *    them to "ReservedSeat" (משובץ בתהליכי קליטה: the managers found a
- *    place, ייטב still has to run the intake); a student whose intake is
- *    already complete, or who waits for a (re)placement after it, goes
- *    straight to "Placed". moveToStage() does the writing — the client
- *    only refreshes.
+ *  - the two automatic moves of Eden's pipeline (2026-09-17) live here,
+ *    because both are seat facts (see utils/domain PIPELINE_STAGES):
+ *      · a seat RESERVED for a lead (Interested / Matching) parks them at
+ *        "Intake" — the managers found a cycle, ייטב runs the intake; when
+ *        the intake is already complete the seat sends them straight to
+ *        "AwaitingPlacement" (a start date is all that is missing);
+ *      · a seat turned ACTIVE with a start date for someone waiting after
+ *        the intake (AwaitingPlacement / NeedsReplacement) makes them
+ *        "Placed". A reserved seat for a NeedsReplacement student puts
+ *        them at AwaitingPlacement (the date is still missing).
+ *    A seat for a student AT Intake changes nothing — the intake file
+ *    decides. moveToStage() does the writing; the client only refreshes.
  */
 
 const Cycle = require("../models/Cycle");
@@ -29,29 +34,51 @@ const AppError = require("../utils/AppError");
 const { withTxn } = require("../utils/withTxn");
 const { OCCUPYING_STATUSES } = require("../utils/domain");
 
-/** Post-intake stages: a seat here is the final placement. */
-const ADVANCE_TO_PLACED = ["AwaitingPlacement", "NeedsReplacement"];
-/** Pre-intake stages: a seat here parks the student with the social worker. */
-const ADVANCE_TO_RESERVED = ["Interested", "Matching"];
+/** Post-intake stages: an ACTIVE seat (the start date is set) is the placement. */
+const AFTER_INTAKE = ["AwaitingPlacement", "NeedsReplacement"];
+/** Pre-intake stages: a seat parks the student with the social worker. */
+const BEFORE_INTAKE = ["Interested", "Matching"];
+
+const HE_DAYS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"];
+const fmtDay = (d) => {
+  const x = new Date(d);
+  return `יום ${HE_DAYS[x.getDay()]} ${x.getDate()}.${x.getMonth() + 1}.${x.getFullYear()}`;
+};
+
+/** "ציור" — the cycle's subject name for stage notes. */
+async function cycleName(cycleId) {
+  const c = await Cycle.findById(cycleId).populate({ path: "subject", select: "name" });
+  return c?.subject?.name || "מחזור";
+}
 
 /**
  * Placement auto-advance — on the student's COLLEGE profile (cycles are a
  * מכללה לכל thing; a culture pipeline is never touched by a cycle seat).
+ * `enrollment` is the record just written (its status says reserved/active).
  */
-async function advancePlacement(personId, movedBy) {
+async function advancePlacement(personId, movedBy, enrollment) {
   const profiles = await studentProfilesOf(personId);
   const college = profiles.find((p) => p.kind === "StudentCollege");
   if (!college) return;
   const stage = college.pipeline?.stage;
-  if (ADVANCE_TO_PLACED.includes(stage)) {
-    await college.moveToStage("Placed", movedBy, "שובץ למחזור");
-  } else if (ADVANCE_TO_RESERVED.includes(stage)) {
+  const active = enrollment.status === "active";
+  if (BEFORE_INTAKE.includes(stage)) {
+    const name = await cycleName(enrollment.cycle);
     // Lazy require: intakeService depends on enrollment records, not on us.
     const { isIntakeComplete } = require("./intakeService");
     if (await isIntakeComplete(personId, college.world)) {
-      await college.moveToStage("Placed", movedBy, "שובץ למחזור");
+      if (active) await college.moveToStage("Placed", movedBy, `שובץ/ה ל"${name}"`);
+      else await college.moveToStage("AwaitingPlacement", movedBy, `שוריין מקום ב"${name}" — הקליטה כבר הושלמה, נשאר לקבוע תאריך התחלה`);
     } else {
-      await college.moveToStage("ReservedSeat", movedBy, "שובץ למחזור — ממתין/ה לקליטה אצל העו\"ס");
+      await college.moveToStage("Intake", movedBy, `שוריין מקום ב"${name}" — בקליטה אצל העו"ס`);
+    }
+  } else if (AFTER_INTAKE.includes(stage)) {
+    const name = await cycleName(enrollment.cycle);
+    if (active) {
+      const when = enrollment.joinedAt ? ` · מתחיל/ה ב${fmtDay(enrollment.joinedAt)}` : "";
+      await college.moveToStage("Placed", movedBy, `שובץ/ה ל"${name}"${when}`);
+    } else if (stage === "NeedsReplacement") {
+      await college.moveToStage("AwaitingPlacement", movedBy, `שוריין מקום ב"${name}" — נשאר לקבוע תאריך התחלה`);
     }
   }
 }
@@ -152,16 +179,17 @@ async function enroll({ cycleId, studentId, world, status = "active", slotId = n
   });
 
   // A held seat counts too — it is what parks a lead with the social worker.
-  await advancePlacement(studentId, createdBy);
+  await advancePlacement(studentId, createdBy, enrollment);
   return enrollment;
 }
 
 /**
- * Transition an existing enrollment: activate a reservation, mark left /
- * completed, or re-reserve. Capacity re-checked when a non-occupying
- * record re-takes a seat.
+ * Transition an existing enrollment: activate a reservation (with the
+ * START DATE the managers entered — `joinedAt`), mark left / completed, or
+ * re-reserve. Capacity re-checked when a non-occupying record re-takes a
+ * seat.
  */
-async function updateStatus({ enrollmentId, world, status, leftAt, note, movedBy }) {
+async function updateStatus({ enrollmentId, world, status, leftAt, joinedAt, note, movedBy }) {
   const enrollment = await Enrollment.findById(enrollmentId);
   if (!enrollment) throw AppError.of("NOT_FOUND", 404, "שיבוץ");
   if (enrollment.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
@@ -175,7 +203,13 @@ async function updateStatus({ enrollmentId, world, status, leftAt, note, movedBy
       }
     }
     if (status === "active") {
-      enrollment.joinedAt = enrollment.joinedAt || new Date();
+      if (joinedAt !== undefined && joinedAt !== null) {
+        const start = new Date(joinedAt);
+        if (isNaN(start.getTime())) throw AppError.of("INVALID_DATE", 400);
+        enrollment.joinedAt = start;
+      } else {
+        enrollment.joinedAt = enrollment.joinedAt || new Date();
+      }
       enrollment.leftAt = null;
     } else enrollment.reservedAt = new Date();
   } else if (status === "left") {
@@ -192,7 +226,7 @@ async function updateStatus({ enrollmentId, world, status, leftAt, note, movedBy
   const saved = await enrollment.save();
 
   if (OCCUPYING_STATUSES.includes(status)) {
-    await advancePlacement(enrollment.student, movedBy);
+    await advancePlacement(enrollment.student, movedBy, saved);
   }
   return saved;
 }

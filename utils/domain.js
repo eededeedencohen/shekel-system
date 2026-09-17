@@ -23,56 +23,74 @@ const ATTENDANCE_LABELS = {
 };
 
 /**
- * Intake/placement pipeline stages — Eden's state diagram (2026-09-09):
+ * The מכללה לכל pipeline — Eden's spec (2026-09-17), which replaced the
+ * eight keys of the 2026-09-09 diagram with five stops and one side door:
  *
- *   landing page ─┬─ תרבות לכל ──────────────────────────┐
- *                 └─ מכללה לכל → [נועה/חגי find a seat] → ReservedSeat ─┤
- *                                                                         ▼
- *   ייטב (עו"ס) calls + sets a date → Intake ("בהמתנה לאינטייק")
- *        → intake meeting + confidentiality waiver
- *            → all documents in?  yes → Placed
- *                                 no  → AwaitingDocuments → docs arrive → Placed
+ *   landing page / "+ מתעניין חדש" ──► Interested   tag "מתעניין במכללה לכל"
+ *   נועה/חגי move it BY HAND       ──► Matching     waiting for a cycle
+ *   a seat is RESERVED (cycle only, ──► Intake       "קליטה אצל העובדת סוציאלית":
+ *     no start date)                                  automatic — enrollmentService
+ *       ייטב: שיחה ראשונית → בהמתנה לאינטייק → בוצע אינטייק,
+ *       + אישור שקדייה + the four documents — all on the `intakes` record
+ *   the file is complete           ──► AwaitingPlacement  automatic — intakeService:
+ *                                                  the baton is back with the managers,
+ *                                                  a seat is held, the start date is missing
+ *   נועה/חגי enter the start date  ──► Placed       automatic — enrollmentService
+ *   a student who lost a course    ──► NeedsReplacement (shown inside "בחיפוש שיבוץ")
+ *
+ * תרבות לכל runs the short form: Interested → Intake (ייטב) → Placed.
  *
  * `owner` says whose board a stage belongs to: "college" = the מכללה לכל
- * managers, "social" = the social worker's intake board, "all" = both.
- * No server-side transition rules by design — humans correct mistakes;
- * `stageHistory` records everything. services/intakeService drives the
- * social-worker transitions from the person's `intakes` record.
+ * managers, "social" = the social worker's, "all" = both. The social stage
+ * is locked for managers; only the automatic moves above and the intake
+ * service touch it. `stageHistory` records everything.
  */
 const PIPELINE_STAGES = [
-  { key: "Interested", label: "מתעניין", owner: "all" },
-  { key: "Matching", label: "בחיפוש שיבוץ", owner: "college" },
-  { key: "ReservedSeat", label: "משובץ בתהליכי קליטה", owner: "college" },
-  { key: "Intake", label: "בהמתנה לאינטייק", owner: "social" },
-  { key: "AwaitingDocuments", label: "ממתינים למסמכים", owner: "social" },
-  { key: "AwaitingPlacement", label: "ממתין לשיבוץ סופי", owner: "college" },
-  { key: "NeedsReplacement", label: "דרוש שיבוץ מחדש", owner: "college" },
-  { key: "Placed", label: "משובץ", owner: "all" },
+  { key: "Interested", label: "מתעניין", short: "מתעניין", owner: "all" },
+  { key: "Matching", label: "בחיפוש שיבוץ", short: "בחיפוש שיבוץ", owner: "college" },
+  { key: "Intake", label: "קליטה אצל העובדת סוציאלית", short: "אצל העו\"ס", owner: "social" },
+  { key: "AwaitingPlacement", label: "ממתין לשיבוץ סופי לקורס", short: "לשיבוץ סופי", owner: "college" },
+  { key: "NeedsReplacement", label: "דרוש שיבוץ מחדש", short: "שיבוץ מחדש", owner: "college" },
+  { key: "Placed", label: "משובץ", short: "משובץ", owner: "all" },
 ];
 
 const PIPELINE_STAGE_KEYS = PIPELINE_STAGES.map((s) => s.key);
-/** The social worker's turf — college managers may not move these. */
-const INTAKE_STAGES = ["Intake", "AwaitingDocuments"];
-/** Stages a person may be in BEFORE the social worker schedules the intake. */
-const PRE_INTAKE_STAGES = ["Interested", "Matching", "ReservedSeat"];
+/**
+ * Retired keys of the 2026-09-09 diagram → what they mean today. Stored
+ * data was rewritten by scripts/migratePipelineStages.js; the map stays so
+ * old exports / notes can still be read.
+ */
+const LEGACY_STAGE_MAP = { ReservedSeat: "Intake", AwaitingDocuments: "Intake" };
+/** The social worker's turf — college managers may not move this. */
+const INTAKE_STAGES = ["Intake"];
+/** Stages a person is in BEFORE the intake begins. */
+const PRE_INTAKE_STAGES = ["Interested", "Matching"];
 
 /* ───────────────────────── קליטה (אינטייק) ───────────────────────── */
 
 /**
- * The documents a new student brings to (or uploads before) the intake.
- * `optional` ones never block completion; `atIntake` ones are signed at
- * the meeting itself (the social worker ticks them), not on the landing
- * page. The landing page shows every `upload:true` document.
+ * The intake file (Eden, 2026-09-17): exactly FOUR documents — the tag on
+ * the student reads "X מתוך 4 מסמכים התקבלו" / "כל המסמכים התקבלו" — plus
+ * "אישור שקדייה", an approval the office receives (`approval: true`: its
+ * own tag, never counted among the four, not on the landing page; marking
+ * it received REQUIRES a "valid until" date — Eden: "חובה לשייך תאריך").
+ * The landing page and the personal link show every `upload:true`
+ * document, together with the staff's comment on it. The file is complete
+ * when the intake was held, the approval is in (and not expired) and all
+ * four documents are in.
  */
 const INTAKE_DOCUMENTS = [
-  { key: "idCopy", label: "צילום תעודת זהות", hint: "כולל ספח", upload: true },
-  { key: "eligibility", label: "אישור זכאות", hint: "משרד הרווחה או ביטוח לאומי", upload: true },
-  { key: "medical", label: "סיכום רפואי עדכני", upload: true },
-  { key: "registrationForm", label: "טופס הרשמה חתום", upload: true },
-  { key: "guardianship", label: "צו אפוטרופסות", hint: "רק אם קיים", upload: true, optional: true },
-  { key: "waiver", label: "טופס ויתור סודיות", hint: "נחתם בפגישת האינטייק", upload: false, atIntake: true },
+  { key: "psychiatric", label: "דוח פסיכיאטרי", hint: "עדכני", upload: true },
+  { key: "psychosocial", label: "דוח פסיכוסוציאלי", upload: true },
+  { key: "socialClub", label: "אישור מועדון חברתי", upload: true },
+  { key: "waiver", label: "אישור ויתור סודיות", hint: "נחתם בפגישת האינטייק או מועלה חתום", upload: true },
+  { key: "shkedia", label: "אישור שקדייה", approval: true, upload: false },
 ];
 const INTAKE_DOCUMENT_KEYS = INTAKE_DOCUMENTS.map((d) => d.key);
+/** The four documents behind the "מסמכים" tag. */
+const INTAKE_REQUIRED_DOCUMENTS = INTAKE_DOCUMENTS.filter((d) => !d.optional && !d.approval);
+/** The approvals (today: אישור שקדייה) — each has its own tag. */
+const INTAKE_APPROVALS = INTAKE_DOCUMENTS.filter((d) => d.approval);
 
 /** A document's state. uploaded/received/waived all satisfy the checklist. */
 const DOCUMENT_STATUSES = ["missing", "uploaded", "received", "waived", "rejected"];
@@ -85,13 +103,29 @@ const DOCUMENT_STATUS_LABELS = {
 };
 const DOCUMENT_OK_STATUSES = ["uploaded", "received", "waived"];
 
-/** The intake record's own state (denormalized by intakeService). */
+/**
+ * The intake record's own state (denormalized by intakeService):
+ *   new        — no call yet
+ *   scheduled  — the meeting is set ("בהמתנה לאינטייק")
+ *   documents  — the meeting was held; the approval and/or documents are missing
+ *   complete   — held + approval + all four documents
+ */
 const INTAKE_STATUSES = ["new", "scheduled", "documents", "complete"];
 const INTAKE_STATUS_LABELS = {
-  new: "ממתין/ה לשיחה",
-  scheduled: "נקבע אינטייק",
-  documents: "ממתינים למסמכים",
+  new: "טרם בוצעה שיחה ראשונית",
+  scheduled: "בהמתנה לאינטייק",
+  documents: "בוצע אינטייק · משלימים תיק",
   complete: "הקליטה הושלמה",
+};
+/**
+ * The "סטטוס עובדת סוציאלית" tag on a student (Eden's three values) —
+ * derived from the record: no meeting / meeting set / meeting held.
+ */
+const INTAKE_SW_STATUSES = ["new", "scheduled", "done"];
+const INTAKE_SW_STATUS_LABELS = {
+  new: "טרם בוצעה שיחה ראשונית",
+  scheduled: "בהמתנה לאינטייק",
+  done: "בוצע אינטייק",
 };
 
 /** Who filled the landing page. */
@@ -105,7 +139,7 @@ const INTAKE_FILLED_BY_KEYS = INTAKE_FILLED_BY.map((f) => f.key);
 const INTAKE_SOURCES = ["landing", "staff"];
 const INTAKE_LOG_ACTIONS = [
   "submitted", "scheduled", "rescheduled", "done", "completed",
-  "docUploaded", "docReceived", "docWaived", "docRejected", "docReset", "note",
+  "docUploaded", "docReceived", "docWaived", "docRejected", "docReset", "docNote", "note",
 ];
 /** Preferred time of day (landing page, מכללה לכל). */
 const DAY_PARTS = [
@@ -389,7 +423,7 @@ const ERROR_CODES = {
   INTAKE_NOT_SCHEDULED: "עדיין לא נקבע מועד לאינטייק",
   INTAKE_ALREADY_DONE: "האינטייק כבר בוצע",
   INTAKE_COMPLETE: "הקליטה כבר הושלמה",
-  WAIVER_REQUIRED: "אי אפשר לסיים אינטייק בלי חתימה על טופס ויתור סודיות",
+  APPROVAL_DATE_REQUIRED: "לאישור שקדייה חובה לשייך תאריך תוקף",
   DOCUMENT_UNKNOWN: "סוג מסמך לא מוכר",
   DOCUMENT_INVALID: "הקובץ לא נתמך — מותר PDF או תמונה עד 8MB",
   DOCUMENT_LOCKED: "המסמך כבר אושר ע\"י הצוות ואי אפשר להחליף אותו",
@@ -425,11 +459,13 @@ const DOMAIN_META = {
   registrationStatuses: REGISTRATION_STATUSES.map((k) => ({ key: k, label: REGISTRATION_STATUS_LABELS[k] })),
   registrationActions: REGISTRATION_ACTIONS,
   pipelineStages: PIPELINE_STAGES,
+  legacyStageMap: LEGACY_STAGE_MAP,
   intakeStages: INTAKE_STAGES,
   preIntakeStages: PRE_INTAKE_STAGES,
   intakeDocuments: INTAKE_DOCUMENTS,
   documentStatuses: DOCUMENT_STATUSES.map((k) => ({ key: k, label: DOCUMENT_STATUS_LABELS[k] })),
   intakeStatuses: INTAKE_STATUSES.map((k) => ({ key: k, label: INTAKE_STATUS_LABELS[k] })),
+  intakeSwStatuses: INTAKE_SW_STATUSES.map((k) => ({ key: k, label: INTAKE_SW_STATUS_LABELS[k] })),
   intakeFilledBy: INTAKE_FILLED_BY,
   dayParts: DAY_PARTS,
   attendanceStatuses: ATTENDANCE_STATUSES.map((k) => ({ key: k, label: ATTENDANCE_LABELS[k] })),
@@ -448,15 +484,20 @@ module.exports = {
   ATTENDANCE_LABELS,
   PIPELINE_STAGES,
   PIPELINE_STAGE_KEYS,
+  LEGACY_STAGE_MAP,
   INTAKE_STAGES,
   PRE_INTAKE_STAGES,
   INTAKE_DOCUMENTS,
   INTAKE_DOCUMENT_KEYS,
+  INTAKE_REQUIRED_DOCUMENTS,
+  INTAKE_APPROVALS,
   DOCUMENT_STATUSES,
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_OK_STATUSES,
   INTAKE_STATUSES,
   INTAKE_STATUS_LABELS,
+  INTAKE_SW_STATUSES,
+  INTAKE_SW_STATUS_LABELS,
   INTAKE_FILLED_BY,
   INTAKE_FILLED_BY_KEYS,
   INTAKE_SOURCES,

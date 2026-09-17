@@ -6,19 +6,26 @@
  * so the intake facts live here, one document per (world, person), and
  * NOT on the two student profiles (a person in both programs would carry
  * the same checklist twice). The profiles keep their own pipeline stage;
- * services/intakeService moves them in lockstep with this record:
+ * services/intakeService moves them in lockstep with this record.
  *
- *   status  new ──schedule──▶ scheduled ──done──▶ documents ──docs──▶ complete
- *                                            └──(all docs in)──────▶ complete
+ * The three tags of Eden's spec (2026-09-17) are all derived from here:
+ *   סטטוס עובדת סוציאלית  scheduled.at / done.at   (new → scheduled → done)
+ *   אישור שקדייה           documents[key=shkedia]  (an `approval` row)
+ *   מסמכים                 the four `documents[]` rows that are not approvals
  *
- *   profile   Interested / ReservedSeat ─▶ Intake ─▶ AwaitingDocuments ─▶ Placed
- *                                                └────────────────────▶ Placed
+ *   status  new ──schedule──▶ scheduled ──done──▶ documents ──approval + 4 docs──▶ complete
+ *                                            └──(everything already in)────────▶ complete
+ *
+ *   profile  תרבות: Interested ─▶ Intake ─▶ Placed
+ *            מכללה: Intake ─▶ AwaitingPlacement (a seat is held; the managers
+ *                   enter the start date → Placed — enrollmentService)
  *
  * `landing` is what the public sign-up page wrote (who filled it, which
  * programs, preferences); `landing.token` is the personal link that lets
  * the student come back and upload the rest of the documents.
  * `documents[]` holds one row per INTAKE_DOCUMENTS key — the files
- * themselves live on disk (services/intakeService · UPLOAD_DIR).
+ * themselves live on disk (services/intakeService · UPLOAD_DIR). Rows of
+ * retired keys are dropped on save (the 2026-09-09 checklist).
  */
 
 const mongoose = require("mongoose");
@@ -36,7 +43,9 @@ const {
 
 const documentSchema = new mongoose.Schema(
   {
-    key: { type: String, enum: INTAKE_DOCUMENT_KEYS, required: true },
+    /** An INTAKE_DOCUMENTS key — checked by the service (no enum here, so a
+     *  record seeded under an older checklist still loads; see the save hook). */
+    key: { type: String, trim: true, required: true },
     status: { type: String, enum: DOCUMENT_STATUSES, default: "missing" },
     /** The stored file, when one was uploaded (student or staff). */
     file: {
@@ -50,6 +59,9 @@ const documentSchema = new mongoose.Schema(
     },
     receivedAt: { type: Date },
     receivedBy: { type: String, trim: true },
+    /** An approval's expiry (אישור שקדייה — required when it is received). */
+    validUntil: { type: Date },
+    /** The staff's comment — a rejection reason or a reply the student sees on the personal link. */
     note: { type: String, trim: true },
   },
   { _id: true }
@@ -126,6 +138,14 @@ intakeSchema.index(
   { unique: true, partialFilterExpression: { "landing.token": { $exists: true } } }
 );
 intakeSchema.index({ world: 1, status: 1, "scheduled.at": 1 });
+
+/** Rows of retired document keys never survive a save. */
+intakeSchema.pre("save", function (next) {
+  if (Array.isArray(this.documents) && this.documents.some((d) => !INTAKE_DOCUMENT_KEYS.includes(d.key))) {
+    this.documents = this.documents.filter((d) => INTAKE_DOCUMENT_KEYS.includes(d.key));
+  }
+  next();
+});
 
 /** world must equal the person's world — asserted once, on create. */
 intakeSchema.pre("validate", async function (next) {

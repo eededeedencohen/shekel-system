@@ -51,7 +51,9 @@ exports.createEnrollment = catchAsync(async (req, res) => {
 
 /**
  * PATCH /api/enrollments/:id — status transition / note / leftAt.
- * Body: { status?, leftAt?, note?, movedBy? }
+ * Body: { status?, leftAt?, joinedAt?, note?, movedBy? }
+ * `status: "active"` + `joinedAt` = the managers' "קביעת תאריך התחלה" on a
+ * held seat — the student moves to Placed (enrollmentService).
  */
 exports.patchEnrollment = catchAsync(async (req, res) => {
   const enrollment = await updateStatus({
@@ -59,6 +61,7 @@ exports.patchEnrollment = catchAsync(async (req, res) => {
     world: req.world,
     status: req.body.status,
     leftAt: req.body.leftAt,
+    joinedAt: req.body.joinedAt,
     note: req.body.note,
     movedBy: req.body.movedBy,
   });

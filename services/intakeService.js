@@ -3,19 +3,25 @@
  *       public sign-up page behind it
  * @module services/intakeService
  *
- * Eden's state diagram (2026-09-09), in code:
+ * Eden's spec (2026-09-17), in code — the record carries the three tags
+ * of the "קליטה אצל העובדת סוציאלית" stage:
  *
- *   landing page ─┬─ תרבות לכל: profile at Interested ──────────────────┐
- *                 └─ מכללה לכל: profile at Interested → managers find a │
- *                    seat (enrollmentService → ReservedSeat) ───────────┤
- *                                                                       ▼
- *   schedule()  — ייטב calls, sets a date   → profiles → Intake
- *   markDone()  — meeting held + waiver     → all docs in? Placed*
- *                                             else        AwaitingDocuments
- *   documents   — uploads / staff ticks     → last doc in → Placed*
+ *   סטטוס עו"ס   schedule() sets the meeting (new → scheduled), markDone()
+ *                marks it held (→ done)
+ *   אישור שקדייה the `shkedia` approval row (received / waived by staff)
+ *   מסמכים       the four document rows (uploads / staff ticks)
  *
- *   * a מכללה profile with a reserved seat gets it activated and lands on
- *     Placed; without a seat it waits at AwaitingPlacement for the managers.
+ *   complete = held + approval in + all four documents in, then settle():
+ *     תרבות לכל profile (Interested / Intake)      → Placed
+ *     מכללה לכל profile at Intake                  → AwaitingPlacement — the
+ *       held seat stays reserved; the managers enter the start date and
+ *       enrollmentService moves the student to Placed (an already ACTIVE
+ *       seat means the date exists → Placed right away)
+ *     מכללה לכל profile still at Interested/Matching (no seat yet) stays —
+ *       the seat reservation will send it straight to AwaitingPlacement
+ *
+ *   schedule() moves a תרבות profile from Interested to Intake; a מכללה
+ *   profile enters Intake only through a seat (enrollmentService).
  *
  * One `intakes` record per person (the human is met once, whatever the
  * programs); `settle()` keeps every active student profile of the person
@@ -39,9 +45,10 @@ const {
   STUDENT_KINDS,
   PROGRAM_LABELS,
   INTAKE_DOCUMENTS,
+  INTAKE_REQUIRED_DOCUMENTS,
+  INTAKE_APPROVALS,
   DOCUMENT_OK_STATUSES,
   INTAKE_STAGES,
-  PRE_INTAKE_STAGES,
   INTAKE_FILLED_BY_KEYS,
   EVENT_CATEGORY_KEYS,
   OCCUPYING_STATUSES,
@@ -81,20 +88,36 @@ function removeFile(intake, doc) {
 /* ───────────────────────── checklist ───────────────────────── */
 
 const DOC_BY_KEY = Object.fromEntries(INTAKE_DOCUMENTS.map((d) => [d.key, d]));
-const requiredDocs = () => INTAKE_DOCUMENTS.filter((d) => !d.optional);
 const docOk = (d) => DOCUMENT_OK_STATUSES.includes(d?.status);
+const rowOf = (intake, key) => (intake.documents || []).find((x) => x.key === key);
+const startOfToday = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+/** A received approval past its "valid until" date no longer counts. */
+const approvalExpired = (d) => d?.status === "received" && d.validUntil && new Date(d.validUntil) < startOfToday();
+/** An approval counts only once the office confirmed it WITH its date (or waived it) — a bare upload does not. */
+const approvalOk = (d) => (d?.status === "received" && !approvalExpired(d)) || d?.status === "waived";
 
-/** Keys of the REQUIRED documents that are not in yet. */
+/** Keys of the four documents that are not in yet. */
 function missingDocs(intake) {
-  return requiredDocs()
-    .filter((d) => !docOk((intake.documents || []).find((x) => x.key === d.key)))
-    .map((d) => d.key);
+  return INTAKE_REQUIRED_DOCUMENTS.filter((d) => !docOk(rowOf(intake, d.key))).map((d) => d.key);
 }
-const missingLabels = (intake) => missingDocs(intake).map((k) => DOC_BY_KEY[k].label);
+/** Keys of the approvals (אישור שקדייה) that are not in — or expired. */
+function missingApprovals(intake) {
+  return INTAKE_APPROVALS.filter((d) => !approvalOk(rowOf(intake, d.key))).map((d) => d.key);
+}
+const labelsOf = (keys) => keys.map((k) => DOC_BY_KEY[k].label);
+/** What still keeps the file open, in Hebrew ("אישור שקדייה, דוח פסיכיאטרי"). */
+const missingLabels = (intake) => labelsOf([...missingApprovals(intake), ...missingDocs(intake)]);
 
-/** The record's state from its facts (the ONE definition). */
+/**
+ * The record's state from its facts (the ONE definition): the meeting
+ * held + the approval in + the four documents in = complete.
+ */
 function computeStatus(intake) {
-  if (intake.done?.at) return missingDocs(intake).length ? "documents" : "complete";
+  if (intake.done?.at) return missingDocs(intake).length || missingApprovals(intake).length ? "documents" : "complete";
   if (intake.scheduled?.at) return "scheduled";
   return "new";
 }
@@ -115,6 +138,11 @@ function docOf(intake, key) {
 /* ───────────────────────── helpers ───────────────────────── */
 
 const HE_DAYS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"];
+/** "30.6.2027" — for approval dates in the log. */
+function fmtDate(d) {
+  const x = new Date(d);
+  return `${x.getDate()}.${x.getMonth() + 1}.${x.getFullYear()}`;
+}
 /** "יום ג׳ 15.9 · 10:00" — for stage notes. */
 function fmtHe(d) {
   const x = new Date(d);
@@ -312,12 +340,22 @@ async function submitLanding({ world, body = {} }) {
 
 /* ───────────────────────── documents ───────────────────────── */
 
+/** A "valid until" value → a Date at local midnight, or throws (undefined stays undefined). */
+function parseValidUntil(raw) {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) throw AppError.of("INVALID_DATE", 400);
+  return d;
+}
+
 /**
  * Store a file for a document key. `data` = Buffer or base64 (data-URI
  * tolerated). A student upload (staff=false) can replace its own earlier
- * upload but never a document the staff already confirmed.
+ * upload but never a document the staff already confirmed. A staff upload
+ * counts as received — except an approval without its `validUntil`, which
+ * stays "uploaded" until the date is given.
  */
-async function uploadDocument({ intake, key, fileName, mime, data, by, staff = false }) {
+async function uploadDocument({ intake, key, fileName, mime, data, by, staff = false, validUntil }) {
   const def = DOC_BY_KEY[key];
   if (!def) throw AppError.of("DOCUMENT_UNKNOWN", 400, key);
   if (!def.upload && !staff) throw AppError.of("DOCUMENT_UNKNOWN", 400, def.label);
@@ -326,6 +364,7 @@ async function uploadDocument({ intake, key, fileName, mime, data, by, staff = f
     ? data
     : Buffer.from(String(data || "").replace(/^data:[^;]+;base64,/, ""), "base64");
   if (!ext || buffer.length === 0 || buffer.length > MAX_FILE_BYTES) throw AppError.of("DOCUMENT_INVALID", 400);
+  const until = def.approval ? parseValidUntil(validUntil) : undefined;
 
   const d = docOf(intake, key);
   if (!staff && d.status === "received") throw AppError.of("DOCUMENT_LOCKED", 400);
@@ -337,16 +376,17 @@ async function uploadDocument({ intake, key, fileName, mime, data, by, staff = f
   const now = new Date();
   d.file = { name: clean(fileName, 120) || `${key}.${ext}`, storedName, mime: mime.toLowerCase(), size: buffer.length, uploadedAt: now, by: staff ? by : "student" };
   d.note = undefined;
-  if (staff) {
+  if (staff && (!def.approval || until)) {
     d.status = "received";
     d.receivedAt = now;
     d.receivedBy = by;
+    if (until) d.validUntil = until;
   } else {
     d.status = "uploaded";
     d.receivedAt = undefined;
     d.receivedBy = undefined;
   }
-  intake.log.push({ action: "docUploaded", at: now, by: staff ? by : LANDING_ACTOR, note: def.label });
+  intake.log.push({ action: "docUploaded", at: now, by: staff ? by : LANDING_ACTOR, note: def.label + (until ? ` · בתוקף עד ${fmtDate(until)}` : "") });
   return settle(intake, staff ? by : LANDING_ACTOR);
 }
 
@@ -362,17 +402,33 @@ async function removeStudentDocument({ intake, key }) {
   return settle(intake, LANDING_ACTOR);
 }
 
-/** Staff tick: received / waived / rejected / missing (reset). */
-async function setDocumentStatus({ intake, key, status, by, note }) {
+/**
+ * Staff tick: received / waived / rejected / missing (reset — the file is
+ * deleted) / comment (a reply on the document the student sees on the
+ * personal link; the status stays). An approval (אישור שקדייה) is received
+ * only WITH its `validUntil` date (APPROVAL_DATE_REQUIRED); a later tick
+ * with a new date renews it.
+ */
+async function setDocumentStatus({ intake, key, status, by, note, validUntil }) {
   const d = docOf(intake, key);
-  const label = DOC_BY_KEY[key].label;
+  const def = DOC_BY_KEY[key];
+  const label = def.label;
   const now = new Date();
   if (status === "received") {
+    if (def.approval) {
+      const until = parseValidUntil(validUntil);
+      if (!until) throw AppError.of("APPROVAL_DATE_REQUIRED", 400);
+      d.validUntil = until;
+    }
     d.status = "received";
     d.receivedAt = now;
     d.receivedBy = by;
     d.note = clean(note, 300);
-    intake.log.push({ action: "docReceived", at: now, by, note: label });
+    intake.log.push({ action: "docReceived", at: now, by, note: label + (d.validUntil ? ` · בתוקף עד ${fmtDate(d.validUntil)}` : "") });
+  } else if (status === "comment") {
+    const text = clean(note, 300);
+    d.note = text;
+    intake.log.push({ action: "docNote", at: now, by, note: `${label}${text ? ` · ${text}` : " · ההערה נמחקה"}` });
   } else if (status === "waived") {
     d.status = "waived";
     d.receivedAt = now;
@@ -386,13 +442,15 @@ async function setDocumentStatus({ intake, key, status, by, note }) {
     d.note = clean(note, 300);
     intake.log.push({ action: "docRejected", at: now, by, note: `${label}${note ? ` · ${note}` : ""}` });
   } else if (status === "missing") {
+    const hadFile = !!d.file?.storedName;
     removeFile(intake, d);
     d.file = undefined;
     d.status = "missing";
     d.receivedAt = undefined;
     d.receivedBy = undefined;
+    d.validUntil = undefined;
     d.note = clean(note, 300);
-    intake.log.push({ action: "docReset", at: now, by, note: label });
+    intake.log.push({ action: "docReset", at: now, by, note: label + (hadFile ? " · הקובץ נמחק" : "") });
   } else {
     throw AppError.of("INVALID_STATUS", 400, status);
   }
@@ -401,7 +459,21 @@ async function setDocumentStatus({ intake, key, status, by, note }) {
 
 /* ───────────────────────── the social worker's steps ───────────────────────── */
 
-/** Set (or move) the intake meeting; pre-intake profiles step to Intake. */
+/**
+ * The תרבות לכל profile of the person, when it is still waiting for the
+ * social worker (Interested) — schedule()/markDone() move it to Intake.
+ * A מכללה profile is never moved here: a reserved seat puts it at Intake.
+ */
+async function cultureIntoIntake(personId, by, note, moved) {
+  for (const p of await studentProfilesOf(personId)) {
+    if (p.kind === "StudentCulture" && p.pipeline?.stage === "Interested") {
+      await p.moveToStage("Intake", by, note);
+      moved.push(p.kind);
+    }
+  }
+}
+
+/** Set (or move) the intake meeting: "בהמתנה לאינטייק". */
 async function schedule({ intake, at, by, note }) {
   if (intake.done?.at) throw AppError.of("INTAKE_ALREADY_DONE", 400);
   const when = new Date(at);
@@ -414,33 +486,39 @@ async function schedule({ intake, at, by, note }) {
   await intake.save();
 
   const moved = [];
-  for (const p of await studentProfilesOf(intake.person)) {
-    if (PRE_INTAKE_STAGES.includes(p.pipeline?.stage)) {
-      await p.moveToStage("Intake", by, `נקבע אינטייק ל${fmtHe(when)}${note ? ` · ${clean(note, 200)}` : ""}`);
-      moved.push(p.kind);
-    }
-  }
+  await cultureIntoIntake(intake.person, by, `נקבע אינטייק ל${fmtHe(when)}${note ? ` · ${clean(note, 200)}` : ""}`, moved);
   return { intake, moved };
 }
 
-/** The meeting happened and the waiver was signed. */
+/**
+ * The meeting happened: "בוצע אינטייק". The waiver is one of the four
+ * documents — ticking `waiverSigned` marks it received (signed at the
+ * meeting); it no longer gates the step. What still keeps the file open
+ * (the approval, documents) is written into the log.
+ */
 async function markDone({ intake, at, by, waiverSigned, summary }) {
   if (intake.done?.at) throw AppError.of("INTAKE_ALREADY_DONE", 400);
-  if (!waiverSigned) throw AppError.of("WAIVER_REQUIRED", 400);
   const when = at ? new Date(at) : new Date();
   if (isNaN(when.getTime())) throw AppError.of("INVALID_DATE", 400);
-  intake.done = { at: when, by, waiverSignedAt: when, summary: clean(summary, 4000) };
-  const waiver = docOf(intake, "waiver");
-  waiver.status = "received";
-  waiver.receivedAt = when;
-  waiver.receivedBy = by;
-  intake.log.push({ action: "done", at: when, by, note: "בוצע אינטייק + נחתם ויתור סודיות" });
+  intake.done = { at: when, by, ...(waiverSigned && { waiverSignedAt: when }), summary: clean(summary, 4000) };
+  if (waiverSigned) {
+    const waiver = docOf(intake, "waiver");
+    if (!docOk(waiver)) {
+      waiver.status = "received";
+      waiver.receivedAt = when;
+      waiver.receivedBy = by;
+      waiver.note = "נחתם בפגישת האינטייק";
+      intake.log.push({ action: "docReceived", at: when, by, note: `${DOC_BY_KEY.waiver.label} · נחתם בפגישה` });
+    }
+  }
+  const open = missingLabels(intake);
+  intake.log.push({ action: "done", at: when, by, note: open.length ? `בוצע אינטייק · עוד חסר: ${open.join(", ")}` : "בוצע אינטייק" });
   return settle(intake, by);
 }
 
 /**
  * Recompute the record's status and keep the person's student profiles in
- * step. Called after every document/meeting change.
+ * step. Called after every document / approval / meeting change.
  */
 async function settle(intake, by) {
   const next = computeStatus(intake);
@@ -448,48 +526,37 @@ async function settle(intake, by) {
   const now = new Date();
   if (next === "complete" && !intake.completedAt) {
     intake.completedAt = now;
-    intake.log.push({ action: "completed", at: now, by, note: "כל המסמכים התקבלו — הקליטה הושלמה" });
+    intake.log.push({ action: "completed", at: now, by, note: "בוצע אינטייק, אישור שקדייה וכל המסמכים התקבלו — הקליטה הושלמה" });
   }
   await intake.save();
 
   const moved = [];
-  const profiles = await studentProfilesOf(intake.person);
   if (next === "complete") {
-    for (const p of profiles) {
+    for (const p of await studentProfilesOf(intake.person)) {
       const stage = p.pipeline?.stage;
       if (p.kind === "StudentCulture") {
-        if ([...PRE_INTAKE_STAGES, ...INTAKE_STAGES].includes(stage)) {
+        if (["Interested", ...INTAKE_STAGES].includes(stage)) {
           await p.moveToStage("Placed", by, "הקליטה הושלמה");
           moved.push({ kind: p.kind, stage: "Placed" });
         }
         continue;
       }
-      // מכללה לכל: a held seat becomes the real one; otherwise the managers place them.
-      if (![...INTAKE_STAGES, "ReservedSeat"].includes(stage)) continue;
+      // מכללה לכל: only a profile the seat already parked with the social
+      // worker moves on — the start date is the managers' step.
+      if (!INTAKE_STAGES.includes(stage)) continue;
       const live = await Enrollment.find({ student: intake.person, status: { $in: OCCUPYING_STATUSES } });
-      if (live.length) {
-        for (const e of live) {
-          if (e.status !== "reserved") continue;
-          e.status = "active";
-          e.joinedAt = now;
-          e.note = [e.note, "הופעל בסיום הקליטה"].filter(Boolean).join(" · ");
-          await e.save();
-        }
-        await p.moveToStage("Placed", by, "הקליטה הושלמה — השיבוץ הופעל");
+      if (live.some((e) => e.status === "active")) {
+        await p.moveToStage("Placed", by, "הקליטה הושלמה — השיבוץ בתוקף");
         moved.push({ kind: p.kind, stage: "Placed" });
       } else {
-        await p.moveToStage("AwaitingPlacement", by, "הקליטה הושלמה — ממתין/ה לשיבוץ");
+        await p.moveToStage("AwaitingPlacement", by, live.length ? "הקליטה הושלמה — נשאר לקבוע תאריך התחלה" : "הקליטה הושלמה — ממתין/ה לשיבוץ");
         moved.push({ kind: p.kind, stage: "AwaitingPlacement" });
       }
     }
-  } else if (next === "documents") {
-    const labels = missingLabels(intake).join(", ");
-    for (const p of profiles) {
-      if ([...PRE_INTAKE_STAGES, "Intake"].includes(p.pipeline?.stage)) {
-        await p.moveToStage("AwaitingDocuments", by, `בוצע אינטייק · חסרים: ${labels}`);
-        moved.push({ kind: p.kind, stage: "AwaitingDocuments" });
-      }
-    }
+  } else if (next === "documents" || next === "scheduled") {
+    // A meeting marked held without a date set (a walk-in) still takes the
+    // תרבות profile in.
+    await cultureIntoIntake(intake.person, by, "בקליטה אצל העו\"ס", moved);
   }
   return { intake, moved };
 }
@@ -506,7 +573,10 @@ async function addNote({ intake, by, note }) {
 
 /* ───────────────────────── public views ───────────────────────── */
 
-/** What the student may see through their personal link. */
+/**
+ * What the student may see through their personal link: the four documents
+ * (never the office's approval) and whether the file is complete.
+ */
 function publicView(intake, person) {
   return {
     firstName: person?.firstName || "",
@@ -515,14 +585,15 @@ function publicView(intake, person) {
     complete: intake.status === "complete",
     done: !!intake.done?.at,
     scheduledAt: intake.scheduled?.at || null,
-    documents: INTAKE_DOCUMENTS.filter((d) => d.upload).map((d) => {
+    documents: INTAKE_DOCUMENTS.filter((d) => d.upload && !d.approval).map((d) => {
       const row = (intake.documents || []).find((x) => x.key === d.key);
       return {
         key: d.key, label: d.label, hint: d.hint, optional: !!d.optional,
         status: row?.status || "missing",
         fileName: row?.file?.name || null,
         uploadedAt: row?.file?.uploadedAt || null,
-        note: row?.status === "rejected" ? row.note || null : null,
+        /** The staff's comment (a rejection reason or a reply) — the student reads it here. */
+        note: row?.note || null,
       };
     }),
   };
@@ -535,6 +606,7 @@ module.exports = {
   uploadRoot,
   documentPath,
   missingDocs,
+  missingApprovals,
   computeStatus,
   normalizePhone,
   findPerson,
