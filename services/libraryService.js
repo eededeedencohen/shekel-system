@@ -29,7 +29,8 @@ const { LIBRARY, BOOK_SOURCES } = require("../utils/domain");
 const lookup = require("./bookLookupService");
 
 const DAY = 86400000;
-const COVER_MIME_EXT = { "image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png", "image/webp": "webp" };
+// every image type a browser draws in <img> (HEIC is not one — the page converts it first)
+const COVER_MIME_EXT = { "image/jpeg": "jpg", "image/jpg": "jpg", "image/pjpeg": "jpg", "image/png": "png", "image/x-png": "png", "image/webp": "webp", "image/gif": "gif", "image/avif": "avif", "image/bmp": "bmp" };
 const MAX_COVER_BYTES = lookup.MAX_COVER_BYTES;
 
 /* ───────────────────────── files ───────────────────────── */

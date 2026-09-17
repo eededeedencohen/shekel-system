@@ -62,6 +62,9 @@ module.exports = (err, req, res, next) => {
   if (err.name === "CastError") mapped = handleCastError(err);
   else if (err.code === 11000) mapped = handleDuplicateFields(err);
   else if (err.name === "ValidationError") mapped = handleValidationError(err);
+  // body-parser: a body over the JSON limit (an upload too big) or unparsable
+  else if (err.type === "entity.too.large") mapped = Object.assign(new AppError("הקובץ גדול מדי — עד 8MB לקובץ", 413), { code: "PAYLOAD_TOO_LARGE" });
+  else if (err.type === "entity.parse.failed") mapped = Object.assign(new AppError("גוף הבקשה לא תקין", 400), { code: "BAD_JSON" });
 
   // Operational, trusted error: surface to client (code = stable English
   // key from domain.ERROR_CODES when the thrower used AppError.of()).

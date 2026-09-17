@@ -3,15 +3,14 @@
  * @module routes/publicRoutes
  * @see controllers/publicController
  *
- * Mounted at /api/public with its own, larger JSON limit: document
- * uploads travel as base64 in the body (one file per request, ≤ 8MB).
+ * Mounted at /api/public. Document uploads travel as base64 in the body
+ * (one file per request, ≤ 8MB) — the body limit that allows it is the
+ * global one in app.js.
  */
 
 const express = require("express");
 const router = express.Router();
 const { joinOptions, join, viewByToken, uploadByToken, removeByToken } = require("../controllers/publicController");
-
-router.use(express.json({ limit: "12mb" }));
 
 router.get("/join/options", joinOptions);
 router.post("/join", join);

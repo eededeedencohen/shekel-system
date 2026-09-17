@@ -21,7 +21,7 @@ const {
 } = require("../controllers/intakesController");
 
 // staff uploads carry base64 files too
-router.use(express.json({ limit: "12mb" }));
+// (staff uploads are base64 in JSON — the body limit is the global one in app.js)
 
 // Static paths before /:id
 router.post("/open", openIntake);

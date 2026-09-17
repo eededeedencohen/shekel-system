@@ -9,7 +9,7 @@ const router = express.Router();
 const c = require("../controllers/libraryController");
 
 // covers arrive as base64 data URLs (≤ 3MB decoded)
-router.use(express.json({ limit: "6mb" }));
+// (cover data URLs ride in JSON — the body limit is the global one in app.js)
 
 router.get("/lookup/:barcode", c.lookupBarcode);
 

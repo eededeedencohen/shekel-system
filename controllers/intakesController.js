@@ -120,7 +120,9 @@ exports.getDocumentFile = catchAsync(async (req, res, next) => {
   const abs = row ? intake.documentPath(doc, row) : null;
   if (!abs) return next(AppError.of("NOT_FOUND", 404, "קובץ"));
   res.type(row.file.mime || "application/octet-stream");
-  res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(row.file.name || row.file.storedName)}`);
+  // images and PDFs open in the tab; a Word file is downloaded under its name
+  const disposition = intake.INLINE_MIMES.has(row.file.mime) ? "inline" : "attachment";
+  res.setHeader("Content-Disposition", `${disposition}; filename*=UTF-8''${encodeURIComponent(row.file.name || row.file.storedName)}`);
   res.sendFile(abs, (err) => {
     if (err) next(AppError.of("NOT_FOUND", 404, "קובץ"));
   });

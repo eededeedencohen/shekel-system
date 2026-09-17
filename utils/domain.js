@@ -425,7 +425,7 @@ const ERROR_CODES = {
   INTAKE_COMPLETE: "הקליטה כבר הושלמה",
   APPROVAL_DATE_REQUIRED: "לאישור שקדייה חובה לשייך תאריך תוקף",
   DOCUMENT_UNKNOWN: "סוג מסמך לא מוכר",
-  DOCUMENT_INVALID: "הקובץ לא נתמך — מותר PDF או תמונה עד 8MB",
+  DOCUMENT_INVALID: "הקובץ לא נתמך — מותר PDF, תמונה או Word עד 8MB",
   DOCUMENT_LOCKED: "המסמך כבר אושר ע\"י הצוות ואי אפשר להחליף אותו",
   SPAM_REJECTED: "הבקשה נדחתה",
   // הספרייה
@@ -438,7 +438,7 @@ const ERROR_CODES = {
   DUE_DATE_CLOSED: "הספרייה סגורה בשישי ובשבת — בחרו יום אחר",
   DUE_DATE_TOO_FAR: "תאריך ההחזרה רחוק מדי",
   DUE_DATE_NOT_LATER: "הארכה חייבת לקבוע תאריך מאוחר מהנוכחי",
-  COVER_INVALID: "תמונת הכריכה לא נתמכת — מותר JPG / PNG / WebP עד 3MB",
+  COVER_INVALID: "תמונת הכריכה לא נתמכת — מותר JPG / PNG / WebP / GIF / AVIF עד 3MB",
   LOOKUP_FAILED: "החיפוש באינטרנט נכשל — אפשר להזין את פרטי הספר ידנית",
 };
 

@@ -25,9 +25,13 @@ const share = require("./utils/sharePreview");
 
 const app = express();
 
-// Global middleware
+// Global middleware. ONE body limit for the whole API: uploads (intake
+// documents, book covers) travel as base64 in JSON — 8MB of file is ~11MB
+// of body — and a router-level express.json() never gets to raise the
+// limit once this global one has already refused the body (that was the
+// "Something went wrong" of 2026-09-17 on every real photo).
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "16mb" }));
 
 // World scoping (the demo-data switch): the client sends `X-Dataset`
 // ("real" | "pokemon" | "test"); anything else means the real world.

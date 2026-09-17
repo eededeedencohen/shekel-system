@@ -133,6 +133,27 @@ describe("the personal documents link", () => {
       .post(`/api/public/join/${token}/documents`)
       .send({ key: "psychiatric", fileName: "x.exe", mime: "application/x-msdownload", data: PNG_1PX });
     expect(bad.body.code).toBe("DOCUMENT_INVALID");
+    // an unknown type with a known extension is fine (Windows sends "" for HEIC / Word)
+    const byExt = await request(app)
+      .post(`/api/public/join/${token}/documents`)
+      .send({ key: "psychosocial", fileName: "דוח.docx", mime: "", data: PNG_1PX });
+    expect(byExt.status).toBe(200);
+    expect((await Intake.findOne({})).documents.find((d) => d.key === "psychosocial").file.mime).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    const heic = await request(app)
+      .post(`/api/public/join/${token}/documents`)
+      .send({ key: "socialClub", fileName: "IMG_0001.HEIC", mime: "application/octet-stream", data: PNG_1PX });
+    expect(heic.status).toBe(200);
+    // a real photo (well over the old 100kb JSON default) goes through
+    const big = await request(app)
+      .post(`/api/public/join/${token}/documents`)
+      .send({ key: "waiver", fileName: "photo.jpg", mime: "image/jpeg", data: Buffer.alloc(3 * 1024 * 1024, 7).toString("base64") });
+    expect(big.status).toBe(200);
+    // over the limit → a clean 413, not "Something went wrong"
+    const huge = await request(app)
+      .post(`/api/public/join/${token}/documents`)
+      .send({ key: "waiver", fileName: "photo.jpg", mime: "image/jpeg", data: Buffer.alloc(13 * 1024 * 1024, 7).toString("base64") });
+    expect(huge.status).toBe(413);
+    expect(huge.body.code).toBe("PAYLOAD_TOO_LARGE");
     // the office's approval is not the student's to upload
     const unknown = await request(app)
       .post(`/api/public/join/${token}/documents`)

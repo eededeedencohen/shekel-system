@@ -58,15 +58,44 @@ const { reopenProfile } = require("./programService");
 
 const LANDING_ACTOR = "דף הנחיתה";
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
-const MIME_EXT = {
-  "application/pdf": "pdf",
-  "image/jpeg": "jpg",
-  "image/jpg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "image/heic": "heic",
-  "image/heif": "heif",
+/**
+ * What a document may be (Eden, 2026-09-17: "תמונות מכל סוג נפוץ ו-PDF
+ * ו-docs יועלו בצורה חלקה"): every common image, PDF, Word. Keyed by the
+ * stored extension; `mimes` are the types browsers report for it.
+ */
+const FILE_KINDS = {
+  pdf: ["application/pdf", "application/x-pdf"],
+  jpg: ["image/jpeg", "image/jpg", "image/pjpeg"],
+  png: ["image/png", "image/x-png"],
+  webp: ["image/webp"],
+  gif: ["image/gif"],
+  bmp: ["image/bmp", "image/x-ms-bmp"],
+  tiff: ["image/tiff"],
+  avif: ["image/avif"],
+  heic: ["image/heic", "image/heic-sequence"],
+  heif: ["image/heif", "image/heif-sequence"],
+  doc: ["application/msword"],
+  docx: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
 };
+const EXT_ALIAS = { jpeg: "jpg", jpe: "jpg", tif: "tiff" };
+const MIME_EXT = Object.fromEntries(Object.entries(FILE_KINDS).flatMap(([ext, mimes]) => mimes.map((m) => [m, ext])));
+/** Types the browser shows inline; the rest (Word) are sent as downloads. */
+const INLINE_MIMES = new Set(Object.entries(FILE_KINDS).filter(([ext]) => !["doc", "docx"].includes(ext)).flatMap(([, m]) => m));
+
+/**
+ * The stored kind of an upload: by the reported MIME first, by the file
+ * name's extension when the browser sent nothing useful (Windows and some
+ * phones report "" or application/octet-stream for HEIC / Word files).
+ * → { ext, mime } or null.
+ */
+function fileKind(mime, fileName) {
+  const m = String(mime || "").toLowerCase().split(";")[0].trim();
+  if (MIME_EXT[m]) return { ext: MIME_EXT[m], mime: m };
+  const raw = String(fileName || "").toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+  const ext = EXT_ALIAS[raw] || raw;
+  if (ext && FILE_KINDS[ext]) return { ext, mime: FILE_KINDS[ext][0] };
+  return null;
+}
 
 /* ───────────────────────── files ───────────────────────── */
 
@@ -359,11 +388,12 @@ async function uploadDocument({ intake, key, fileName, mime, data, by, staff = f
   const def = DOC_BY_KEY[key];
   if (!def) throw AppError.of("DOCUMENT_UNKNOWN", 400, key);
   if (!def.upload && !staff) throw AppError.of("DOCUMENT_UNKNOWN", 400, def.label);
-  const ext = MIME_EXT[String(mime || "").toLowerCase()];
+  const kind = fileKind(mime, fileName);
   const buffer = Buffer.isBuffer(data)
     ? data
     : Buffer.from(String(data || "").replace(/^data:[^;]+;base64,/, ""), "base64");
-  if (!ext || buffer.length === 0 || buffer.length > MAX_FILE_BYTES) throw AppError.of("DOCUMENT_INVALID", 400);
+  if (!kind || buffer.length === 0 || buffer.length > MAX_FILE_BYTES) throw AppError.of("DOCUMENT_INVALID", 400);
+  const { ext } = kind;
   const until = def.approval ? parseValidUntil(validUntil) : undefined;
 
   const d = docOf(intake, key);
@@ -374,7 +404,7 @@ async function uploadDocument({ intake, key, fileName, mime, data, by, staff = f
   const storedName = `${key}-${Date.now()}-${crypto.randomBytes(3).toString("hex")}.${ext}`;
   fs.writeFileSync(path.join(fileDir(intake), storedName), buffer);
   const now = new Date();
-  d.file = { name: clean(fileName, 120) || `${key}.${ext}`, storedName, mime: mime.toLowerCase(), size: buffer.length, uploadedAt: now, by: staff ? by : "student" };
+  d.file = { name: clean(fileName, 120) || `${key}.${ext}`, storedName, mime: kind.mime, size: buffer.length, uploadedAt: now, by: staff ? by : "student" };
   d.note = undefined;
   if (staff && (!def.approval || until)) {
     d.status = "received";
@@ -602,6 +632,8 @@ function publicView(intake, person) {
 module.exports = {
   LANDING_ACTOR,
   MAX_FILE_BYTES,
+  fileKind,
+  INLINE_MIMES,
   MIME_EXT,
   uploadRoot,
   documentPath,
