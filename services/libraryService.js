@@ -14,8 +14,9 @@
  *  - Books are soft-deleted, never while on loan; re-adding a deleted
  *    barcode restores the record (its loan history comes back with it).
  *
- * Covers live under UPLOAD_DIR/<world>/books/<bookId>.<ext> — same root as
- * the intake documents, same env override for tests.
+ * Covers live IN the book record (`cover.data`, see models/Book) since
+ * 2026-09-22 — the deploy wipes the disk. UPLOAD_DIR/<world>/books/ is
+ * only read by the migration and by the cover route's legacy fallback.
  */
 
 const fs = require("fs");
@@ -39,25 +40,30 @@ function uploadRoot() {
   return process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads");
 }
 const coverDir = (world) => path.join(uploadRoot(), world, "books");
-/** Absolute path of a book's stored cover (null when none). */
+/** Absolute path of a LEGACY on-disk cover (null when the record has none). */
 function coverPath(book) {
   if (!book?.cover?.storedName) return null;
   return path.join(coverDir(book.world), book.cover.storedName);
+}
+/** The cover's bytes: the record's own, else the legacy file if it still exists. */
+function coverBuffer(book) {
+  // (a mongoose Buffer IS a Buffer — never reach for `.buffer`, that is the whole shared pool)
+  if (book?.cover?.data?.length) return Buffer.isBuffer(book.cover.data) ? book.cover.data : Buffer.from(book.cover.data);
+  const p = coverPath(book);
+  if (p && fs.existsSync(p)) return fs.readFileSync(p);
+  return null;
 }
 function removeCover(book) {
   const p = coverPath(book);
   if (p && fs.existsSync(p)) fs.unlinkSync(p);
   book.cover = undefined;
 }
-/** Validate + write a cover; the record keeps the metadata. */
+/** Validate + store a cover in the record. */
 function saveCover(book, cover) {
-  const ext = COVER_MIME_EXT[String(cover?.mime || "").toLowerCase()];
-  if (!ext || !cover.buffer?.length || cover.buffer.length > MAX_COVER_BYTES) throw AppError.of("COVER_INVALID", 400);
+  const mime = String(cover?.mime || "").toLowerCase();
+  if (!COVER_MIME_EXT[mime] || !cover.buffer?.length || cover.buffer.length > MAX_COVER_BYTES) throw AppError.of("COVER_INVALID", 400);
   removeCover(book);
-  fs.mkdirSync(coverDir(book.world), { recursive: true });
-  const storedName = `${book._id}-${Date.now()}.${ext}`;
-  fs.writeFileSync(path.join(coverDir(book.world), storedName), cover.buffer);
-  book.cover = { storedName, mime: cover.mime.toLowerCase(), size: cover.buffer.length, savedAt: new Date() };
+  book.cover = { data: cover.buffer, mime, size: cover.buffer.length, savedAt: new Date() };
 }
 
 /** "data:image/png;base64,…" → { mime, buffer } (COVER_INVALID otherwise). */
@@ -260,6 +266,7 @@ async function returnBook({ world, loanId, by, note }) {
 module.exports = {
   uploadRoot,
   coverPath,
+  coverBuffer,
   parseDataUrl,
   saveCover,
   parseDueDate,

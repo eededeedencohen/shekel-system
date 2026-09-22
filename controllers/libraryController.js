@@ -112,14 +112,14 @@ exports.deleteBook = catchAsync(async (req, res) => {
   res.status(204).json({ status: "success", data: null });
 });
 
-/** GET /api/library/books/:id/cover — the stored image, inline. */
+/** GET /api/library/books/:id/cover — the stored image, inline (from the record). */
 exports.getCover = catchAsync(async (req, res, next) => {
   const book = await Book.findOne({ _id: req.params.id, world: req.world });
-  const file = book && library.coverPath(book);
-  if (!file) return next(AppError.of("NOT_FOUND", 404, "כריכה"));
+  const bytes = book && library.coverBuffer(book);
+  if (!bytes) return next(AppError.of("NOT_FOUND", 404, "כריכה"));
   res.set("Cache-Control", "private, max-age=86400");
-  res.type(book.cover.mime);
-  res.sendFile(file, (err) => err && next(AppError.of("NOT_FOUND", 404, "כריכה")));
+  res.type(book.cover.mime || "image/jpeg");
+  res.send(bytes);
 });
 
 /** GET /api/library/loans?open=true|false&student=&book= */

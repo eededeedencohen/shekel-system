@@ -143,10 +143,16 @@ describe("POST /api/library/books", () => {
     expect(book.addedBy).toBe("נעה");
     expect(book.cover.mime).toBe("image/png");
     expect(book.cover.size).toBe(PNG.length);
+    // the bytes live in the record and a small cover rides inline with the book (never raw)
+    expect(book.cover.data).toBeUndefined();
+    expect(book.coverData).toBe(DATA_URL);
+    const listed = (await request(app).get("/api/library/books")).body.data.books.find((b) => b._id === book._id);
+    expect(listed.coverData).toBe(DATA_URL);
 
     const cover = await request(app).get(`/api/library/books/${book._id}/cover`);
     expect(cover.status).toBe(200);
     expect(cover.headers["content-type"]).toMatch(/image\/png/);
+    expect(Number(cover.headers["content-length"])).toBe(PNG.length);
 
     const dupZero = await request(app).post("/api/library/books").send({ barcode: "036200054208", title: "כפול עם אפס" });
     expect(dupZero.status).toBe(409);
@@ -283,7 +289,8 @@ describe("DELETE + restore", () => {
     expect(up.status).toBe(200);
     expect(up.body.data.book.title).toBe("ב");
     expect(up.body.data.book.year).toBe(2020);
-    expect(up.body.data.book.cover?.storedName).toBeUndefined();
+    expect(up.body.data.book.cover?.mime).toBeUndefined();
+    expect(up.body.data.book.coverData).toBeUndefined();
     expect((await request(app).get(`/api/library/books/${id}/cover`)).status).toBe(404);
     expect((await request(app).patch(`/api/library/books/${id}`).send({ title: "" })).body.code).toBe("MISSING_FIELDS");
   });
