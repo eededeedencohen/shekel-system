@@ -52,6 +52,16 @@ const MODELS = [
   // הספרייה
   require("../models/Book"),
   require("../models/Loan"),
+  // חשבוניות של מורים (the small-tables model)
+  require("../models/Invoice"),
+  require("../models/InvoiceLesson"),
+  require("../models/StoredFile"),
+  // תגיות
+  require("../models/Tag").TagGroup,
+  require("../models/Tag").Tag,
+  require("../models/PersonTag").PersonTag,
+  require("../models/PersonTag").PersonTagEvent,
+  require("../models/CycleTag"),
 ];
 
 /** Schemas that together describe one collection (discriminator merge). */

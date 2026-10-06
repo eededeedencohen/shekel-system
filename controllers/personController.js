@@ -28,6 +28,7 @@ const {
   profilesOf,
   flattenPerson,
 } = require("../services/profileService");
+const { attachPersonTags } = require("../services/tagService");
 
 /** role query/body value → profile kinds (compat). */
 const KINDS_BY_ROLE = {
@@ -83,7 +84,7 @@ exports.getPeople = catchAsync(async (req, res) => {
 
   const people = await Person.find(filter).sort({ firstName: 1, lastName: 1 });
   const map = await profilesByPerson(people);
-  const flat = people.map((p) => flattenPerson(p, map.get(String(p._id)) || []));
+  const flat = await attachPersonTags(req.world, people.map((p) => flattenPerson(p, map.get(String(p._id)) || [])));
   res.status(200).json({ status: "success", results: flat.length, data: { people: flat } });
 });
 
@@ -98,7 +99,7 @@ exports.getPersonById = catchAsync(async (req, res, next) => {
     { path: "residence.hostel", select: "name" },
     { path: "hostels", select: "name" },
   ]);
-  res.status(200).json({ status: "success", data: { person: flattenPerson(person, profiles) } });
+  res.status(200).json({ status: "success", data: { person: await attachPersonTags(req.world, flattenPerson(person, profiles)) } });
 });
 
 /**
@@ -120,7 +121,7 @@ exports.createPerson = catchAsync(async (req, res, next) => {
   }
   res.status(201).json({
     status: "success",
-    data: { person: flattenPerson(person, profile ? [profile] : []) },
+    data: { person: await attachPersonTags(req.world, flattenPerson(person, profile ? [profile] : [])) },
   });
 });
 
@@ -142,7 +143,7 @@ exports.updatePerson = catchAsync(async (req, res, next) => {
     Object.assign(profiles[0], leftovers);
     await profiles[0].save();
   }
-  res.status(200).json({ status: "success", data: { person: flattenPerson(person, profiles) } });
+  res.status(200).json({ status: "success", data: { person: await attachPersonTags(req.world, flattenPerson(person, profiles)) } });
 });
 
 /** DELETE /api/people/:id — soft delete, always (profiles stay, inert). */
@@ -174,7 +175,7 @@ exports.updateAvailability = catchAsync(async (req, res, next) => {
       await teacher.save();
     }
   }
-  res.status(200).json({ status: "success", data: { person: flattenPerson(person, profiles) } });
+  res.status(200).json({ status: "success", data: { person: await attachPersonTags(req.world, flattenPerson(person, profiles)) } });
 });
 
 /** GET /api/people/:id/enrollments — the person's memberships (as student). */

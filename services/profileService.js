@@ -17,6 +17,7 @@ const { Person } = require("../models/Person");
 const { Profile, MODEL_BY_KIND } = require("../models/profiles");
 const { STUDENT_KINDS } = require("../utils/domain");
 const AppError = require("../utils/AppError");
+const tags = require("./tagService");
 
 /** Identity paths — everything else in a body belongs to a profile. */
 const IDENTITY_FIELDS = [
@@ -94,11 +95,25 @@ async function createProfile(person, kind, fields = {}, { pipelineInit, trusted,
     doc.$locals.openedNote = opened.note;
     if (opened.at && !doc.since) doc.since = opened.at;
   }
+  let saved;
   try {
-    return await doc.save();
+    saved = await doc.save();
   } catch (e) {
     if (e.code === 11000) throw AppError.of("PROFILE_EXISTS", 409, kind);
     throw e;
+  }
+  // The tags are the new truth of belonging (services/tagService): written
+  // beside the profile until the profile goes away.
+  await writeTagsOfProfile(saved, opened && opened.by);
+  return saved;
+}
+
+/** The tags a profile means, written to match it (open, or closed with its dates). */
+async function writeTagsOfProfile(profile, by) {
+  const since = profile.since || profile.createdAt || new Date();
+  for (const key of tags.KIND_TAGS[profile.kind] || []) {
+    await tags.give({ world: profile.world, personId: profile.person, key, at: since, by });
+    if (profile.active === false) await tags.take({ world: profile.world, personId: profile.person, key, at: profile.until || new Date(), by });
   }
 }
 
@@ -249,4 +264,5 @@ module.exports = {
   studentProfilesOf,
   flattenPerson,
   attachStudentData,
+  writeTagsOfProfile,
 };

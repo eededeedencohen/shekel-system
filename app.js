@@ -83,6 +83,11 @@ app.use("/api/public", require("./routes/publicRoutes"));
 // הספרייה — books (scanned in, details from booknet / Google Books) and
 // their loans: one copy per book, return days skip Fri/Shabbat.
 app.use("/api/library", require("./routes/libraryRoutes"));
+// חשבוניות של מורים — a picture + the lessons written on it (three small
+// tables: files, invoices, invoiceLessons; the first of the 2026-10 remodel).
+app.use("/api/invoices", require("./routes/invoiceRoutes"));
+// תגיות — what a person or a cycle belongs to (roles, programs)
+app.use("/api/tags", require("./routes/tagRoutes"));
 app.use("/api/meta", require("./routes/metaRoutes"));
 // Read-only DB explorer (schema introspection + raw browsing) — powers the
 // in-app "בסיס הנתונים" page. Note: /schema is matched before /:collection.

@@ -14,6 +14,7 @@ const Enrollment = require("../models/Enrollment");
 const Lesson = require("../models/Lesson");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
+const { attachCycleTags } = require("../services/tagService");
 
 const POPULATE = [
   { path: "subject", select: "name category active" },
@@ -44,7 +45,7 @@ exports.getCycles = catchAsync(async (req, res) => {
   else if (req.query.track === "hostel") filter.hostel = { $ne: null };
   else if (req.query.track === "college") filter.hostel = null;
 
-  const cycles = await Cycle.find(filter).populate(POPULATE);
+  const cycles = await attachCycleTags(req.world, await Cycle.find(filter).populate(POPULATE));
   res.status(200).json({ status: "success", results: cycles.length, data: { cycles } });
 });
 
@@ -52,7 +53,7 @@ exports.getCycles = catchAsync(async (req, res) => {
 exports.getCycleById = catchAsync(async (req, res, next) => {
   const cycle = await Cycle.findOne({ _id: req.params.id, world: req.world }).populate(POPULATE);
   if (!cycle) return next(AppError.of("NOT_FOUND", 404, "מחזור"));
-  res.status(200).json({ status: "success", data: { cycle } });
+  res.status(200).json({ status: "success", data: { cycle: await attachCycleTags(req.world, cycle) } });
 });
 
 /** POST /api/cycles */

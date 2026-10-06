@@ -32,8 +32,8 @@
 const fs = require("fs");
 const path = require("path");
 
-const SOURCE = path.join(__dirname, "..", "..", "סטודנטים מעודכן.xls");
-const OUTPUT = path.join(__dirname, "..", "..", "students_clean.csv");
+const SOURCE = path.join(__dirname, "..", "..", "project-files", "senzey", "סטודנטים מעודכן.xls");
+const OUTPUT = path.join(__dirname, "..", "..", "project-files", "senzey", "students_clean.csv");
 
 // ---------------------------------------------------------------------------
 // HTML parsing

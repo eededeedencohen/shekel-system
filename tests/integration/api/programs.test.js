@@ -148,8 +148,8 @@ describe("POST /api/people/:id/transfer", () => {
     const s = await makeCultureStudent();
     const cycle = await makeCycle();
     const res = await request(app).post("/api/enrollments").send({ cycle: cycle._id, student: s._id });
-    expect(res.status).toBe(404);
-    expect(res.body.code).toBe("NO_STUDENT_PROFILE");
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("NOT_IN_PROGRAM");
   });
 });
 

@@ -59,12 +59,12 @@ const { createProfile } = require("../../services/profileService");
 const culture = require("../../services/cultureService");
 const { splitName, parseDate, cleanText } = require("../../utils/parsers");
 
-const ROOT = path.join(__dirname, "..", "..", "..");
+const ROOT = path.join(__dirname, "..", "..", "..", "project-files"); // the raw exports live beside the app, not in it
 const FILES = {
-  dashboard: path.join(ROOT, "shekel_dashboard.html"),
-  courses: path.join(ROOT, "shekel_courses_2026-08-06_14-11.json"),
+  dashboard: path.join(ROOT, "senzey", "shekel_dashboard.html"),
+  courses: path.join(ROOT, "senzey", "shekel_courses_2026-08-06_14-11.json"),
   clients: path.join(ROOT, "drafts", "clients", "clients.json"),
-  students: path.join(ROOT, "Data", "students", "students.json"),
+  students: path.join(ROOT, "data", "raw", "students", "students.json"),
 };
 
 const CULTURE_CATEGORY = "תרבות לכל (יציאות בקהילה)";

@@ -33,6 +33,7 @@ const Cycle = require("../models/Cycle");
 const Enrollment = require("../models/Enrollment");
 const { Person } = require("../models/Person");
 const { studentProfilesOf } = require("./profileService");
+const tags = require("./tagService");
 const AppError = require("../utils/AppError");
 const { withTxn } = require("../utils/withTxn");
 const { OCCUPYING_STATUSES } = require("../utils/domain");
@@ -116,11 +117,13 @@ async function assertCycleAndStudent({ cycleId, studentId, world }) {
   if (cycle.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
   const person = await Person.findById(studentId);
   if (!person) throw AppError.of("NOT_FOUND", 404, "סטודנט");
-  // A cycle seat is a מכללה לכל membership — the person must hold an ACTIVE
-  // college profile (a culture-only student first transfers/joins).
-  const studentProfiles = await studentProfilesOf(studentId);
-  if (!studentProfiles.some((p) => p.kind === "StudentCollege")) {
-    throw AppError.of("NO_STUDENT_PROFILE", 404, "מכללה לכל");
+  // A seat belongs to the cycle's program: the person must hold that
+  // program's tag — מכללה לכל for a college cycle, הוסטלים for a hostel's
+  // (Eden, 2026-10-05). A student of another program first joins.
+  const program = cycle.hostel ? "hostels" : "college";
+  if (!(await tags.holds(studentId, world, program))) {
+    if (!(await tags.holds(studentId, world, "student"))) throw AppError.of("NO_STUDENT_PROFILE", 404);
+    throw AppError.of("NOT_IN_PROGRAM", 400, program === "hostels" ? "הוסטלים" : "מכללה לכל");
   }
   if (person.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
   if (person.deletedAt) throw AppError.of("PERSON_DELETED", 400);

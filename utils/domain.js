@@ -440,6 +440,15 @@ const ERROR_CODES = {
   DUE_DATE_NOT_LATER: "הארכה חייבת לקבוע תאריך מאוחר מהנוכחי",
   COVER_INVALID: "תמונת הכריכה לא נתמכת — מותר JPG / PNG / WebP / GIF / AVIF עד 3MB",
   LOOKUP_FAILED: "החיפוש באינטרנט נכשל — אפשר להזין את פרטי הספר ידנית",
+  // חשבוניות של מורים
+  INVOICE_IMAGE_INVALID: "תמונת החשבונית לא נתמכת — מותר JPG / PNG / WebP / GIF / AVIF עד 8MB",
+  INVOICE_NO_LESSONS: "חשבונית חייבת לפחות שיעור אחד",
+  INVOICE_NOT_A_TEACHER: "חשבונית אפשר להעלות רק למורה פעיל",
+  INVOICE_LESSON_NOT_TEACHERS: "אחד השיעורים שסומנו לא של המורה הזה",
+  INVOICE_LESSON_BILLED: "אחד השיעורים כבר רשום בחשבונית אחרת",
+  // תגיות
+  TAG_UNKNOWN: "תגית לא מוכרת",
+  NOT_IN_PROGRAM: "הסטודנט/ית לא שייך/ת לתוכנית של המחזור",
 };
 
 /**

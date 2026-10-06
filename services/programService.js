@@ -24,6 +24,14 @@ const EventRegistration = require("../models/EventRegistration");
 require("../models/Event"); // registers the model the populate below needs
 const AppError = require("../utils/AppError");
 const { STUDENT_KINDS, PROGRAM_LABELS, OCCUPYING_STATUSES } = require("../utils/domain");
+const tags = require("./tagService");
+
+/** The `student` role tag closes only when no student profile stays open. */
+async function syncStudentTag({ personId, world, at, by }) {
+  const open = await Profile.exists({ person: personId, kind: { $in: STUDENT_KINDS }, active: true });
+  if (open) await tags.give({ world, personId, key: "student", at, by });
+  else await tags.take({ world, personId, key: "student", at, by });
+}
 
 /** The stage a (re)opened student profile starts at unless told otherwise. */
 const DEFAULT_ENTRY_STAGE = "Interested";
@@ -106,6 +114,8 @@ async function transfer({ personId, world, from, to, by, note, at, stage }) {
   source.log.push({ event: "transferredOut", at: when, by, note, otherKind: to });
   await source.save();
 
+  await tags.take({ world, personId: person._id, key: tags.PROGRAM_OF_KIND[from], at: when, by, note, otherKey: tags.PROGRAM_OF_KIND[to] });
+
   // 2 · give back what the old program was holding for them
   const effects = await leaveProgramEffects({
     personId: person._id,
@@ -137,6 +147,8 @@ async function transfer({ personId, world, from, to, by, note, at, stage }) {
     await target.save();
   }
 
+  await tags.give({ world, personId: person._id, key: tags.PROGRAM_OF_KIND[to], at: when, by, note, otherKey: tags.PROGRAM_OF_KIND[from] });
+  await syncStudentTag({ personId: person._id, world, at: when, by });
   return { source, target, effects };
 }
 
@@ -152,6 +164,10 @@ async function closeProfile({ profile, world, by, note, at }) {
   profile.until = when;
   profile.log.push({ event: "closed", at: when, by, note });
   await profile.save();
+  for (const key of tags.KIND_TAGS[profile.kind] || []) {
+    if (key !== "student") await tags.take({ world, personId: profile.person, key, at: when, by, note });
+  }
+  await syncStudentTag({ personId: profile.person, world, at: when, by });
   const effects = STUDENT_KINDS.includes(profile.kind)
     ? await leaveProgramEffects({ personId: profile.person, kind: profile.kind, at: when, reason: note || "עזב/ה את התוכנית" })
     : null;
@@ -169,6 +185,7 @@ async function reopenProfile({ profile, world, by, note, at, stage }) {
   profile.until = null;
   profile.log.push({ event: "reopened", at: when, by, note });
   await profile.save();
+  for (const key of tags.KIND_TAGS[profile.kind] || []) await tags.give({ world, personId: profile.person, key, at: when, by, note });
   if (STUDENT_KINDS.includes(profile.kind)) {
     await profile.moveToStage(stage || DEFAULT_ENTRY_STAGE, by, note || "חזר/ה לתוכנית");
   }
