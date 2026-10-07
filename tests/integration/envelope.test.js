@@ -50,9 +50,11 @@ describe("Response envelope", () => {
     ]);
     expect(domain.intakeStages).toEqual(["Intake"]);
     expect(domain.legacyStageMap).toEqual({ ReservedSeat: "Intake", AwaitingDocuments: "Intake" });
-    // the four documents + the office's approval, and the three-valued social-worker status
-    expect(domain.intakeDocuments.map((d) => d.key)).toEqual(["psychiatric", "psychosocial", "socialClub", "waiver", "shkedia"]);
-    expect(domain.intakeDocuments.find((d) => d.key === "shkedia").approval).toBe(true);
+    // the three required documents + the optional social-club letter (שקדיה is an action, not a document), and the three-valued social-worker status
+    expect(domain.intakeDocuments.map((d) => d.key)).toEqual(["psychiatric", "psychosocial", "waiver", "socialClub"]);
+    expect(domain.intakeDocuments.find((d) => d.key === "socialClub").optional).toBe(true);
+    expect(domain.followUp.waiverMonths).toBe(12);
+    expect(domain.activityKinds.map((k) => k.key)).toContain("followUp");
     expect(domain.intakeSwStatuses.map((s) => s.key)).toEqual(["new", "scheduled", "done"]);
     expect(domain.profileKinds.map((k) => k.key)).toContain("SocialWorker");
     expect(domain.enrollmentStatuses.map((s) => s.key)).toEqual([

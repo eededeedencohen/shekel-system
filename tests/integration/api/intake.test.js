@@ -1,23 +1,30 @@
 /**
- * קליטה (אינטייק) — the public sign-up page and the social worker's flow.
+ * קליטה (אינטייק) — the public sign-up page and the social worker's flow,
+ * with the social worker's corrections of 2026-10-07.
  *
  * Eden's pipeline (2026-09-17) end to end: landing → Interested (per
- * program) → schedule → Intake → done → approval + the four documents →
- * complete; תרבות לכל lands on Placed, מכללה לכל waits at
- * AwaitingPlacement with its held seat until the managers enter the start
- * date (→ Placed). A reserved seat is what parks a college lead at Intake.
+ * program) → schedule → Intake → done → entered in שקדיה + the required
+ * documents in force → complete; תרבות לכל lands on Placed, מכללה לכל waits
+ * at AwaitingPlacement with its held seat until the managers enter the
+ * start date (→ Placed). A reserved seat is what parks a college lead at
+ * Intake. Documents carry validity (the psychiatric report its own date,
+ * the waiver a year from its signature), files live in the database, the
+ * links expire.
  */
 
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-// Files go to a temp dir, never into server/uploads.
+// Legacy disk files would go to a temp dir, never into server/uploads.
 process.env.UPLOAD_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "shekel-intake-"));
 
 const request = require("supertest");
 const app = require("../../../app");
 const Intake = require("../../../models/Intake");
+const UploadLink = require("../../../models/UploadLink");
+const StoredFile = require("../../../models/StoredFile");
+const Activity = require("../../../models/Activity");
 const Enrollment = require("../../../models/Enrollment");
 const { Profile } = require("../../../models/profiles");
 const { makeStudent, makeCycle, makeSubject } = require("../../helpers/factories");
@@ -38,6 +45,22 @@ const submit = (body, world) => {
 };
 
 const stageOf = async (personId, kind) => (await Profile.findOne({ person: personId, kind })).pipeline.stage;
+const dayStr = (daysFromNow) => new Date(Date.now() + daysFromNow * 86400000).toISOString().slice(0, 10);
+const NEXT_YEAR = dayStr(365);
+
+/** Staff tick — the dated report always carries its expiry. */
+const tick = (intakeId, key, body = {}) =>
+  request(app)
+    .patch(`/api/intakes/${intakeId}/documents/${key}`)
+    .send({ status: "received", by: "ייטב", ...(key === "psychiatric" && { validUntil: NEXT_YEAR }), ...body });
+/** The coordinator entered the person in שקדיה. */
+const enterShkedia = (intakeId, body = {}) =>
+  request(app).patch(`/api/intakes/${intakeId}/shkedia`).send({ enteredAt: dayStr(0), by: "נעה", decisionNo: "12345", ...body });
+/** The whole file: the three required documents + שקדיה. */
+const fillFile = async (intakeId) => {
+  for (const key of ["psychiatric", "psychosocial", "waiver"]) await tick(intakeId, key);
+  return enterShkedia(intakeId);
+};
 
 describe("GET /api/public/join/options", () => {
   it("serves the pick-lists the page renders from", async () => {
@@ -47,21 +70,25 @@ describe("GET /api/public/join/options", () => {
     const o = res.body.data.options;
     expect(o.programs.map((p) => p.key)).toEqual(["StudentCollege", "StudentCulture"]);
     expect(o.subjects.map((s) => s.name)).toContain("ציור");
-    // the four documents of the file — the office's approval is not the student's to upload
-    expect(o.documents.map((d) => d.key)).toEqual(["psychiatric", "psychosocial", "socialClub", "waiver"]);
-    expect(o.documents.every((d) => d.upload)).toBe(true);
+    // the documents of the file — the social club letter is optional; שקדיה is not a document any more
+    expect(o.documents.map((d) => d.key)).toEqual(["psychiatric", "psychosocial", "waiver", "socialClub"]);
+    expect(o.documents.find((d) => d.key === "socialClub").optional).toBe(true);
+    expect(o.documents.find((d) => d.key === "psychiatric").validity).toBe("dated");
+    expect(o.documents.find((d) => d.key === "waiver").validity).toBe("signed");
     expect(o.residences.length).toBeGreaterThan(3);
   });
 });
 
 describe("POST /api/public/join", () => {
-  it("creates the person, one Interested profile per program, and the intake record with a link", async () => {
+  it("creates the person, one Interested profile per program, and the intake record with a link that expires in a day", async () => {
     const res = await submit({ programs: ["StudentCulture", "StudentCollege"], email: "Dana@Example.com", preferences: { categories: ["standup", "movie", "nope"], days: [0, 2] } });
     expect(res.status).toBe(201);
     const { token, view, programs } = res.body.data;
     expect(token).toMatch(/^[\w-]{20,}$/);
     expect(programs).toEqual([{ kind: "StudentCulture", created: true }, { kind: "StudentCollege", created: true }]);
     expect(view.documents.map((d) => d.status)).toEqual(["missing", "missing", "missing", "missing"]);
+    expect(view.link.temporary).toBe(false);
+    expect(new Date(view.link.expiresAt).getTime()).toBeGreaterThan(Date.now() + 23 * 3600000);
 
     const people = await request(app).get("/api/people?kind=StudentCulture");
     expect(people.body.results).toBe(1);
@@ -110,7 +137,7 @@ describe("POST /api/public/join", () => {
 });
 
 describe("the personal documents link", () => {
-  it("uploads a file, replaces it, and refuses junk", async () => {
+  it("uploads a file INTO THE DATABASE, replaces it, and refuses junk", async () => {
     const { token } = (await submit({})).body.data;
     const up = await request(app)
       .post(`/api/public/join/${token}/documents`)
@@ -119,15 +146,21 @@ describe("the personal documents link", () => {
     const row = up.body.data.view.documents.find((d) => d.key === "psychiatric");
     expect(row.status).toBe("uploaded");
     expect(row.fileName).toBe("psy.png");
-    const intake = await Intake.findOne({});
-    const stored = intake.documents.find((d) => d.key === "psychiatric").file.storedName;
-    expect(fs.existsSync(path.join(process.env.UPLOAD_DIR, "real", String(intake._id), stored))).toBe(true);
+    expect(row.pending).toBe(true); // a dated document waits for the staff's date
+    let intake = await Intake.findOne({});
+    const first = intake.documents.find((d) => d.key === "psychiatric").file;
+    expect(first.stored).toBeTruthy();
+    expect(first.storedName).toBeUndefined();
+    expect(await StoredFile.countDocuments()).toBe(1);
+    expect(fs.readdirSync(process.env.UPLOAD_DIR)).toEqual([]); // nothing on the disk any more
 
-    // replace → the old file is gone
+    // replace → the old bytes are gone from the files table
     await request(app)
       .post(`/api/public/join/${token}/documents`)
       .send({ key: "psychiatric", fileName: "psy2.png", mime: "image/png", data: PNG_1PX });
-    expect(fs.existsSync(path.join(process.env.UPLOAD_DIR, "real", String(intake._id), stored))).toBe(false);
+    expect(await StoredFile.countDocuments()).toBe(1);
+    intake = await Intake.findOne({});
+    expect(String(intake.documents.find((d) => d.key === "psychiatric").file.stored)).not.toBe(String(first.stored));
 
     const bad = await request(app)
       .post(`/api/public/join/${token}/documents`)
@@ -154,7 +187,7 @@ describe("the personal documents link", () => {
       .send({ key: "waiver", fileName: "photo.jpg", mime: "image/jpeg", data: Buffer.alloc(13 * 1024 * 1024, 7).toString("base64") });
     expect(huge.status).toBe(413);
     expect(huge.body.code).toBe("PAYLOAD_TOO_LARGE");
-    // the office's approval is not the student's to upload
+    // שקדיה is not a document any more — nothing to upload under that key
     const unknown = await request(app)
       .post(`/api/public/join/${token}/documents`)
       .send({ key: "shkedia", fileName: "w.png", mime: "image/png", data: PNG_1PX });
@@ -165,38 +198,67 @@ describe("the personal documents link", () => {
   it("cannot replace a document the staff already confirmed", async () => {
     const { token } = (await submit({})).body.data;
     const intake = await Intake.findOne({});
-    await request(app).patch(`/api/intakes/${intake._id}/documents/psychiatric`).send({ status: "received", by: "ייטב" });
+    await tick(intake._id, "psychiatric");
     const res = await request(app)
       .post(`/api/public/join/${token}/documents`)
       .send({ key: "psychiatric", fileName: "psy.png", mime: "image/png", data: PNG_1PX });
     expect(res.body.code).toBe("DOCUMENT_LOCKED");
   });
 
-  it("drops rows of a retired checklist on save and keeps the four + the approval", async () => {
+  it("locks a day after the submission (410) — a re-submission renews it", async () => {
+    const { token } = (await submit({})).body.data;
+    await Intake.updateOne({}, { $set: { "landing.linkExpiresAt": new Date(Date.now() - 1000) } });
+    const expired = await request(app).get(`/api/public/join/${token}`);
+    expect(expired.status).toBe(410);
+    expect(expired.body.code).toBe("INTAKE_LINK_EXPIRED");
+    expect((await request(app).post(`/api/public/join/${token}/documents`).send({ key: "psychosocial", fileName: "a.png", mime: "image/png", data: PNG_1PX })).status).toBe(410);
+    await submit({}); // the same person again → the link lives again
+    expect((await request(app).get(`/api/public/join/${token}`)).status).toBe(200);
+  });
+
+  it("drops rows of a retired checklist on save and keeps the four documents", async () => {
     const { intakeId } = (await submit({})).body.data;
-    await Intake.collection.updateOne({ _id: new (require("mongoose").Types.ObjectId)(intakeId) }, { $push: { documents: { key: "idCopy", status: "received" } } });
-    const res = await request(app).patch(`/api/intakes/${intakeId}/documents/psychiatric`).send({ status: "received", by: "ייטב" });
+    await Intake.collection.updateOne({ _id: new (require("mongoose").Types.ObjectId)(intakeId) }, { $push: { documents: { key: "shkedia", status: "received" } } });
+    const res = await tick(intakeId, "psychiatric");
     expect(res.status).toBe(200);
     const keys = (await Intake.findById(intakeId)).documents.map((d) => d.key).sort();
-    expect(keys).toEqual(["psychiatric", "psychosocial", "shkedia", "socialClub", "waiver"]);
+    expect(keys).toEqual(["psychiatric", "psychosocial", "socialClub", "waiver"]);
   });
 });
 
-const DOCS = ["psychiatric", "psychosocial", "socialClub", "waiver"];
-const NEXT_YEAR = new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10);
-/** Staff tick — the approval (shkedia) always carries its "valid until" date. */
-const tick = (intakeId, key, body = {}) =>
-  request(app)
-    .patch(`/api/intakes/${intakeId}/documents/${key}`)
-    .send({ status: "received", by: "ייטב", ...(key === "shkedia" && { validUntil: NEXT_YEAR }), ...body });
-/** The whole file: the four documents + אישור שקדייה. */
-const fillFile = async (intakeId) => {
-  for (const key of DOCS) await tick(intakeId, key);
-  return tick(intakeId, "shkedia");
-};
+describe("temporary upload links", () => {
+  it("the coordinator makes a link for the minutes she picks; it opens the requested documents only, and locks when its time is over", async () => {
+    const { intakeId } = (await submit({})).body.data;
+    const bad = await request(app).post(`/api/intakes/${intakeId}/links`).send({ minutes: 45, by: "נעה" });
+    expect(bad.body.code).toBe("LINK_MINUTES_INVALID");
+    const made = await request(app).post(`/api/intakes/${intakeId}/links`).send({ minutes: 30, docs: ["psychiatric"], by: "נעה", token: "client-made-token-abcdef12" });
+    expect(made.status).toBe(201);
+    const link = made.body.data.link;
+    expect(link.token).toBe("client-made-token-abcdef12"); // the client may name the token — the page knows the link at once
+    expect(new Date(link.expiresAt).getTime()).toBeGreaterThan(Date.now() + 29 * 60000);
+    expect(made.body.data.intake.log.at(-1).action).toBe("link");
+
+    const view = await request(app).get(`/api/public/join/${link.token}`);
+    expect(view.status).toBe(200);
+    expect(view.body.data.view.link.temporary).toBe(true);
+    expect(view.body.data.view.documents.map((d) => d.key)).toEqual(["psychiatric"]);
+    // another document is not this link's business
+    expect((await request(app).post(`/api/public/join/${link.token}/documents`).send({ key: "psychosocial", fileName: "a.png", mime: "image/png", data: PNG_1PX })).body.code).toBe("DOCUMENT_UNKNOWN");
+    const up = await request(app).post(`/api/public/join/${link.token}/documents`).send({ key: "psychiatric", fileName: "psy.png", mime: "image/png", data: PNG_1PX });
+    expect(up.status).toBe(200);
+    expect((await UploadLink.findOne({ token: link.token })).usedAt).toHaveLength(1);
+
+    await UploadLink.updateOne({ token: link.token }, { $set: { expiresAt: new Date(Date.now() - 1000) } });
+    const gone = await request(app).get(`/api/public/join/${link.token}`);
+    expect(gone.status).toBe(410);
+    expect(gone.body.code).toBe("INTAKE_LINK_EXPIRED");
+    const list = await request(app).get(`/api/intakes/${intakeId}/links`);
+    expect(list.body.results).toBe(1);
+  });
+});
 
 describe("the social worker's flow", () => {
-  it("schedule → Intake, done keeps the file open, the approval + the four documents → Placed (תרבות לכל)", async () => {
+  it("schedule → Intake, done keeps the file open, שקדיה + the documents → Placed (תרבות לכל)", async () => {
     const { intakeId } = (await submit({})).body.data;
     const intake = await Intake.findById(intakeId);
     const personId = intake.person;
@@ -209,19 +271,26 @@ describe("the social worker's flow", () => {
     expect(sched.body.data.moved).toEqual(["StudentCulture"]);
     expect(await stageOf(personId, "StudentCulture")).toBe("Intake");
 
-    // "בוצע אינטייק" needs no signature any more — the waiver is one of the four documents
-    const done = await request(app).post(`/api/intakes/${intakeId}/done`).send({ by: "ייטב", summary: "שיחה טובה" });
+    // "בוצע אינטייק" with the template's fields → the intake activity on the record
+    const done = await request(app).post(`/api/intakes/${intakeId}/done`).send({
+      by: "ייטב", summary: "שיחה טובה",
+      fields: { background: "עצמאית", expectations: "חברים", goals: "קביעות", treating: "מרפאה" },
+    });
     expect(done.status).toBe(200);
     expect(done.body.data.intake.status).toBe("documents");
-    expect(done.body.data.intake.log.at(-1).note).toMatch(/עוד חסר: אישור שקדייה/);
+    expect(done.body.data.intake.log.at(-1).note).toMatch(/עוד חסר: קליטה בשקדיה/);
+    expect(done.body.data.activity.kind).toBe("intake");
+    expect(done.body.data.activity.fields.goals).toBe("קביעות");
+    expect(await Activity.countDocuments({ person: personId, kind: "intake" })).toBe(1);
     expect(await stageOf(personId, "StudentCulture")).toBe("Intake"); // one stage — the tags carry the sub-state
 
-    for (const key of ["psychiatric", "psychosocial", "socialClub"]) await tick(intakeId, key);
+    for (const key of ["psychiatric", "psychosocial"]) await tick(intakeId, key);
     await request(app).patch(`/api/intakes/${intakeId}/documents/waiver`).send({ status: "waived", by: "ייטב", note: "נחתם ידנית" });
-    // all four documents in, the approval still missing → still open
+    // every required document in, שקדיה still missing → still open
     expect((await Intake.findById(intakeId)).status).toBe("documents");
-    const last = await tick(intakeId, "shkedia");
+    const last = await enterShkedia(intakeId);
     expect(last.body.data.intake.status).toBe("complete");
+    expect(last.body.data.intake.shkedia.decisionNo).toBe("12345");
     expect(last.body.data.intake.completedAt).toBeTruthy();
     expect(await stageOf(personId, "StudentCulture")).toBe("Placed");
     expect((await request(app).post(`/api/intakes/${intakeId}/done`).send({ by: "ייטב" })).body.code).toBe("INTAKE_ALREADY_DONE");
@@ -229,26 +298,35 @@ describe("the social worker's flow", () => {
 
   it("everything in up front → done goes straight to complete → Placed", async () => {
     const { token, intakeId } = (await submit({})).body.data;
-    for (const key of DOCS) {
+    for (const key of ["psychiatric", "psychosocial", "waiver"]) {
       await request(app).post(`/api/public/join/${token}/documents`).send({ key, fileName: `${key}.png`, mime: "image/png", data: PNG_1PX });
     }
-    await tick(intakeId, "shkedia");
+    // the dated / signed documents count only once the staff confirmed them with their dates
+    await tick(intakeId, "psychiatric");
+    await tick(intakeId, "waiver", { signedAt: dayStr(-3) });
+    await enterShkedia(intakeId);
     const intake = await Intake.findById(intakeId);
+    const waiver = intake.documents.find((d) => d.key === "waiver");
+    expect(waiver.signedAt).toBeTruthy();
+    expect(new Date(waiver.validUntil).getFullYear()).toBe(new Date(waiver.signedAt).getFullYear() + 1);
     await request(app).post("/api/intakes/schedule").send({ person: intake.person, at: "2026-09-15T10:00:00", by: "ייטב" });
     const done = await request(app).post(`/api/intakes/${intakeId}/done`).send({ by: "ייטב" });
     expect(done.body.data.intake.status).toBe("complete");
     expect(await stageOf(intake.person, "StudentCulture")).toBe("Placed");
   });
 
-  it("the waiver ticked at the meeting counts as received; a student's own upload completes the file too", async () => {
+  it("the waiver ticked at the meeting counts as signed there, good for a year; a student's own upload completes the rest", async () => {
     const { token, intakeId } = (await submit({})).body.data;
     const intake = await Intake.findById(intakeId);
     await request(app).post("/api/intakes/schedule").send({ person: intake.person, at: "2026-09-15T10:00:00", by: "ייטב" });
-    const done = await request(app).post(`/api/intakes/${intakeId}/done`).send({ by: "ייטב", waiverSigned: true });
-    expect(done.body.data.intake.documents.find((d) => d.key === "waiver").status).toBe("received");
-    for (const key of ["psychiatric", "psychosocial", "shkedia"]) await tick(intakeId, key);
+    const done = await request(app).post(`/api/intakes/${intakeId}/done`).send({ by: "ייטב", waiverSigned: true, at: "2026-09-15T10:00:00" });
+    const waiver = done.body.data.intake.documents.find((d) => d.key === "waiver");
+    expect(waiver.status).toBe("received");
+    expect(waiver.validUntil.slice(0, 10)).toBe("2027-09-15");
+    await tick(intakeId, "psychiatric");
+    await enterShkedia(intakeId);
     expect(await stageOf(intake.person, "StudentCulture")).toBe("Intake");
-    const up = await request(app).post(`/api/public/join/${token}/documents`).send({ key: "socialClub", fileName: "club.png", mime: "image/png", data: PNG_1PX });
+    const up = await request(app).post(`/api/public/join/${token}/documents`).send({ key: "psychosocial", fileName: "ps.png", mime: "image/png", data: PNG_1PX });
     expect(up.body.data.view.complete).toBe(true);
     expect(await stageOf(intake.person, "StudentCulture")).toBe("Placed");
   });
@@ -321,38 +399,60 @@ describe("the social worker's flow", () => {
     expect(await Intake.countDocuments()).toBe(1);
   });
 
-  it("אישור שקדייה needs a valid-until date; an expired one keeps the file open; a new date renews it", async () => {
+  it("דוח פסיכיאטרי needs the date written in it; an expired one keeps the file open; a new date renews it", async () => {
     const { token, intakeId } = (await submit({})).body.data;
-    const noDate = await request(app).patch(`/api/intakes/${intakeId}/documents/shkedia`).send({ status: "received", by: "ייטב" });
-    expect(noDate.body.code).toBe("APPROVAL_DATE_REQUIRED");
-    const badDate = await request(app).patch(`/api/intakes/${intakeId}/documents/shkedia`).send({ status: "received", by: "ייטב", validUntil: "soon" });
+    const noDate = await request(app).patch(`/api/intakes/${intakeId}/documents/psychiatric`).send({ status: "received", by: "ייטב" });
+    expect(noDate.body.code).toBe("DOCUMENT_DATE_REQUIRED");
+    const badDate = await request(app).patch(`/api/intakes/${intakeId}/documents/psychiatric`).send({ status: "received", by: "ייטב", validUntil: "soon" });
     expect(badDate.body.code).toBe("INVALID_DATE");
 
-    // everything else in; an EXPIRED approval does not complete the file
+    // everything else in; an EXPIRED report does not complete the file
     const intake = await Intake.findById(intakeId);
     await request(app).post("/api/intakes/schedule").send({ person: intake.person, at: "2026-09-15T10:00:00", by: "ייטב" });
-    await request(app).post(`/api/intakes/${intakeId}/done`).send({ by: "ייטב" });
-    for (const key of DOCS) await tick(intakeId, key);
-    const expired = await tick(intakeId, "shkedia", { validUntil: "2025-01-01" });
-    expect(expired.body.data.intake.documents.find((d) => d.key === "shkedia").status).toBe("received");
+    await request(app).post(`/api/intakes/${intakeId}/done`).send({ by: "ייטב", waiverSigned: true });
+    await tick(intakeId, "psychosocial");
+    await enterShkedia(intakeId);
+    const expired = await tick(intakeId, "psychiatric", { validUntil: "2025-01-01" });
+    expect(expired.body.data.intake.documents.find((d) => d.key === "psychiatric").status).toBe("received");
     expect(expired.body.data.intake.status).toBe("documents");
     expect(expired.body.data.intake.log.at(-1).note).toMatch(/בתוקף עד 1\.1\.2025/);
+    // the student sees the expiry on the personal link
+    const view = (await request(app).get(`/api/public/join/${token}`)).body.data.view;
+    expect(view.documents.find((d) => d.key === "psychiatric").expired).toBe(true);
     // renewed with a future date → complete
-    const renewed = await tick(intakeId, "shkedia");
+    const renewed = await tick(intakeId, "psychiatric");
     expect(renewed.body.data.intake.status).toBe("complete");
     expect(await stageOf(intake.person, "StudentCulture")).toBe("Placed");
-    // a staff upload of the approval without a date only stores the file
+    // a staff upload of the report without a date only stores the file
     const up = await request(app)
       .post(`/api/intakes/${intakeId}/documents`)
-      .send({ key: "shkedia", fileName: "shkedia.png", mime: "image/png", data: PNG_1PX, by: "ייטב" });
-    expect(up.body.data.intake.documents.find((d) => d.key === "shkedia").status).toBe("uploaded");
-    expect(up.body.data.intake.status).toBe("documents");
-    // the approval is never on the personal link
-    const view = (await request(app).get(`/api/public/join/${token}`)).body.data.view;
-    expect(view.documents.map((d) => d.key)).not.toContain("shkedia");
+      .send({ key: "psychiatric", fileName: "psy.png", mime: "image/png", data: PNG_1PX, by: "ייטב" });
+    expect(up.body.data.intake.documents.find((d) => d.key === "psychiatric").status).toBe("uploaded");
+    // a completed file STAYS complete — an expiry later is an alert, not a reopened file
+    expect(up.body.data.intake.status).toBe("complete");
   });
 
-  it("the staff's reply on a document reaches the student; a delete removes the file", async () => {
+  it("שקדיה is the coordinator's own action: a date is required; clearing it reopens an unfinished file", async () => {
+    const { intakeId } = (await submit({})).body.data;
+    expect((await request(app).patch(`/api/intakes/${intakeId}/shkedia`).send({ by: "נעה" })).body.code).toBe("SHKEDIA_DATE_REQUIRED");
+    expect((await request(app).patch(`/api/intakes/${intakeId}/shkedia`).send({ by: "נעה", enteredAt: "nope" })).body.code).toBe("INVALID_DATE");
+    const intake = await Intake.findById(intakeId);
+    await request(app).post("/api/intakes/schedule").send({ person: intake.person, at: "2026-09-15T10:00:00", by: "ייטב" });
+    await request(app).post(`/api/intakes/${intakeId}/done`).send({ by: "ייטב", waiverSigned: true });
+    for (const key of ["psychiatric", "psychosocial"]) await tick(intakeId, key);
+    expect((await Intake.findById(intakeId)).status).toBe("documents");
+    const entered = await enterShkedia(intakeId, { decisionNo: "77" });
+    // the שקדיה entry, then the completion it caused
+    expect(entered.body.data.intake.log.at(-2).note).toMatch(/נקלט\/ה בשקדיה .* החלטה 77/);
+    expect(entered.body.data.intake.log.at(-1).action).toBe("completed");
+    expect(entered.body.data.intake.status).toBe("complete");
+    // a mistake, taken back — but the file was completed, so it stays complete (the student is already placed)
+    const cleared = await request(app).patch(`/api/intakes/${intakeId}/shkedia`).send({ clear: true, by: "נעה" });
+    expect(cleared.body.data.intake.shkedia?.enteredAt).toBeFalsy();
+    expect(cleared.body.data.intake.status).toBe("complete");
+  });
+
+  it("the staff's reply on a document reaches the student; a delete removes the file from the database", async () => {
     const { token, intakeId } = (await submit({})).body.data;
     await request(app).post(`/api/public/join/${token}/documents`).send({ key: "psychosocial", fileName: "ps.png", mime: "image/png", data: PNG_1PX });
     const reply = await request(app)
@@ -366,12 +466,10 @@ describe("the social worker's flow", () => {
     const view = (await request(app).get(`/api/public/join/${token}`)).body.data.view;
     expect(view.documents.find((d) => d.key === "psychosocial").note).toBe("חסר העמוד השני — אפשר לצלם שוב?");
 
-    const intake = await Intake.findById(intakeId);
-    const stored = intake.documents.find((d) => d.key === "psychosocial").file.storedName;
-    expect(fs.existsSync(path.join(process.env.UPLOAD_DIR, "real", String(intake._id), stored))).toBe(true);
+    expect(await StoredFile.countDocuments()).toBe(1);
     const gone = await request(app).patch(`/api/intakes/${intakeId}/documents/psychosocial`).send({ status: "missing", by: "ייטב" });
     expect(gone.body.data.intake.documents.find((d) => d.key === "psychosocial").status).toBe("missing");
-    expect(fs.existsSync(path.join(process.env.UPLOAD_DIR, "real", String(intake._id), stored))).toBe(false);
+    expect(await StoredFile.countDocuments()).toBe(0);
     expect(gone.body.data.intake.log.at(-1).note).toMatch(/הקובץ נמחק/);
   });
 
@@ -388,16 +486,43 @@ describe("the social worker's flow", () => {
     expect(list.body.data.intakes[0].person.firstName).toBe("סטודנט");
   });
 
-  it("serves a stored file to staff and lists the record by person", async () => {
+  it("serves a stored file to staff (from the database) and lists the record by person", async () => {
     const { token, intakeId } = (await submit({})).body.data;
     await request(app).post(`/api/public/join/${token}/documents`).send({ key: "psychosocial", fileName: "ps.png", mime: "image/png", data: PNG_1PX });
     const file = await request(app).get(`/api/intakes/${intakeId}/documents/psychosocial/file`);
     expect(file.status).toBe(200);
     expect(file.headers["content-type"]).toMatch(/image\/png/);
+    expect(file.body.length).toBe(Buffer.from(PNG_1PX, "base64").length);
     expect((await request(app).get(`/api/intakes/${intakeId}/documents/psychiatric/file`)).status).toBe(404);
     const intake = await Intake.findById(intakeId);
     const byPerson = await request(app).get(`/api/intakes/person/${intake.person}`);
     expect(byPerson.status).toBe(200);
     expect(byPerson.body.data.intake.landing.token).toBe(token);
+  });
+
+  it("her stages 1 and 3: the first call's facts (+ a שיחה ראשונית activity), the coordinator, the committee date", async () => {
+    const s = await makeStudent();
+    await s.moveToStage("Interested", "בדיקה");
+    const screened = await request(app).post("/api/intakes/screening").send({
+      person: s._id, eligibility: "yes", interests: ["college", "socialClub", "nope"], by: "נעה", note: "שיחה טובה, רוצה בוקר",
+    });
+    expect(screened.status).toBe(200);
+    expect(screened.body.data.intake.screening.eligibility).toBe("yes");
+    expect(screened.body.data.intake.screening.interests).toEqual(["college", "socialClub"]);
+    expect(screened.body.data.activity.kind).toBe("firstCall");
+    expect(screened.body.data.activity.fields.interests).toBe("מכללה לכל, מועדון חברתי");
+    expect(screened.body.data.intake.log.at(-1).note).toMatch(/שיחה ראשונית · זכאי\/ת לסל שיקום · מכללה לכל, מועדון חברתי/);
+    const id = screened.body.data.intake._id;
+    expect((await request(app).patch(`/api/intakes/${id}/screening`).send({ eligibility: "maybe", by: "נעה" })).body.code).toBe("INVALID_STATUS");
+
+    const coord = await request(app).patch(`/api/intakes/${id}/coordinator`).send({ name: "נעה", by: "חגי" });
+    expect(coord.body.data.intake.coordinator.name).toBe("נעה");
+    expect(coord.body.data.intake.log.at(-1).note).toBe("רכזת מטפלת: נעה");
+    const noCoord = await request(app).patch(`/api/intakes/${id}/coordinator`).send({ name: "", by: "חגי" });
+    expect(noCoord.body.data.intake.coordinator?.name).toBeFalsy();
+
+    const committee = await request(app).patch(`/api/intakes/${id}/committee`).send({ committeeDate: "2025-03-01", by: "נעה" });
+    expect(committee.body.data.intake.committeeDate.slice(0, 10)).toBe("2025-03-01");
+    expect((await request(app).patch(`/api/intakes/${id}/committee`).send({ committeeDate: "x", by: "נעה" })).body.code).toBe("INVALID_DATE");
   });
 });

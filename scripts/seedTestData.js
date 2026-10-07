@@ -42,12 +42,18 @@ const Event = require("../models/Event");
 const EventRegistration = require("../models/EventRegistration");
 const Voucher = require("../models/Voucher");
 const Intake = require("../models/Intake");
+const UploadLink = require("../models/UploadLink");
+const Activity = require("../models/Activity");
+const ActivityTemplate = require("../models/ActivityTemplate");
+const Incident = require("../models/Incident");
+const StoredFile = require("../models/StoredFile");
 const Book = require("../models/Book");
 const Loan = require("../models/Loan");
 const { seedCulture } = require("./lib/cultureSeed");
 const { seedLibrary } = require("./lib/librarySeed");
 const { importCultureSenzey, formatReport } = require("./lib/senzeyCulture");
 const { seedIntakes, purgeUploads } = require("./lib/intakeSeed");
+const { seedActivities } = require("./lib/activitySeed");
 
 const WORLD = "test";
 const DAY = 86400000;
@@ -275,7 +281,12 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
     eventRegistrations: EventRegistration,
     events: Event,
     vouchers: Voucher,
+    uploadLinks: UploadLink,
+    incidents: Incident,
+    activities: Activity,
+    activityTemplates: ActivityTemplate,
     intakes: Intake,
+    files: StoredFile,
     loans: Loan,
     books: Book,
     profiles: Profile,
@@ -792,11 +803,21 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
     c.enrolledCount++;
     return c.doc._id;
   };
-  await seedIntakes({
+  const intakeDemo = await seedIntakes({
     world: WORLD,
     lastName: "טסט",
     findSeat,
     subjectIds: ["ציור", "מוסיקה", "בישול ואפייה", "אנגלית", "יוגה"].map((n) => subjectByName[n]?._id).filter(Boolean).map(String),
+    log: console.log,
+  });
+
+  /* 13b ── לשונית פעילויות + אירועים חריגים (the social worker's round):
+   *        follow-ups at every distance, an evaluation that is due, a
+   *        hospitalisation, two incident reports, a changed template. */
+  await seedActivities({
+    world: WORLD,
+    placed: students.filter((s) => s.stage === "Placed").slice(8, 14).map((s) => s.person),
+    intakeDone: intakeDemo.people.filter((p) => p.state === "done").map((p) => p.person),
     log: console.log,
   });
 

@@ -17,7 +17,7 @@ const {
   moveStage,
   updateMatching,
 } = require("../controllers/profileController");
-const { closeProfile, reopenProfile } = require("../controllers/programController");
+const { closeProfile, leaveProgram, reopenProfile } = require("../controllers/programController");
 
 router.get("/", getProfiles);
 router.route("/:id").get(getProfileById).patch(updateProfile).delete(deactivateProfile);
@@ -25,6 +25,8 @@ router.post("/:id/stage", moveStage);
 router.patch("/:id/matching", updateMatching);
 // Lifecycle with a reason (logged) — DELETE above stays as the bare form.
 router.post("/:id/close", closeProfile);
+// דיווח עזיבה (2026-10-07): the official leave date, a reason, "שקדיה was told" — plus the activity
+router.post("/:id/leave", leaveProgram);
 router.post("/:id/reopen", reopenProfile);
 
 module.exports = router;

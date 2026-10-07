@@ -12,11 +12,18 @@ const {
   getByPerson,
   openIntake,
   scheduleForPerson,
+  screenPerson,
   reschedule,
   markDone,
   setDocument,
   uploadDocument,
   getDocumentFile,
+  setShkedia,
+  setCoordinator,
+  setScreening,
+  setCommittee,
+  createLink,
+  getLinks,
   updateIntake,
 } = require("../controllers/intakesController");
 
@@ -26,6 +33,7 @@ const {
 // Static paths before /:id
 router.post("/open", openIntake);
 router.post("/schedule", scheduleForPerson);
+router.post("/screening", screenPerson);
 router.get("/person/:personId", getByPerson);
 
 router.get("/", getIntakes);
@@ -35,5 +43,11 @@ router.post("/:id/done", markDone);
 router.post("/:id/documents", uploadDocument);
 router.patch("/:id/documents/:key", setDocument);
 router.get("/:id/documents/:key/file", getDocumentFile);
+// 2026-10-07 — the social worker's round
+router.patch("/:id/shkedia", setShkedia);
+router.patch("/:id/coordinator", setCoordinator);
+router.patch("/:id/screening", setScreening);
+router.patch("/:id/committee", setCommittee);
+router.route("/:id/links").get(getLinks).post(createLink);
 
 module.exports = router;

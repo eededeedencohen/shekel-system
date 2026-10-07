@@ -23,7 +23,7 @@ const Enrollment = require("../models/Enrollment");
 const EventRegistration = require("../models/EventRegistration");
 require("../models/Event"); // registers the model the populate below needs
 const AppError = require("../utils/AppError");
-const { STUDENT_KINDS, PROGRAM_LABELS, OCCUPYING_STATUSES } = require("../utils/domain");
+const { STUDENT_KINDS, PROGRAM_LABELS, OCCUPYING_STATUSES, LEAVE_REASONS, LEAVE_REASON_KEYS } = require("../utils/domain");
 const tags = require("./tagService");
 
 /** The `student` role tag closes only when no student profile stays open. */
@@ -174,6 +174,40 @@ async function closeProfile({ profile, world, by, note, at }) {
   return { profile, effects };
 }
 
+/**
+ * דיווח עזיבה (the social worker, 2026-10-07) — the one-click, budget-side
+ * report: the official leave date, a reason from the closed list, and
+ * whether שקדיה was told. It closes the program the way closeProfile does
+ * (seats / registrations given back) and writes a "leave" activity on
+ * the person's record beside the narrative closure report (which the
+ * coordinator writes first — the client reminds her; nothing blocks).
+ */
+async function leaveProgram({ profile, world, by, leftAt, reason, note, shkediaReported = false }) {
+  if (!STUDENT_KINDS.includes(profile.kind)) throw AppError.of("INVALID_KIND", 400, profile.kind);
+  if (!LEAVE_REASON_KEYS.includes(reason)) throw AppError.of("LEAVE_REASON_INVALID", 400, reason);
+  const when = leftAt ? new Date(leftAt) : new Date();
+  if (isNaN(when.getTime())) throw AppError.of("INVALID_DATE", 400);
+  const label = LEAVE_REASONS.find((r) => r.key === reason).label;
+  const text = [label, note].filter(Boolean).join(" · ");
+  const { effects } = await closeProfile({ profile, world, by, note: text, at: when });
+  // lazy: activityService has no dependency on this file, keep the load graph simple
+  const activities = require("./activityService");
+  const now = new Date();
+  const activity = await activities.addActivity({
+    world,
+    person: profile.person,
+    kind: "leave",
+    at: when,
+    by,
+    title: "דיווח עזיבה",
+    body: text,
+    fields: { reason, reasonLabel: label, shkediaReported: !!shkediaReported, ...(shkediaReported && { shkediaReportedAt: now }) },
+    program: profile.kind,
+    skipRequired: true,
+  });
+  return { profile, effects, activity };
+}
+
 /** Reopen a closed profile; a student profile restarts its pipeline. */
 async function reopenProfile({ profile, world, by, note, at, stage }) {
   if (profile.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
@@ -211,4 +245,4 @@ async function programTimeline(personId) {
   return { profiles, entries };
 }
 
-module.exports = { transfer, closeProfile, reopenProfile, programTimeline, DEFAULT_ENTRY_STAGE };
+module.exports = { transfer, closeProfile, leaveProgram, reopenProfile, programTimeline, DEFAULT_ENTRY_STAGE };

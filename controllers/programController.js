@@ -6,6 +6,7 @@
  *   POST /api/people/:id/transfer      { from*, to*, by?, note?, stage? }
  *   GET  /api/people/:id/programs      the merged program timeline
  *   POST /api/profiles/:id/close       { by?, note? }
+ *   POST /api/profiles/:id/leave       { reason*, leftAt?, shkediaReported?, by?, note? } — דיווח עזיבה
  *   POST /api/profiles/:id/reopen      { by?, note?, stage? }
  */
 
@@ -13,7 +14,7 @@ const { Person } = require("../models/Person");
 const { Profile } = require("../models/profiles");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
-const { transfer, closeProfile, reopenProfile, programTimeline } = require("../services/programService");
+const { transfer, closeProfile, leaveProgram, reopenProfile, programTimeline } = require("../services/programService");
 const { profilesOf, flattenPerson } = require("../services/profileService");
 
 async function respondWithPerson(res, personId, extra = {}) {
@@ -41,6 +42,22 @@ exports.closeProfile = catchAsync(async (req, res, next) => {
   if (!profile) return next(AppError.of("NOT_FOUND", 404, "פרופיל"));
   const { effects } = await closeProfile({ profile, world: req.world, by: req.body.by, note: req.body.note, at: req.body.at });
   await respondWithPerson(res, profile.person, { effects });
+});
+
+/** The budget-side leave report: closes the program and writes the "דיווח עזיבה" activity. */
+exports.leaveProgram = catchAsync(async (req, res, next) => {
+  const profile = await Profile.findOne({ _id: req.params.id, world: req.world });
+  if (!profile) return next(AppError.of("NOT_FOUND", 404, "פרופיל"));
+  const { effects, activity } = await leaveProgram({
+    profile,
+    world: req.world,
+    by: req.body.by,
+    leftAt: req.body.leftAt,
+    reason: req.body.reason,
+    note: req.body.note,
+    shkediaReported: req.body.shkediaReported === true || req.body.shkediaReported === "true",
+  });
+  await respondWithPerson(res, profile.person, { effects, activity });
 });
 
 exports.reopenProfile = catchAsync(async (req, res, next) => {

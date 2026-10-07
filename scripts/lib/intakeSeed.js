@@ -137,9 +137,14 @@ async function seedIntakes({ world, lastName, findSeat, subjectIds = [], log = (
   };
   const upload = async (rec, key, file, name) =>
     intake.uploadDocument({ intake: rec, key, fileName: name, mime: file === PDF ? "application/pdf" : "image/png", data: file, staff: false });
-  // An approval (אישור שקדייה) is received with its "valid until" date — a year ahead here.
-  const tick = (rec, key, status, note) =>
-    intake.setDocumentStatus({ intake: rec, key, status, by: BY, note, ...(key === "shkedia" && status === "received" && { validUntil: at(365, 0) }) });
+  // A dated document (דוח פסיכיאטרי) is received with the expiry written in
+  // it — a year ahead here (one case gets a report that expires next month,
+  // so the dashboard's "לחידוש" group has something to show); "shkedia" is
+  // the coordinator's own action: נקלט/ה בשקדיה with the date.
+  const tick = (rec, key, status, note, { validUntil } = {}) =>
+    key === "shkedia"
+      ? intake.setShkedia({ intake: rec, enteredAt: at(-1, 0), by: "נעה", decisionNo: `ש-${String(rec._id).slice(-5)}` })
+      : intake.setDocumentStatus({ intake: rec, key, status, by: BY, note, ...(key === "psychiatric" && status === "received" && { validUntil: validUntil || at(365, 0) }) });
   const record = (personId) => Intake.findOne({ world, person: personId });
   const remember = (state, person) => {
     out.people.push({ state, person });
@@ -260,6 +265,7 @@ async function seedIntakes({ world, lastName, findSeat, subjectIds = [], log = (
     });
     await holdSeat(r.person._id, "נעה");
     const rec = await record(r.person._id);
+    await intake.setCoordinator({ intake: rec, name: "נעה", by: "נעה" });
     await upload(rec, "psychiatric", PNG, "psychiatric-blurry.png");
     await upload(rec, "psychosocial", PDF, "psychosocial.pdf");
     await upload(rec, "socialClub", PDF, "moadon.pdf");
@@ -269,6 +275,8 @@ async function seedIntakes({ world, lastName, findSeat, subjectIds = [], log = (
     await tick(rec, "psychosocial", "received");
     await tick(rec, "socialClub", "received");
     await tick(rec, "shkedia", "received");
+    // a temporary link the coordinator sent for the report (alive for a day)
+    await intake.createUploadLink({ intake: rec, minutes: 1440, docs: ["psychiatric"], by: "נעה" });
     await backdate(r.person._id, 10);
     remember("documents", r.person);
   }
@@ -284,6 +292,9 @@ async function seedIntakes({ world, lastName, findSeat, subjectIds = [], log = (
     for (const [k, f, n] of [["psychiatric", PDF, "psychiatric.pdf"], ["psychosocial", PDF, "psychosocial.pdf"], ["socialClub", PNG, "moadon.png"], ["waiver", PDF, "vitur.pdf"]]) {
       await upload(rec, k, f, n);
     }
+    // the dated report and the signed waiver count once the staff confirmed them with their dates
+    await tick(rec, "psychiatric", "received");
+    await tick(rec, "waiver", "received");
     await tick(rec, "shkedia", "received");
     await intake.schedule({ intake: rec, at: at(-7, 10), by: BY });
     await intake.markDone({ intake: rec, at: at(-6, 10), by: BY, summary: "הכל בתיק — משובצת לתרבות לכל." });
@@ -300,9 +311,15 @@ async function seedIntakes({ world, lastName, findSeat, subjectIds = [], log = (
     });
     await holdSeat(r.person._id, "חגי");
     const rec = await record(r.person._id);
+    await intake.setCoordinator({ intake: rec, name: "נעה", by: "נעה" });
     await intake.schedule({ intake: rec, at: at(-12, 10), by: BY });
-    await intake.markDone({ intake: rec, at: at(-11, 10), by: BY, waiverSigned: true, summary: "הביא את כל המסמכים לפגישה." });
-    for (const k of ["psychiatric", "psychosocial", "socialClub", "shkedia"]) await tick(rec, k, "received");
+    await intake.markDone({
+      intake: rec, at: at(-11, 10), by: BY, waiverSigned: true, summary: "הביא את כל המסמכים לפגישה.",
+      fields: { background: "גר בדירה עצמאית, מתפקד טוב ביום-יום, קשיי ריכוז.", expectations: "ללמוד משהו קבוע, להכיר אנשים.", goals: "התמדה בקורס אחד לפחות סמסטר שלם.", treating: "פסיכיאטר בקופ\"ח, מתאמת שיקום אורית." },
+    });
+    // the psychiatric report expires next month → "דוח פסיכיאטרי לחידוש" on the dashboard
+    await tick(rec, "psychiatric", "received", undefined, { validUntil: at(25, 0) });
+    for (const k of ["psychosocial", "socialClub", "shkedia"]) await tick(rec, k, "received");
     await backdate(r.person._id, 20);
     remember("done", r.person);
   }
@@ -316,8 +333,13 @@ async function seedIntakes({ world, lastName, findSeat, subjectIds = [], log = (
     });
     const seat = await holdSeat(r.person._id, "נעה");
     const rec = await record(r.person._id);
+    await intake.setCoordinator({ intake: rec, name: "חגי", by: "חגי" });
+    await intake.setScreening({ intake: rec, eligibility: "yes", interests: ["college"], calledAt: at(-20, 9), by: "נעה", note: "התקשרה המתאמת; זכאות מאושרת, רוצה קורס בוקר." });
     await intake.schedule({ intake: rec, at: at(-16, 10), by: BY });
-    await intake.markDone({ intake: rec, at: at(-15, 10), by: BY, waiverSigned: true, summary: "מתאימה מאוד לקבוצה; הביאה את כל המסמכים." });
+    await intake.markDone({
+      intake: rec, at: at(-15, 10), by: BY, waiverSigned: true, summary: "מתאימה מאוד לקבוצה; הביאה את כל המסמכים.",
+      fields: { background: "דיור מוגן, עצמאית בתפקוד, צריכה הסעה.", expectations: "קבוצה קטנה ושקטה.", goals: "להגיע פעמיים בשבוע.", treating: "עו\"ס הדיור נטע; פסיכיאטרית במרפאה." },
+    });
     for (const k of ["psychiatric", "psychosocial", "socialClub", "shkedia"]) await tick(rec, k, "received");
     if (seat) {
       const held = await Enrollment.findOne({ world, student: r.person._id, cycle: seat, status: "reserved" });
@@ -350,7 +372,7 @@ async function seedIntakes({ world, lastName, findSeat, subjectIds = [], log = (
   return out;
 }
 
-/** Remove the world's uploaded files (purge helper for the seeds). */
+/** Remove the world's legacy disk uploads (purge helper for the seeds; the DB rows go with their collections). */
 function purgeUploads(world) {
   const dir = path.join(intake.uploadRoot(), world);
   fs.rmSync(dir, { recursive: true, force: true });

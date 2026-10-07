@@ -69,28 +69,201 @@ const PRE_INTAKE_STAGES = ["Interested", "Matching"];
 /* ───────────────────────── קליטה (אינטייק) ───────────────────────── */
 
 /**
- * The intake file (Eden, 2026-09-17): exactly FOUR documents — the tag on
- * the student reads "X מתוך 4 מסמכים התקבלו" / "כל המסמכים התקבלו" — plus
- * "אישור שקדייה", an approval the office receives (`approval: true`: its
- * own tag, never counted among the four, not on the landing page; marking
- * it received REQUIRES a "valid until" date — Eden: "חובה לשייך תאריך").
- * The landing page and the personal link show every `upload:true`
- * document, together with the staff's comment on it. The file is complete
- * when the intake was held, the approval is in (and not expired) and all
- * four documents are in.
+ * The intake file — the documents the social worker listed (2026-10-07):
+ * the THREE she requires, with the validity each one carries, plus the
+ * social-club letter as an optional extra (she never mentioned it; Eden
+ * keeps it until she says otherwise). The tag on the student reads "X מתוך
+ * 3 מסמכים התקבלו" / "כל המסמכים התקבלו".
+ *
+ *   validity "dated"   the report names its own expiry (6 months – 2 years):
+ *                      the coordinator types the exact date when she
+ *                      receives it (DOCUMENT_DATE_REQUIRED); expired = open
+ *                      again, alerted FOLLOW_UP.psychiatricNoticeDays ahead
+ *   validity "signed"  valid exactly FOLLOW_UP.waiverMonths from the
+ *                      signature — computed, never typed; expired = no
+ *                      sharing with outsiders, alerted waiverNoticeDays ahead
+ *
+ * "אישור שקדייה" is NOT a document any more: there is no approval that
+ * arrives from outside — the coordinator ENTERS the person in שקדיה and
+ * marks it here with the date (`intake.shkedia`). The file is complete
+ * when the intake was held, שקדיה was entered and every required document
+ * is in and in force.
  */
 const INTAKE_DOCUMENTS = [
-  { key: "psychiatric", label: "דוח פסיכיאטרי", hint: "עדכני", upload: true },
-  { key: "psychosocial", label: "דוח פסיכוסוציאלי", upload: true },
-  { key: "socialClub", label: "אישור מועדון חברתי", upload: true },
-  { key: "waiver", label: "אישור ויתור סודיות", hint: "נחתם בפגישת האינטייק או מועלה חתום", upload: true },
-  { key: "shkedia", label: "אישור שקדייה", approval: true, upload: false },
+  { key: "psychiatric", label: "דוח פסיכיאטרי", hint: "עדכני, חתום ע\"י פסיכיאטר/ית — עם תאריך התוקף הנקוב בו", upload: true, validity: "dated" },
+  { key: "psychosocial", label: "דוח פסיכוסוציאלי", hint: "מהעו\"ס המלווה — עם פרטי הקשר שלו/ה", upload: true },
+  { key: "waiver", label: "טופס ויתור סודיות", hint: "נחתם בפגישת האינטייק או מועלה חתום · בתוקף שנה מהחתימה", upload: true, validity: "signed" },
+  { key: "socialClub", label: "אישור מועדון חברתי", hint: "אם יש", upload: true, optional: true },
 ];
 const INTAKE_DOCUMENT_KEYS = INTAKE_DOCUMENTS.map((d) => d.key);
-/** The four documents behind the "מסמכים" tag. */
-const INTAKE_REQUIRED_DOCUMENTS = INTAKE_DOCUMENTS.filter((d) => !d.optional && !d.approval);
-/** The approvals (today: אישור שקדייה) — each has its own tag. */
-const INTAKE_APPROVALS = INTAKE_DOCUMENTS.filter((d) => d.approval);
+/** The documents behind the "מסמכים" tag (the optional one is not counted). */
+const INTAKE_REQUIRED_DOCUMENTS = INTAKE_DOCUMENTS.filter((d) => !d.optional);
+/** Legacy keys that may still sit on old records — dropped on save, migrated by scripts/migrateShkedia.js. */
+const RETIRED_DOCUMENT_KEYS = ["shkedia"];
+
+/**
+ * The cadences the social worker set (2026-10-07) — every alert in the app
+ * is DERIVED from dates with these numbers; nothing is stored as a reminder.
+ */
+const FOLLOW_UP = {
+  /** שיחת מעקב: every 3 months from the last one (or the admission); shown 4 weeks ahead. */
+  followUpMonths: 3,
+  followUpNoticeDays: 28,
+  /** שיחת הערכה: every 24 months from the rehab-committee date (else the שקדיה admission); shown ~2 months ahead. */
+  evaluationMonths: 24,
+  evaluationNoticeDays: 60,
+  /** ויתור סודיות: exactly a year from the signature; shown 45 days ahead. */
+  waiverMonths: 12,
+  waiverNoticeDays: 45,
+  /** דוח פסיכיאטרי: its own date; shown 60 days ahead. */
+  psychiatricNoticeDays: 60,
+  /** אינטייק בעיכוב: this many days at the social worker's stage without a held meeting. */
+  intakeDelayDays: 14,
+  /** שיחה ראשונה: within 48 hours of the lead. */
+  firstCallHours: 48,
+  /** בהמתנה: a warm call every month, never more than 60 days without a refresh. */
+  waitlistContactDays: 30,
+  waitlistRefreshDays: 60,
+};
+
+/** The screening facts of the first call (her stage 1). */
+const SCREENING_ELIGIBILITY = [
+  { key: "yes", label: "זכאי/ת לסל שיקום" },
+  { key: "no", label: "לא זכאי/ת" },
+  { key: "unknown", label: "עדיין לא ברור" },
+];
+const SCREENING_ELIGIBILITY_KEYS = SCREENING_ELIGIBILITY.map((e) => e.key);
+const SCREENING_INTERESTS = [
+  { key: "college", label: "מכללה לכל" },
+  { key: "culture", label: "תרבות לכל" },
+  { key: "socialClub", label: "מועדון חברתי" },
+  { key: "hostels", label: "הוסטל" },
+];
+const SCREENING_INTEREST_KEYS = SCREENING_INTERESTS.map((i) => i.key);
+
+/** How long a temporary upload link lives (minutes) — the coordinator picks one. */
+const UPLOAD_LINK_MINUTES = [
+  { key: 10, label: "10 דקות" },
+  { key: 30, label: "חצי שעה" },
+  { key: 60, label: "שעה" },
+  { key: 1440, label: "24 שעות" },
+];
+/** The personal link the landing page hands out lives this long after a submission. */
+const LANDING_LINK_HOURS = 24;
+
+/* ───────────────────────── פעילויות (the person's record) ───────────────────────── */
+
+/**
+ * The activities tab (the social worker, 2026-10-07): every event in a
+ * person's life with us, in order — each kind with the template the
+ * coordinator starts from (editable per world: ActivityTemplate). `resets`
+ * says which periodic clock saving this kind restarts (lib/followups).
+ */
+const ACTIVITY_KINDS = [
+  { key: "firstCall", label: "שיחה ראשונית", short: "שיחה ראשונית" },
+  { key: "intake", label: "אינטייק", short: "אינטייק" },
+  { key: "followUp", label: "שיחת מעקב", short: "מעקב", resets: "followUp" },
+  { key: "evaluation", label: "שיחת הערכה", short: "הערכה", resets: "evaluation" },
+  { key: "hospitalization", label: "אשפוז", short: "אשפוז" },
+  { key: "update", label: "עדכון כללי", short: "עדכון" },
+  { key: "closure", label: "דוח סיום התקשרות", short: "דוח סיום" },
+  { key: "leave", label: "דיווח עזיבה", short: "עזיבה" },
+  { key: "incident", label: "אירוע חריג", short: "אירוע חריג" },
+];
+const ACTIVITY_KIND_KEYS = ACTIVITY_KINDS.map((k) => k.key);
+const ACTIVITY_FIELD_TYPES = ["text", "textarea", "select", "checkbox", "date"];
+
+/**
+ * The templates she described, as the starting point of every world. A
+ * coordinator edits them in the app (PUT /api/activities/templates/:kind);
+ * a world without a stored template gets this one.
+ */
+const DEFAULT_ACTIVITY_TEMPLATES = {
+  firstCall: {
+    title: "שיחה ראשונית",
+    body: "מי פנה ואיך הגיע אלינו:\nמה מחפש/ת אצלנו:\nסיכום:",
+    fields: [
+      { key: "eligibility", label: "זכאות לסל שיקום", type: "select", options: SCREENING_ELIGIBILITY.map((e) => e.key), required: true },
+      { key: "interests", label: "תחומי עניין", type: "text" },
+    ],
+  },
+  intake: {
+    title: "אינטייק",
+    body: "",
+    fields: [
+      { key: "background", label: "רקע תפקודי", type: "textarea", required: true },
+      { key: "expectations", label: "ציפיות", type: "textarea", required: true },
+      { key: "goals", label: "יעדים שיקומיים", type: "textarea", required: true },
+      { key: "treating", label: "גורמים מטפלים", type: "textarea", required: true },
+    ],
+  },
+  followUp: {
+    title: "שיחת מעקב",
+    body: "איך הולך בקורסים / באירועים?\nמה טוב?\nמה קשה?\nיש משהו שהיית רוצה לשנות?",
+    fields: [
+      { key: "attendance", label: "נוכחות", type: "select", options: ["סדירה", "חלקית", "לא מגיע/ה"], required: true },
+      { key: "motivation", label: "מוטיבציה", type: "select", options: ["גבוהה", "בינונית", "נמוכה"] },
+      { key: "impression", label: "התרשמות כללית", type: "textarea", required: true },
+      { key: "next", label: "יעדים לפעם הבאה", type: "textarea" },
+    ],
+  },
+  evaluation: {
+    title: "שיחת הערכה",
+    body: "",
+    fields: [
+      { key: "progress", label: "התקדמות אישית", type: "textarea", required: true },
+      { key: "occupational", label: "התקדמות תעסוקתית / לימודית", type: "textarea" },
+      { key: "goals", label: "יעדים שיקומיים להמשך", type: "textarea", required: true },
+      { key: "shkediaUpdate", label: "דורש עדכון בשקדיה", type: "checkbox" },
+    ],
+  },
+  hospitalization: {
+    title: "אשפוז",
+    body: "",
+    fields: [
+      { key: "where", label: "איפה", type: "text" },
+      { key: "from", label: "מתאריך", type: "date", required: true },
+      { key: "to", label: "עד תאריך", type: "date" },
+      { key: "contact", label: "איש קשר במחלקה", type: "text" },
+    ],
+  },
+  update: { title: "עדכון כללי", body: "", fields: [] },
+  closure: {
+    title: "דוח סיום התקשרות",
+    body: "",
+    fields: [
+      { key: "process", label: "תהליך השיקום אצלנו", type: "textarea", required: true },
+      { key: "achievements", label: "הישגים", type: "textarea", required: true },
+      { key: "reasons", label: "הסיבות לסיום", type: "textarea", required: true },
+      { key: "recommendations", label: "המלצות להמשך הדרך", type: "textarea", required: true },
+    ],
+  },
+  leave: { title: "דיווח עזיבה", body: "", fields: [] },
+  incident: { title: "אירוע חריג", body: "", fields: [] },
+};
+
+/** דיווח עזיבה — the reason picked from a closed list (free text beside it). */
+const LEAVE_REASONS = [
+  { key: "completed", label: "סיים/ה את התוכנית" },
+  { key: "moved", label: "עבר/ה למסגרת אחרת" },
+  { key: "health", label: "מצב בריאותי" },
+  { key: "noShow", label: "הפסיק/ה להגיע" },
+  { key: "request", label: "לבקשתו/ה" },
+  { key: "eligibility", label: "סיום הזכאות" },
+  { key: "other", label: "אחר" },
+];
+const LEAVE_REASON_KEYS = LEAVE_REASONS.map((r) => r.key);
+
+/* ───────────────────────── אירועים חריגים ───────────────────────── */
+
+/** The Ministry of Health form's classifications (primary → secondary). */
+const INCIDENT_PRIMARY = [
+  { key: "physical", label: "פגיעה פיזית", secondary: ["נפילה", "פציעה בפעילות", "פגיעה עצמית", "אחר"] },
+  { key: "violence", label: "אלימות", secondary: ["אלימות מילולית", "אלימות פיזית", "איום", "פגיעה ברכוש", "אחר"] },
+  { key: "medical", label: "התדרדרות רפואית", secondary: ["התקף", "מצב נפשי חריף", "אובדנות", "אשפוז דחוף", "אחר"] },
+  { key: "other", label: "אחר", secondary: ["היעדרות בלתי מוסברת", "אובדן קשר", "אחר"] },
+];
+const INCIDENT_PRIMARY_KEYS = INCIDENT_PRIMARY.map((p) => p.key);
 
 /** A document's state. uploaded/received/waived all satisfy the checklist. */
 const DOCUMENT_STATUSES = ["missing", "uploaded", "received", "waived", "rejected"];
@@ -107,8 +280,8 @@ const DOCUMENT_OK_STATUSES = ["uploaded", "received", "waived"];
  * The intake record's own state (denormalized by intakeService):
  *   new        — no call yet
  *   scheduled  — the meeting is set ("בהמתנה לאינטייק")
- *   documents  — the meeting was held; the approval and/or documents are missing
- *   complete   — held + approval + all four documents
+ *   documents  — the meeting was held; שקדיה and/or documents are missing (or expired)
+ *   complete   — held + entered in שקדיה + every required document in force
  */
 const INTAKE_STATUSES = ["new", "scheduled", "documents", "complete"];
 const INTAKE_STATUS_LABELS = {
@@ -140,6 +313,8 @@ const INTAKE_SOURCES = ["landing", "staff"];
 const INTAKE_LOG_ACTIONS = [
   "submitted", "scheduled", "rescheduled", "done", "completed",
   "docUploaded", "docReceived", "docWaived", "docRejected", "docReset", "docNote", "note",
+  // 2026-10-07 — the social worker's round
+  "shkedia", "coordinator", "screening", "committee", "link",
 ];
 /** Preferred time of day (landing page, מכללה לכל). */
 const DAY_PARTS = [
@@ -420,11 +595,20 @@ const ERROR_CODES = {
   NO_PROGRAM: "יש לבחור לפחות תוכנית אחת",
   INVALID_PHONE: "מספר הטלפון לא תקין",
   INTAKE_LINK_INVALID: "הקישור אינו תקף",
+  INTAKE_LINK_EXPIRED: "הקישור פג — בקשו מהרכזת קישור חדש",
   INTAKE_NOT_SCHEDULED: "עדיין לא נקבע מועד לאינטייק",
   INTAKE_ALREADY_DONE: "האינטייק כבר בוצע",
   INTAKE_COMPLETE: "הקליטה כבר הושלמה",
-  APPROVAL_DATE_REQUIRED: "לאישור שקדייה חובה לשייך תאריך תוקף",
+  DOCUMENT_DATE_REQUIRED: "למסמך הזה חובה לשייך את תאריך התוקף הנקוב בו",
+  SHKEDIA_DATE_REQUIRED: "לקליטה בשקדיה חובה תאריך",
+  LINK_MINUTES_INVALID: "משך הקישור חייב להיות 10 דקות, חצי שעה, שעה או 24 שעות",
   DOCUMENT_UNKNOWN: "סוג מסמך לא מוכר",
+  // פעילויות ואירועים חריגים
+  ACTIVITY_KIND_UNKNOWN: "סוג פעילות לא מוכר",
+  ACTIVITY_FIELD_REQUIRED: "חסר שדה חובה בפעילות",
+  TEMPLATE_INVALID: "התבנית לא תקינה",
+  INCIDENT_INVALID: "בדיווח אירוע חריג חסרים פרטים: מתי, מי דיווח, סיווג ותיאור",
+  LEAVE_REASON_INVALID: "סיבת העזיבה לא מוכרת",
   DOCUMENT_INVALID: "הקובץ לא נתמך — מותר PDF, תמונה או Word עד 8MB",
   DOCUMENT_LOCKED: "המסמך כבר אושר ע\"י הצוות ואי אפשר להחליף אותו",
   SPAM_REJECTED: "הבקשה נדחתה",
@@ -477,6 +661,16 @@ const DOMAIN_META = {
   intakeSwStatuses: INTAKE_SW_STATUSES.map((k) => ({ key: k, label: INTAKE_SW_STATUS_LABELS[k] })),
   intakeFilledBy: INTAKE_FILLED_BY,
   dayParts: DAY_PARTS,
+  // 2026-10-07 — the social worker's round
+  followUp: FOLLOW_UP,
+  screeningEligibility: SCREENING_ELIGIBILITY,
+  screeningInterests: SCREENING_INTERESTS,
+  uploadLinkMinutes: UPLOAD_LINK_MINUTES,
+  landingLinkHours: LANDING_LINK_HOURS,
+  activityKinds: ACTIVITY_KINDS,
+  activityFieldTypes: ACTIVITY_FIELD_TYPES,
+  leaveReasons: LEAVE_REASONS,
+  incidentPrimary: INCIDENT_PRIMARY,
   attendanceStatuses: ATTENDANCE_STATUSES.map((k) => ({ key: k, label: ATTENDANCE_LABELS[k] })),
   cycleStatuses: CYCLE_STATUSES.map((k) => ({ key: k, label: CYCLE_STATUS_LABELS[k] })),
   enrollmentStatuses: ENROLLMENT_STATUSES.map((k) => ({ key: k, label: ENROLLMENT_STATUS_LABELS[k] })),
@@ -499,7 +693,22 @@ module.exports = {
   INTAKE_DOCUMENTS,
   INTAKE_DOCUMENT_KEYS,
   INTAKE_REQUIRED_DOCUMENTS,
-  INTAKE_APPROVALS,
+  RETIRED_DOCUMENT_KEYS,
+  FOLLOW_UP,
+  SCREENING_ELIGIBILITY,
+  SCREENING_ELIGIBILITY_KEYS,
+  SCREENING_INTERESTS,
+  SCREENING_INTEREST_KEYS,
+  UPLOAD_LINK_MINUTES,
+  LANDING_LINK_HOURS,
+  ACTIVITY_KINDS,
+  ACTIVITY_KIND_KEYS,
+  ACTIVITY_FIELD_TYPES,
+  DEFAULT_ACTIVITY_TEMPLATES,
+  LEAVE_REASONS,
+  LEAVE_REASON_KEYS,
+  INCIDENT_PRIMARY,
+  INCIDENT_PRIMARY_KEYS,
   DOCUMENT_STATUSES,
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_OK_STATUSES,

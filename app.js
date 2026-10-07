@@ -80,6 +80,10 @@ app.use("/api/vouchers", require("./routes/voucherRoutes"));
 // page that feeds them (no login; see controllers/publicController).
 app.use("/api/intakes", require("./routes/intakeRoutes"));
 app.use("/api/public", require("./routes/publicRoutes"));
+// לשונית פעילויות + אירועים חריגים (the social worker's round, 2026-10-07):
+// a person's record with editable templates, and incident reports.
+app.use("/api/activities", require("./routes/activityRoutes"));
+app.use("/api/incidents", require("./routes/incidentRoutes"));
 // הספרייה — books (scanned in, details from booknet / Google Books) and
 // their loans: one copy per book, return days skip Fri/Shabbat.
 app.use("/api/library", require("./routes/libraryRoutes"));

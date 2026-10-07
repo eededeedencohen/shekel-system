@@ -56,11 +56,12 @@ describe("scripts/lib/intakeSeed", () => {
     const rotem = await intakeOf("רותם");
     expect(rotem.status).toBe("documents");
     expect(docStatus(rotem, "waiver")).toBe("received"); // ticked at the meeting
-    expect(docStatus(rotem, "shkedia")).toBe("missing");
+    expect(rotem.shkedia?.enteredAt).toBeFalsy();
     const alon = await intakeOf("אלון");
     expect(alon.status).toBe("documents");
     expect(docStatus(alon, "psychiatric")).toBe("rejected");
-    expect(docStatus(alon, "shkedia")).toBe("received");
+    expect(alon.shkedia?.enteredAt).toBeTruthy(); // the coordinator entered him in שקדיה
+    expect(alon.coordinator?.name).toBe("נעה");
     expect(await stageOf("אלון", "StudentCollege")).toBe("Intake");
 
     // done: culture Placed; college waiting for the start date; college placed with a future start
