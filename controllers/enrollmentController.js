@@ -1,8 +1,8 @@
 /**
- * @file Enrollment controller — membership records (roster / seats / holds)
+ * @file Enrollment controller - membership records (roster / seats / holds)
  * @module controllers/enrollmentController
  *
- * All writes delegate to services/enrollmentService — capacity, world
+ * All writes delegate to services/enrollmentService - capacity, world
  * isolation, slot validation and pipeline auto-advance live there and only
  * there. The unique {cycle,student} index backstops everything.
  */
@@ -13,7 +13,7 @@ const { attachStudentData } = require("../services/profileService");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 
-// pipeline/matching/residence live on the student PROFILE now — populate
+// pipeline/matching/residence live on the student PROFILE now - populate
 // identity, then merge the profile fields in (attachStudentData).
 const STUDENT_POP = { path: "student", select: "firstName lastName avatar birthDate deletedAt" };
 
@@ -29,7 +29,7 @@ exports.getEnrollments = catchAsync(async (req, res) => {
 });
 
 /**
- * POST /api/enrollments — enroll or reserve.
+ * POST /api/enrollments - enroll or reserve.
  * Body: { cycle*, student*, status? ("active"|"reserved", default active),
  *         slotId?, note?, createdBy?, joinedAt? }
  */
@@ -50,10 +50,10 @@ exports.createEnrollment = catchAsync(async (req, res) => {
 });
 
 /**
- * PATCH /api/enrollments/:id — status transition / note / leftAt.
+ * PATCH /api/enrollments/:id - status transition / note / leftAt.
  * Body: { status?, leftAt?, joinedAt?, note?, movedBy? }
  * `status: "active"` + `joinedAt` = the managers' "קביעת תאריך התחלה" on a
- * held seat — the student moves to Placed (enrollmentService).
+ * held seat - the student moves to Placed (enrollmentService).
  */
 exports.patchEnrollment = catchAsync(async (req, res) => {
   const enrollment = await updateStatus({
@@ -70,7 +70,7 @@ exports.patchEnrollment = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: { enrollment: withProfile } });
 });
 
-/** DELETE /api/enrollments/:id — remove a wrong record outright. */
+/** DELETE /api/enrollments/:id - remove a wrong record outright. */
 exports.deleteEnrollment = catchAsync(async (req, res, next) => {
   const enrollment = await Enrollment.findOneAndDelete({ _id: req.params.id, world: req.world });
   if (!enrollment) return next(AppError.of("NOT_FOUND", 404, "שיבוץ"));

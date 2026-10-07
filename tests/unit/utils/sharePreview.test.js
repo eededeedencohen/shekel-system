@@ -1,5 +1,5 @@
 /**
- * sharePreview — the per-URL Open Graph head WhatsApp reads: which section
+ * sharePreview - the per-URL Open Graph head WhatsApp reads: which section
  * a path belongs to, how the tags render, and how they land in index.html.
  */
 
@@ -22,7 +22,7 @@ describe("previewFor", () => {
     expect(titles.size).toBe(Object.keys(share.STATIC).length);
   });
 
-  it("carries the record to look up — and never a person", () => {
+  it("carries the record to look up - and never a person", () => {
     expect(share.previewFor("/culture/events/6aa128921cc122dde93a3577").params).toEqual({ event: "6aa128921cc122dde93a3577" });
     expect(share.previewFor("/courses/6aa127f51cc122dde93a2239").params).toEqual({ cycle: "6aa127f51cc122dde93a2239" });
     expect(share.previewFor("/hostels/%D7%90%D7%95%D7%A4%D7%A7").params).toEqual({ hostel: "אופק" });

@@ -1,9 +1,9 @@
 /**
- * @file StudentCulture profile — סטודנט/ית תרבות לכל
+ * @file StudentCulture profile - סטודנט/ית תרבות לכל
  * @module models/profiles/StudentCulture
  *
  * Same student skeleton (own pipeline!), its own fields. Kept minimal
- * until the culture department's flows are specified — extend freely,
+ * until the culture department's flows are specified - extend freely,
  * nothing else in the system names this kind.
  */
 
@@ -16,7 +16,7 @@ const schema = new mongoose.Schema({
   ...studentCorePaths,
   /** Subjects/activities of interest for culture outings. */
   interests: [{ type: mongoose.Schema.Types.ObjectId, ref: "Subject" }],
-  /** The kinds of outings they like (landing page) — event category keys. */
+  /** The kinds of outings they like (landing page) - event category keys. */
   preferredCategories: [{ type: String, enum: EVENT_CATEGORY_KEYS }],
   emergencyContact: { type: String, trim: true },
   emergencyPhone: { type: String, trim: true },
@@ -28,7 +28,7 @@ const schema = new mongoose.Schema({
   },
   /** Department-specific example field (billing handled per enrollment). */
   billingNotes: { type: String, trim: true },
-  /** Raw senzey import text — display-only, never matched on (scripts/lib/senzeyCulture.js). */
+  /** Raw senzey import text - display-only, never matched on (scripts/lib/senzeyCulture.js). */
   import: {
     statusLabel: { type: String, trim: true },
     clientType: { type: String, trim: true },

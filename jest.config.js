@@ -10,9 +10,9 @@ module.exports = {
   testEnvironment: "node",
   testMatch: ["**/tests/**/*.test.js"],
   testPathIgnorePatterns: ["/node_modules/"],
-  // jest.env.js runs *before* Jest globals are loaded — for env-var setup.
+  // jest.env.js runs *before* Jest globals are loaded - for env-var setup.
   setupFiles: ["<rootDir>/tests/jest.env.js"],
-  // setup.js runs *after* Jest globals are loaded — uses beforeAll/afterEach.
+  // setup.js runs *after* Jest globals are loaded - uses beforeAll/afterEach.
   setupFilesAfterEnv: ["<rootDir>/tests/setup.js"],
   // Generous timeout: the in-memory MongoDB binary spin-up on first run
   // (and on slower laptops) can take a few seconds.

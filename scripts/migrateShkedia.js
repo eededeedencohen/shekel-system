@@ -1,5 +1,5 @@
 /**
- * @file migrateShkedia — "אישור שקדייה" the document → "נקלט/ה בשקדיה" the action
+ * @file migrateShkedia - "אישור שקדייה" the document → "נקלט/ה בשקדיה" the action
  * @module scripts/migrateShkedia
  *
  * The social worker (2026-10-07): there is no approval that arrives from
@@ -7,7 +7,7 @@
  * record that still carries the old `shkedia` document row is rewritten:
  *   received (with or without a date)  → intake.shkedia = { enteredAt: receivedAt, by: receivedBy }
  *   waived                             → the same (the office said it was handled)
- *   uploaded / missing / rejected      → nothing — the coordinator will mark it
+ *   uploaded / missing / rejected      → nothing - the coordinator will mark it
  * The row itself is dropped (the model prunes retired keys on save), the
  * stored file of an uploaded approval is deleted, and the status is
  * recomputed. Idempotent: a record without the row is left alone.

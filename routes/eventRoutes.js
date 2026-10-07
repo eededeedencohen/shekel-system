@@ -1,5 +1,5 @@
 /**
- * @file Event routes — /api/events (תרבות לכל)
+ * @file Event routes - /api/events (תרבות לכל)
  * @module routes/eventRoutes
  * @see controllers/eventController
  */

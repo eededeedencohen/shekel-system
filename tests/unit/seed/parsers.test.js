@@ -1,5 +1,5 @@
 /**
- * Unit tests for utils/parsers — the pure functions that normalise raw
+ * Unit tests for utils/parsers - the pure functions that normalise raw
  * cell strings during the seed import. No DB or filesystem required.
  */
 

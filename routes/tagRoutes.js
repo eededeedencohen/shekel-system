@@ -1,5 +1,5 @@
 /**
- * @file Tag routes — /api/tags: the catalog of belongings of a world
+ * @file Tag routes - /api/tags: the catalog of belongings of a world
  * @module routes/tagRoutes
  */
 
@@ -20,7 +20,7 @@ router.get(
   })
 );
 
-/** POST /api/tags/people/:id — { key*, by, note } → the person's tags now */
+/** POST /api/tags/people/:id - { key*, by, note } → the person's tags now */
 router.post(
   "/people/:id",
   catchAsync(async (req, res) => {
@@ -30,7 +30,7 @@ router.post(
   })
 );
 
-/** DELETE /api/tags/people/:id/:key — { by, note } → the person's tags now */
+/** DELETE /api/tags/people/:id/:key - { by, note } → the person's tags now */
 router.delete(
   "/people/:id/:key",
   catchAsync(async (req, res) => {

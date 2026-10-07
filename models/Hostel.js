@@ -1,11 +1,11 @@
 /**
- * @file Hostel model — the hostels as a managed entity
+ * @file Hostel model - the hostels as a managed entity
  * @module models/Hostel
  *
  * Replaces the free-string hostel names (+ the import-time-only HOSTELS
  * validation). Referenced by cycles.hostel (track membership),
  * cycles.venue.hostel (physical meeting place) and people.residence.hostel
- * (where a student lives). Adding a hostel = inserting a document — no
+ * (where a student lives). Adding a hostel = inserting a document - no
  * migration, no code change. domain.HOSTELS is now only the seed list.
  */
 

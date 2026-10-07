@@ -1,10 +1,10 @@
 /**
- * @file Lesson controller — targeted lesson reads + attendance writes
+ * @file Lesson controller - targeted lesson reads + attendance writes
  * @module controllers/lessonController
  *
  * No more download-everything: every list read REQUIRES a filter (cycle /
  * student / date / from-to range). Live lessons only by default; the
- * archive (?source=archive|all) is read-only — enforced both here for a
+ * archive (?source=archive|all) is read-only - enforced both here for a
  * clean error AND at the schema layer, where every update/delete path is
  * scoped away from archive docs.
  */
@@ -27,7 +27,7 @@ function toUtcMidnight(dateStr) {
 }
 
 /**
- * GET /api/lessons — filters (at least ONE required):
+ * GET /api/lessons - filters (at least ONE required):
  *   ?cycle=<id>            lessons of one cycle
  *   ?student=<personId>    the student's attendance history (indexed,
  *                          paginated: &limit=&skip=, newest first)
@@ -74,7 +74,7 @@ exports.getLessonById = catchAsync(async (req, res, next) => {
 });
 
 /**
- * PUT /api/lessons/attendance — upsert the full grid for one (cycle, date).
+ * PUT /api/lessons/attendance - upsert the full grid for one (cycle, date).
  * Body: { cycle*, date* "YYYY-MM-DD", records*: [{student, status, note?}],
  *         teacher?, room? }
  */
@@ -104,8 +104,8 @@ exports.upsertAttendance = catchAsync(async (req, res, next) => {
 });
 
 /**
- * PATCH /api/lessons/:id/attendance/:studentId — single-cell edit.
- * Body: { status?, note? } — status required when creating a new record.
+ * PATCH /api/lessons/:id/attendance/:studentId - single-cell edit.
+ * Body: { status?, note? } - status required when creating a new record.
  */
 exports.patchAttendanceRecord = catchAsync(async (req, res, next) => {
   const lesson = await Lesson.findOne({ _id: req.params.id, world: req.world });
@@ -126,7 +126,7 @@ exports.patchAttendanceRecord = catchAsync(async (req, res, next) => {
   res.status(200).json({ status: "success", data: { lesson } });
 });
 
-/** DELETE /api/lessons/:id/attendance/:studentId — un-report one student. */
+/** DELETE /api/lessons/:id/attendance/:studentId - un-report one student. */
 exports.deleteAttendanceRecord = catchAsync(async (req, res, next) => {
   const lesson = await Lesson.findOne({ _id: req.params.id, world: req.world });
   if (!lesson) return next(AppError.of("NOT_FOUND", 404, "שיעור"));
@@ -137,7 +137,7 @@ exports.deleteAttendanceRecord = catchAsync(async (req, res, next) => {
   res.status(200).json({ status: "success", data: { lesson } });
 });
 
-/** DELETE /api/lessons/:id — live lessons only (archive is immutable). */
+/** DELETE /api/lessons/:id - live lessons only (archive is immutable). */
 exports.deleteLesson = catchAsync(async (req, res, next) => {
   const existing = await Lesson.findOne({ _id: req.params.id, world: req.world });
   if (!existing) return next(AppError.of("NOT_FOUND", 404, "שיעור"));

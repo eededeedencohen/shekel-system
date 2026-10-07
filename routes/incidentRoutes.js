@@ -1,5 +1,5 @@
 /**
- * @file Incident routes — דיווח אירוע חריג
+ * @file Incident routes - דיווח אירוע חריג
  * @module routes/incidentRoutes
  * @see controllers/incidentController
  */

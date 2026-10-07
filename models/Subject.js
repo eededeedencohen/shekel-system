@@ -1,11 +1,11 @@
 /**
- * @file Subject model — the canonical course taxonomy
+ * @file Subject model - the canonical course taxonomy
  * @module models/Subject
  *
  * Today's BaseCourse, renamed and promoted: the ~17 clean subjects that
  * interests, teacher expertise, desk grouping and every cycle point at.
  * Renaming a subject renames it everywhere atomically (everything refs the
- * _id). Retire via active:false — deletion is refused while referenced.
+ * _id). Retire via active:false - deletion is refused while referenced.
  *
  * Demo worlds hold their own copies/clones ({world,name} unique), so world
  * isolation has no special cases.
@@ -29,7 +29,7 @@ const subjectSchema = new mongoose.Schema(
       default: "other",
     },
     /**
-     * Raw senzey course-name strings resolved to this subject — makes
+     * Raw senzey course-name strings resolved to this subject - makes
      * re-import deterministic (resolve by data, not by regex heuristics).
      */
     importAliases: [{ type: String, trim: true }],

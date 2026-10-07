@@ -1,5 +1,5 @@
 /**
- * Cycle model — date ordering, the venue⊕campus-room exclusivity that keeps
+ * Cycle model - date ordering, the venue⊕campus-room exclusivity that keeps
  * the derived `site` unambiguous, and the virtuals.
  */
 
@@ -32,7 +32,7 @@ describe("site derivation stays unambiguous", () => {
     expect(unknown.site).toBeNull();
   });
 
-  it("REJECTS a campus room alongside a venue — the two can never contradict", async () => {
+  it("REJECTS a campus room alongside a venue - the two can never contradict", async () => {
     const room = await makeRoom();
     const hostel = await makeHostel();
     await expect(

@@ -1,5 +1,5 @@
 /**
- * @file Teacher profile — מורה
+ * @file Teacher profile - מורה
  * @module models/profiles/Teacher
  */
 

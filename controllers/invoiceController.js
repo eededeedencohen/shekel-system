@@ -1,5 +1,5 @@
 /**
- * @file Invoice controller — /api/invoices (חשבוניות של מורים)
+ * @file Invoice controller - /api/invoices (חשבוניות של מורים)
  * @module controllers/invoiceController
  *
  *   GET    /lessons?teacher=      the lessons a teacher may bill (+ which are billed)

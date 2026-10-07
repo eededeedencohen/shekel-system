@@ -1,5 +1,5 @@
 /**
- * לשונית פעילויות — a person's record with editable templates, and the
+ * לשונית פעילויות - a person's record with editable templates, and the
  * leave report (דיווח עזיבה) that closes a program and writes to it.
  */
 

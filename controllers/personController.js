@@ -1,5 +1,5 @@
 /**
- * @file Person controller — identity CRUD (the profiles live elsewhere)
+ * @file Person controller - identity CRUD (the profiles live elsewhere)
  * @module controllers/personController
  *
  * `:id` is the ONE person id (people._id). After the identity+profiles
@@ -11,7 +11,7 @@
  *  - responses are flattened (person.pipeline / person.matching /
  *    person.subjects / person.role come from the primary profile) and
  *    carry `X-Deprecated: role-api` when the legacy shape was requested;
- *  - POST with `{ role, ...flat }` still works — it builds a profile.
+ *  - POST with `{ role, ...flat }` still works - it builds a profile.
  * Remove the compat paths at the end of phase 4 (people-remodel-plan.html).
  */
 
@@ -45,7 +45,7 @@ function pickIdentity(body) {
 
 /**
  * Batch-load profiles for a list of people: personId → [profiles]. ALL of
- * them, active and closed — flattenPerson splits the two, and the closed
+ * them, active and closed - flattenPerson splits the two, and the closed
  * ones are what makes "עבר/ה מתוכנית" visible in lists.
  */
 async function profilesByPerson(people) {
@@ -88,7 +88,7 @@ exports.getPeople = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", results: flat.length, data: { people: flat } });
 });
 
-/** GET /api/people/:id — identity + all its profiles (flattened compat). */
+/** GET /api/people/:id - identity + all its profiles (flattened compat). */
 exports.getPersonById = catchAsync(async (req, res, next) => {
   const person = await Person.findOne({ _id: req.params.id, world: req.world });
   if (!person) return next(AppError.of("NOT_FOUND", 404, "אדם"));
@@ -103,7 +103,7 @@ exports.getPersonById = catchAsync(async (req, res, next) => {
 });
 
 /**
- * POST /api/people — identity, plus optionally a first profile:
+ * POST /api/people - identity, plus optionally a first profile:
  *   { firstName*, ..., profile?: { kind, ...fields } }
  * COMPAT: { role, ...flat } builds the matching profile from the flat body.
  */
@@ -126,7 +126,7 @@ exports.createPerson = catchAsync(async (req, res, next) => {
 });
 
 /**
- * PUT /api/people/:id — identity merge (never world/auth/deletedAt).
+ * PUT /api/people/:id - identity merge (never world/auth/deletedAt).
  * COMPAT: leftover flat profile fields are routed to the person's primary
  * profile when exactly one active profile exists.
  */
@@ -146,7 +146,7 @@ exports.updatePerson = catchAsync(async (req, res, next) => {
   res.status(200).json({ status: "success", data: { person: await attachPersonTags(req.world, flattenPerson(person, profiles)) } });
 });
 
-/** DELETE /api/people/:id — soft delete, always (profiles stay, inert). */
+/** DELETE /api/people/:id - soft delete, always (profiles stay, inert). */
 exports.deletePerson = catchAsync(async (req, res, next) => {
   const person = await Person.findOne({ _id: req.params.id, world: req.world });
   if (!person) return next(AppError.of("NOT_FOUND", 404, "אדם"));
@@ -156,8 +156,8 @@ exports.deletePerson = catchAsync(async (req, res, next) => {
 });
 
 /**
- * PATCH /api/people/:id/availability — replace the weekly availability.
- * (Teacher subjects moved to PATCH /api/profiles/:id — compat keeps
+ * PATCH /api/people/:id/availability - replace the weekly availability.
+ * (Teacher subjects moved to PATCH /api/profiles/:id - compat keeps
  * accepting them here while exactly one Teacher profile exists.)
  */
 exports.updateAvailability = catchAsync(async (req, res, next) => {
@@ -178,7 +178,7 @@ exports.updateAvailability = catchAsync(async (req, res, next) => {
   res.status(200).json({ status: "success", data: { person: await attachPersonTags(req.world, flattenPerson(person, profiles)) } });
 });
 
-/** GET /api/people/:id/enrollments — the person's memberships (as student). */
+/** GET /api/people/:id/enrollments - the person's memberships (as student). */
 exports.getPersonEnrollments = catchAsync(async (req, res) => {
   const enrollments = await Enrollment.find({ student: req.params.id, world: req.world })
     .populate({

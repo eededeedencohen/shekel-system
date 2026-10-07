@@ -1,11 +1,11 @@
 /**
- * @file Person routes — identity + the person-addressed profile paths
+ * @file Person routes - identity + the person-addressed profile paths
  * @module routes/personRoutes
  * @see controllers/personController, controllers/profileController,
  *      controllers/intakeController
  *
  * /:id/stage and /:id/matching are COMPAT paths (person-addressed) kept for
- * the deprecation window — the canonical ones live under /api/profiles/:id.
+ * the deprecation window - the canonical ones live under /api/profiles/:id.
  */
 
 const express = require("express");
@@ -40,7 +40,7 @@ router.get("/:id/enrollments", getPersonEnrollments);
 router.post("/:id/transfer", transferProgram);
 router.get("/:id/programs", getProgramTimeline);
 
-// COMPAT — person-addressed pipeline/matching (canonical: /api/profiles/:id)
+// COMPAT - person-addressed pipeline/matching (canonical: /api/profiles/:id)
 router.post("/:id/stage", personMoveStage);
 router.patch("/:id/matching", personUpdateMatching);
 

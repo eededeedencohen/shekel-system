@@ -1,5 +1,5 @@
 /**
- * @file SocialWorker profile — עובד/ת סוציאלי/ת (ייטב)
+ * @file SocialWorker profile - עובד/ת סוציאלי/ת (ייטב)
  * @module models/profiles/SocialWorker
  *
  * The role that runs the intake: calls every new lead, sets the intake
@@ -13,7 +13,7 @@ const mongoose = require("mongoose");
 const { Profile } = require("../Profile");
 
 const schema = new mongoose.Schema({
-  /** Free-text role title — "עו\"ס", "עו\"ס קליטה". */
+  /** Free-text role title - "עו\"ס", "עו\"ס קליטה". */
   title: { type: String, trim: true },
   /** Which programs' leads land on this worker's board (empty = both). */
   programs: [{ type: String, trim: true }],

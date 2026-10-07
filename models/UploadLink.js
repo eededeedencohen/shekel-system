@@ -1,5 +1,5 @@
 /**
- * @file UploadLink model — a temporary link for uploading documents
+ * @file UploadLink model - a temporary link for uploading documents
  * @module models/UploadLink
  *
  * The social worker (2026-10-07): the candidate never signs in; the

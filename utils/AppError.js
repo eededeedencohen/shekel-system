@@ -1,5 +1,5 @@
 /**
- * @file AppError — typed operational error
+ * @file AppError - typed operational error
  * @module utils/AppError
  *
  * Distinguishes *operational* errors (predictable failures we throw on

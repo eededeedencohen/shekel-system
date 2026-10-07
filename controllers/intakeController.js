@@ -1,8 +1,8 @@
 /**
- * @file Intake controller — a lead enters a department's pipeline
+ * @file Intake controller - a lead enters a department's pipeline
  * @module controllers/intakeController
  *
- * POST /api/people/intake — find-or-create the PERSON (by phone/email
+ * POST /api/people/intake - find-or-create the PERSON (by phone/email
  * within the world), then create the student profile for the requested
  * department at stage "Interested". This kills the old duplicate-person
  * bug: a lead who already exists (came back, or through another

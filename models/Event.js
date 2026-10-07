@@ -1,11 +1,11 @@
 /**
- * @file Event model — a תרבות לכל outing/show/workshop (the ERD's "אירוע")
+ * @file Event model - a תרבות לכל outing/show/workshop (the ERD's "אירוע")
  * @module models/Event
  *
  * Lean by design, like Cycle: WHO comes lives in `eventRegistrations`
  * (seats, waitlist, attendance). What lives here is the event itself plus
- * the two staff relationships the ERD draws as diamonds — "יצר" and
- * "פירסם" — embedded as {by, at} pairs because each is 1:1 per event.
+ * the two staff relationships the ERD draws as diamonds - "יצר" and
+ * "פירסם" - embedded as {by, at} pairs because each is 1:1 per event.
  *
  * `settings` are the ERD's הגדרות composite (gender scope, capacity, age
  * range) and are enforced by cultureService at registration time.
@@ -55,13 +55,13 @@ const eventSchema = new mongoose.Schema(
     /** Price per participant (₪). Almost always 0 in practice (senzey:
      *  "מחיר קבוע 0.00" / "לא לחיוב"); the odd show or trip is paid. */
     price: { type: Number, min: [0, "מחיר לא יכול להיות שלילי"], default: 0 },
-    /** יצר — always present. */
+    /** יצר - always present. */
     created: { type: stampSchema, required: true },
-    /** פירסם — set when the event goes live. */
+    /** פירסם - set when the event goes live. */
     published: { type: stampSchema, default: null },
     cancelledAt: { type: Date },
     notes: { type: String, trim: true },
-    /** Senzey quarantine — every outing is a senzey "course"; the id is the
+    /** Senzey quarantine - every outing is a senzey "course"; the id is the
      *  idempotent re-import key, the name is the raw
      *  "סדנת אפיה - פנאי - יד חרוצים 9 - 30.8 - א` - 17:00" string. */
     import: {

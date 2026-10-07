@@ -1,8 +1,8 @@
 /**
- * @file withTxn — run a unit of work inside a transaction when possible
+ * @file withTxn - run a unit of work inside a transaction when possible
  * @module utils/withTxn
  *
- * Atlas (a replica set — the real deployment) gets a real transaction; a
+ * Atlas (a replica set - the real deployment) gets a real transaction; a
  * standalone mongod (dev fallback, the in-memory test server) runs the same
  * function plainly with `session = null`. Every caller keeps a unique index
  * as the correctness backstop, so the fallback never lies.

@@ -1,5 +1,5 @@
 /**
- * @file Incident service — דיווח אירוע חריג
+ * @file Incident service - דיווח אירוע חריג
  * @module services/incidentService
  *
  * The Ministry of Health procedure the social worker described

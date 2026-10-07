@@ -1,5 +1,5 @@
 /**
- * Enrollment API — the single membership write path: capacity enforcement,
+ * Enrollment API - the single membership write path: capacity enforcement,
  * the unique no-double-enroll invariant, reservation fulfillment as a
  * status flip, world isolation, and the pipeline auto-advance side-effect.
  */
@@ -53,7 +53,7 @@ describe("POST /api/enrollments", () => {
       .send({ cycle: cycle._id, student: s._id, status: "reserved" });
     const res = await request(app)
       .post("/api/enrollments")
-      .send({ cycle: cycle._id, student: s._id }); // activate — full cycle, but the seat is theirs
+      .send({ cycle: cycle._id, student: s._id }); // activate - full cycle, but the seat is theirs
     expect(res.status).toBe(201);
     expect(res.body.data.enrollment.status).toBe("active");
     expect(await Enrollment.countDocuments({ cycle: cycle._id })).toBe(1);
@@ -71,7 +71,7 @@ describe("POST /api/enrollments", () => {
     expect(hist[hist.length - 1].note).toMatch(/ציור/);
   });
 
-  it("a seat for a student AT Intake changes nothing — the file decides", async () => {
+  it("a seat for a student AT Intake changes nothing - the file decides", async () => {
     const s = await makeStudent();
     await s.moveToStage("Intake", "בדיקה");
     const cycle = await makeCycle();

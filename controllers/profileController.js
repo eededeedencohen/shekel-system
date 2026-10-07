@@ -1,10 +1,10 @@
 /**
- * @file Profile controller — the person's roles, one document per kind
+ * @file Profile controller - the person's roles, one document per kind
  * @module controllers/profileController
  *
  * Generic by construction: kind → model comes from the registry
  * (models/profiles), and each profile schema IS its own field whitelist
- * (strict mode drops anything foreign) — adding a user type touches
+ * (strict mode drops anything foreign) - adding a user type touches
  * nothing here. Guarded paths (person/world/kind/pipeline/stageHistory)
  * are stripped centrally in profileService.
  */
@@ -33,7 +33,7 @@ exports.getPersonProfiles = catchAsync(async (req, res, next) => {
   res.status(200).json({ status: "success", results: profiles.length, data: { profiles } });
 });
 
-/** POST /api/people/:id/profiles — body { kind*, ...kind fields }. */
+/** POST /api/people/:id/profiles - body { kind*, ...kind fields }. */
 exports.createPersonProfile = catchAsync(async (req, res, next) => {
   const person = await Person.findOne({ _id: req.params.id, world: req.world });
   if (!person) return next(AppError.of("NOT_FOUND", 404, "אדם"));
@@ -48,7 +48,7 @@ exports.createPersonProfile = catchAsync(async (req, res, next) => {
   res.status(201).json({ status: "success", data: { profile } });
 });
 
-/** GET /api/profiles?kind=&active= — list across people (e.g. all hostel managers). */
+/** GET /api/profiles?kind=&active= - list across people (e.g. all hostel managers). */
 exports.getProfiles = catchAsync(async (req, res) => {
   const filter = { world: req.world };
   filter.active = req.query.active === "false" ? false : true;
@@ -69,7 +69,7 @@ exports.getProfileById = catchAsync(async (req, res, next) => {
 });
 
 /**
- * PATCH /api/profiles/:id — merge kind fields (schema = the whitelist).
+ * PATCH /api/profiles/:id - merge kind fields (schema = the whitelist).
  * `active` flips go through programService so the lifecycle log stays
  * complete (closed / reopened, with `by` + `note` when given).
  */
@@ -89,7 +89,7 @@ exports.updateProfile = catchAsync(async (req, res, next) => {
   res.status(200).json({ status: "success", data: { profile } });
 });
 
-/** DELETE /api/profiles/:id?by=&note= — close the role (logged); the person stays. */
+/** DELETE /api/profiles/:id?by=&note= - close the role (logged); the person stays. */
 exports.deactivateProfile = catchAsync(async (req, res, next) => {
   const profile = await Profile.findOne({ _id: req.params.id, world: req.world });
   if (!profile) return next(AppError.of("NOT_FOUND", 404, "פרופיל"));
@@ -100,8 +100,8 @@ exports.deactivateProfile = catchAsync(async (req, res, next) => {
 });
 
 /**
- * COMPAT (deprecation window): the old person-addressed endpoints —
- * POST /api/people/:id/stage and PATCH /api/people/:id/matching — resolve
+ * COMPAT (deprecation window): the old person-addressed endpoints -
+ * POST /api/people/:id/stage and PATCH /api/people/:id/matching - resolve
  * the person's student profile, apply `fn` to it, and answer in the old
  * shape ({ person } flattened) so the current client keeps working.
  */
@@ -122,7 +122,7 @@ const asStudentProfile = (fn) =>
     res.status(200).json({ status: "success", data: { person: flattenPerson(person, profiles) } });
   });
 
-/** POST /api/profiles/:id/stage — body { stage*, movedBy?, note? } (students). */
+/** POST /api/profiles/:id/stage - body { stage*, movedBy?, note? } (students). */
 exports.moveStage = catchAsync(async (req, res, next) => {
   const profile = await Profile.findOne({ _id: req.params.id, world: req.world });
   if (!profile) return next(AppError.of("NOT_FOUND", 404, "פרופיל"));
@@ -139,7 +139,7 @@ exports.moveStage = catchAsync(async (req, res, next) => {
 });
 
 /**
- * PATCH /api/profiles/:id/matching — merge the student matching profile.
+ * PATCH /api/profiles/:id/matching - merge the student matching profile.
  * Body: subset of { functioningLevel, groupPreference, interests };
  * null clears a key.
  */

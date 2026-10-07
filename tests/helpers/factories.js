@@ -1,5 +1,5 @@
 /**
- * @file Test data factories — 2026 remodel shapes
+ * @file Test data factories - 2026 remodel shapes
  * @module tests/helpers/factories
  *
  * Each factory returns a saved document. Pass `overrides` to customise:
@@ -38,12 +38,12 @@ const makeStudent = async (overrides = {}) => {
     { trusted: true }
   );
   person.profile = profile;
-  // convenience delegation — the pipeline lives on the profile now
+  // convenience delegation - the pipeline lives on the profile now
   person.moveToStage = (...args) => profile.moveToStage(...args);
   return person;
 };
 
-/** Person + a Teacher profile — same contract as makeStudent. */
+/** Person + a Teacher profile - same contract as makeStudent. */
 const makeTeacher = async (overrides = {}) => {
   const { person, profile } = await createPersonWithProfile(
     "Teacher",
@@ -179,7 +179,7 @@ const makeVoucher = (overrides = {}) =>
 
 /* ───────────────────────── הספרייה ───────────────────────── */
 
-/** A shelf book (no loan) — barcode unique per call. */
+/** A shelf book (no loan) - barcode unique per call. */
 const makeBook = (overrides = {}) =>
   Book.create({
     barcode: String(36200000000 + (counter++)),

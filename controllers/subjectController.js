@@ -1,5 +1,5 @@
 /**
- * @file Subject controller — the managed course taxonomy
+ * @file Subject controller - the managed course taxonomy
  * @module controllers/subjectController
  */
 
@@ -32,7 +32,7 @@ exports.updateSubject = catchAsync(async (req, res, next) => {
   res.status(200).json({ status: "success", data: { subject } });
 });
 
-/** Deletion refused while referenced — retire with active:false instead. */
+/** Deletion refused while referenced - retire with active:false instead. */
 exports.deleteSubject = catchAsync(async (req, res, next) => {
   const subject = await Subject.findOne({ _id: req.params.id, world: req.world });
   if (!subject) return next(AppError.of("NOT_FOUND", 404, "מקצוע"));

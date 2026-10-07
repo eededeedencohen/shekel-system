@@ -1,9 +1,9 @@
 /**
- * @file Shared student-profile core — pipeline + stage history + guards
+ * @file Shared student-profile core - pipeline + stage history + guards
  * @module models/profiles/studentCore
  *
  * Both student kinds (StudentCollege, StudentCulture) carry an intake
- * pipeline — and because the pipeline now lives on the PROFILE, each
+ * pipeline - and because the pipeline now lives on the PROFILE, each
  * department runs its own: a person can be Placed in the college and
  * Interested in culture at the same time, each with its own history.
  *
@@ -16,9 +16,9 @@
 
 const { PIPELINE_STAGE_KEYS } = require("../../utils/domain");
 
-/** Paths every student profile shares — spread into each student schema. */
+/** Paths every student profile shares - spread into each student schema. */
 const studentCorePaths = {
-  /** Denormalized tail of stageHistory — kanban columns come from here. */
+  /** Denormalized tail of stageHistory - kanban columns come from here. */
   pipeline: {
     stage: {
       type: String,
@@ -45,7 +45,7 @@ function applyStudentCore(schema) {
       const tail = this.stageHistory[this.stageHistory.length - 1];
       if ((this.pipeline?.stage || null) !== (tail?.stage || null)) {
         return next(
-          new Error("pipeline.stage חייב להשתוות לשלב האחרון ב-stageHistory — השתמשו ב-moveToStage()")
+          new Error("pipeline.stage חייב להשתוות לשלב האחרון ב-stageHistory - השתמשו ב-moveToStage()")
         );
       }
     }
@@ -75,7 +75,7 @@ function applyStudentCore(schema) {
 /**
  * Close the query-update bypass on the BASE model (covers every kind):
  * document saves are guarded per-schema above; these block
- * updateOne/findOneAndUpdate — the only legal writer is moveToStage().
+ * updateOne/findOneAndUpdate - the only legal writer is moveToStage().
  */
 function blockPipelineQueryWrites(next) {
   const update = this.getUpdate() || {};

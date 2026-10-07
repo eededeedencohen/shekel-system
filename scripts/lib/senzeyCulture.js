@@ -1,34 +1,34 @@
 /**
- * @file senzeyCulture — import the REAL תרבות לכל history (תשפ"ו) from the
+ * @file senzeyCulture - import the REAL תרבות לכל history (תשפ"ו) from the
  *       senzey exports into a world
  * @module scripts/lib/senzeyCulture
  *
  * Sources (repo root, all committed):
- *   · shekel_dashboard.html — the 26.08.2026 export embedded as `PAYLOAD`
+ *   · shekel_dashboard.html - the 26.08.2026 export embedded as `PAYLOAD`
  *     ({rows, meta}): one row per registration, `meta` per senzey "course"
- *     with the parsed title / venue / date / start / end. The newer list —
+ *     with the parsed title / venue / date / start / end. The newer list -
  *     canonical.
- *   · shekel_courses_2026-08-06_14-11.json — the 06.08.2026 export: the same
+ *   · shekel_courses_2026-08-06_14-11.json - the 06.08.2026 export: the same
  *     rows with the registration SOURCE ("דף נחיתה" = the participant
  *     registered by themself on the website) and, by diffing against the
  *     newer export, the registrations that were CANCELLED in between.
- *   · drafts/clients/clients.json + Data/students/students.json — the people
+ *   · drafts/clients/clients.json + Data/students/students.json - the people
  *     master data (senzey client id, phone, email, birthday, gender,
  *     emergency contact, case coordinator), joined by ID number. The ID
  *     number itself is never stored.
  *
  * Only the category "תרבות לכל (יציאות בקהילה)" is read (plus the culture
- * interest list "מתעניין/ת בתרבות לכל") — nothing of מכללה לכל is touched or
+ * interest list "מתעניין/ת בתרבות לכל") - nothing of מכללה לכל is touched or
  * pulled in (Eden: "לא לדחוף מכללה לכל לדברים של תרבות לכל"). College
  * students who registered INTEREST in culture are skipped; the handful who
  * actually took part in outings as participants get a culture profile too
- * (the ERD's rare "both programs" case) — listed in the report.
+ * (the ERD's rare "both programs" case) - listed in the report.
  *
  * What it builds, through the real services so every invariant holds:
  *   · staff (ManagerCulture): שירן דרעי (the coordinator) + גפן בן דור
  *   · members: a StudentCulture profile (pipeline Placed, dated from the
  *     yearly umbrella registration "תרבות לכל (תשפו)"), people created or
- *     matched (senzey id → exact name) — guests get a person, no profile
+ *     matched (senzey id → exact name) - guests get a person, no profile
  *   · one Event per dated outing (category from the title, see
  *     CATEGORY_RULES; venue; start/end; women-only where the title says so;
  *     status done/published by date) keyed by `import.senzeyCourseId`
@@ -39,13 +39,13 @@
  *
  * `people: "real"` creates the actual humans (the real world); `people:
  * "fake"` (the test world) keeps the test world fake: a gender-matched
- * PSEUDONYM + "טסט" (no real name at all — senzey writes some people
+ * PSEUDONYM + "טסט" (no real name at all - senzey writes some people
  * last-first, so even a first token would leak surnames), a hashed anchor
- * instead of the senzey id, no contact details — the events, counts and
+ * instead of the senzey id, no contact details - the events, counts and
  * patterns are the real ones.
  *
  * Idempotent: every entity has an anchor (course id, person anchor,
- * {event,student}) — a second run reports and changes nothing.
+ * {event,student}) - a second run reports and changes nothing.
  */
 
 const fs = require("fs");
@@ -68,9 +68,9 @@ const FILES = {
 };
 
 const CULTURE_CATEGORY = "תרבות לכל (יציאות בקהילה)";
-/** "תרבות לכל (תשפו)" — the yearly membership, not an outing. */
+/** "תרבות לכל (תשפו)" - the yearly membership, not an outing. */
 const UMBRELLA_ID = "1231";
-/** "מתעניין/ת בתרבות לכל" — the department's interest list for the program. */
+/** "מתעניין/ת בתרבות לכל" - the department's interest list for the program. */
 const INTEREST_ID = "707";
 const GUEST = "אורח/ת";
 const LANDING = /דף נחיתה/;
@@ -124,18 +124,18 @@ function categoryOfTitle(title) {
 /** Display names: the coordinator's typos and bare performer names, spelled out. */
 const TITLE_FIXES = {
   "בוצר נשים": "בוקר נשים",
-  "נקטורנו": "נוקטורנו — מופע מוזיקלי",
+  "נקטורנו": "נוקטורנו - מופע מוזיקלי",
   "סדנת סטילינג עם אפרת": "סדנת סטיילינג עם אפרת",
-  "עופר שכטר": "הופעה — עופר שכטר",
-  "גיא הוכמן": "סטנדאפ — גיא הוכמן",
-  '"שלומי קוריאט"': "סטנדאפ — שלומי קוריאט",
-  'הצגה" הזוג המוזר"': 'הצגה — "הזוג המוזר"',
-  'הצגה - " לנקות את הראש"': 'הצגה — "לנקות את הראש"',
+  "עופר שכטר": "הופעה - עופר שכטר",
+  "גיא הוכמן": "סטנדאפ - גיא הוכמן",
+  '"שלומי קוריאט"': "סטנדאפ - שלומי קוריאט",
+  'הצגה" הזוג המוזר"': 'הצגה - "הזוג המוזר"',
+  'הצגה - " לנקות את הראש"': 'הצגה - "לנקות את הראש"',
 };
 function displayTitle(raw) {
   let t = cleanText(raw).replace(/\s+/g, " ").trim();
   if (TITLE_FIXES[t]) return TITLE_FIXES[t];
-  return t.replace(/\s+-\s+/g, " — ");
+  return t.replace(/\s+-\s+/g, " - ");
 }
 
 /**
@@ -272,7 +272,7 @@ const rowFromJson = (r) => ({
 const personKey = (row) => row.idn || `name:${row.name}`;
 
 /**
- * Everything the importer needs, computed once from the raw files — pure,
+ * Everything the importer needs, computed once from the raw files - pure,
  * so the shape can be unit-tested and dry-run without a database.
  */
 function buildDataset({ payload, json, clients, students }) {
@@ -373,7 +373,7 @@ function buildDataset({ payload, json, clients, students }) {
   for (const [id, rows] of byCourse) {
     const meta = payload.meta[id] || {};
     const live = rows.filter((r) => !r.cancelled);
-    if (id === UMBRELLA_ID) { skipped.push({ id, name: rows[0].rawName, why: "החברות השנתית — הופכת לפרופילים, לא לאירוע", rows: live.length }); continue; }
+    if (id === UMBRELLA_ID) { skipped.push({ id, name: rows[0].rawName, why: "החברות השנתית - הופכת לפרופילים, לא לאירוע", rows: live.length }); continue; }
     if (meta.kind !== "event" || !meta.date) { skipped.push({ id, name: rows[0].rawName, why: `קבוצה שבועית בלי תאריך (${meta.kind || "?"})`, rows: live.length }); continue; }
     const title = displayTitle(meta.title || rows[0].rawName);
     const category = categoryOfTitle(meta.title || rows[0].rawName);
@@ -450,7 +450,7 @@ async function importCultureSenzey({ world, people = world === "real" ? "real" :
   for (const [manager, spec] of Object.entries(STAFF)) {
     let hit = existingStaff.find((p) => p.person && p.person.firstName === spec.firstName && (fake || p.person.lastName === spec.lastName));
     if (hit && hit.active !== false) { staffPersons.set(manager, hit.person); report.staff.existing++; continue; }
-    if (hit && hit.active === false) { report.staff.existing++; continue; } // left — their rows fall back to the coordinator
+    if (hit && hit.active === false) { report.staff.existing++; continue; } // left - their rows fall back to the coordinator
     if (dry) { report.staff.created++; continue; }
     const person = await Person.create({ world, firstName: spec.firstName, lastName: fake ? "טסט" : spec.lastName });
     await createProfile(person, "ManagerCulture", { title: spec.title }, { trusted: true, opened: { by: IMPORTER, note: SOURCE_NOTE, at: new Date("2025-09-01T09:00:00") } });
@@ -459,7 +459,7 @@ async function importCultureSenzey({ world, people = world === "real" ? "real" :
   }
   const primary = staffPersons.get(PRIMARY_MANAGER) || [...staffPersons.values()][0];
   const actorFor = (manager) => staffPersons.get(manager) || primary;
-  if (!primary && !dry) throw new Error("no culture staff to act as — cannot import");
+  if (!primary && !dry) throw new Error("no culture staff to act as - cannot import");
 
   /* ── people ────────────────────────────────────────────────── */
   const all = await Person.find({ world, deletedAt: null }).select("firstName lastName senzeyId email").lean();
@@ -484,7 +484,7 @@ async function importCultureSenzey({ world, people = world === "real" ? "real" :
       if (person) {
         report.persons.existing++;
         // Repair: an earlier import named stand-ins after the senzey first
-        // token — replace anything that is not one of our pseudonyms.
+        // token - replace anything that is not one of our pseudonyms.
         if (!isPseudonym(person.firstName) && !dry) {
           const firstName = pseudonym(spec, usedFirst);
           await Person.updateOne({ _id: person._id }, { $set: { firstName } });
@@ -580,7 +580,7 @@ async function importCultureSenzey({ world, people = world === "real" ? "real" :
     const staff = actorFor(c.manager);
     const createdAt = new Date((c.firstRegAt ? c.firstRegAt.getTime() : c.date.getTime() - 21 * DAY) - 3 * DAY);
     const publishedAt = new Date(createdAt.getTime() + DAY);
-    const notes = [SOURCE_NOTE, c.startGuessed ? "השעה לא צוינה בסנזי — הוזנה שעה משוערת" : null].filter(Boolean).join(" · ");
+    const notes = [SOURCE_NOTE, c.startGuessed ? "השעה לא צוינה בסנזי - הוזנה שעה משוערת" : null].filter(Boolean).join(" · ");
     const mutable = {
       name: c.title,
       category: c.category,

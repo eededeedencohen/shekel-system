@@ -1,5 +1,5 @@
 /*
- * Service worker — the smallest one that makes the app installable.
+ * Service worker - the smallest one that makes the app installable.
  *
  * It caches NOTHING: every request goes straight to the network, so a new
  * deploy is what the phone sees on the next open (the app is live data and

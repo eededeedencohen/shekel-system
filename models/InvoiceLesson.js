@@ -1,5 +1,5 @@
 /**
- * @file InvoiceLesson model — one lesson written on one invoice
+ * @file InvoiceLesson model - one lesson written on one invoice
  * @module models/InvoiceLesson
  *
  * A row per lesson on an invoice (collection `invoiceLessons`). The unique

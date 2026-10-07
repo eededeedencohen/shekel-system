@@ -1,5 +1,5 @@
 /**
- * @file Invoice service — חשבוניות של מורים
+ * @file Invoice service - חשבוניות של מורים
  * @module services/invoiceService
  *
  * The rules, in one place:
@@ -34,7 +34,7 @@ const IMAGE_MIMES = new Set(["image/jpeg", "image/pjpeg", "image/png", "image/x-
 const isId = (v) => mongoose.isValidObjectId(v);
 const uniq = (ids) => [...new Set((ids || []).map(String))];
 
-/** "data:image/…;base64,…" → { mime, buffer } — or the typed error. */
+/** "data:image/…;base64,…" → { mime, buffer } - or the typed error. */
 function parseImage(dataUrl) {
   const m = /^data:([\w/+.-]+);base64,([A-Za-z0-9+/=\s]+)$/.exec(String(dataUrl || "").trim());
   if (!m) throw AppError.of("INVOICE_IMAGE_INVALID", 400);
@@ -49,7 +49,7 @@ function parseImage(dataUrl) {
 const teacherOfLesson = (lesson, cycleById) => String(lesson.teacher || cycleById.get(String(lesson.cycle))?.teacher || "");
 
 /**
- * The lessons `teacherId` taught in `world` — those a new invoice may
+ * The lessons `teacherId` taught in `world` - those a new invoice may
  * name. Each carries `invoice` (the id, or null) so a picker can grey out
  * the billed ones. Newest first.
  */

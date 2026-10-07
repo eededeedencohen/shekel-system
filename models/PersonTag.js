@@ -1,12 +1,12 @@
 /**
- * @file PersonTag + PersonTagEvent models — a person's belongings
+ * @file PersonTag + PersonTagEvent models - a person's belongings
  * @module models/PersonTag
  *
  * One row per belonging of a person (collection `personTags`): which tag,
  * since when, until when (`until` empty = open now). A person holds a tag
  * once at a time; closing and reopening keep the SAME row and write the
  * story into `personTagEvents` (opened / closed / reopened /
- * transferredOut / transferredIn, with `otherTag` on a transfer) — rows
+ * transferredOut / transferredIn, with `otherTag` on a transfer) - rows
  * there are only added, never changed.
  *
  * The only writers are services/tagService (give / take / reopen) and the

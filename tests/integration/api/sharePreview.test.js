@@ -1,5 +1,5 @@
 /**
- * The share preview stamped into the served page — what WhatsApp sees for
+ * The share preview stamped into the served page - what WhatsApp sees for
  * a pasted link. Runs only when the client build is present (client-dist/
  * is what the SPA fallback serves); a bare API checkout skips it.
  */
@@ -42,16 +42,16 @@ d("share previews on the served page", () => {
   });
 
   it("an event link names the event (day · time · kind · place), a course its subject, a book its title", async () => {
-    const ev = await makeEvent({ name: "סטנדאפ — שלומי קוריאט", date: new Date("2026-09-16T17:00:00Z"), endTime: "22:00", category: "standup", location: "זאפה ירושלים" });
+    const ev = await makeEvent({ name: "סטנדאפ - שלומי קוריאט", date: new Date("2026-09-16T17:00:00Z"), endTime: "22:00", category: "standup", location: "זאפה ירושלים" });
     const evPage = await request(app).get(`/culture/events/${ev._id}`);
-    expect(og(evPage.text, "title")).toBe("סטנדאפ — שלומי קוריאט · תרבות לכל");
-    expect(og(evPage.text, "description")).toBe("יום רביעי, 16 בספטמבר · 20:00–22:00 · סטנדאפ · זאפה ירושלים");
+    expect(og(evPage.text, "title")).toBe("סטנדאפ - שלומי קוריאט · תרבות לכל");
+    expect(og(evPage.text, "description")).toBe("יום רביעי, 16 בספטמבר · 20:00-22:00 · סטנדאפ · זאפה ירושלים");
 
     const subject = await makeSubject({ name: "אנגלית" });
     const cycle = await makeCycle({ subject: subject._id, schedule: [{ day: 2, start: "08:00", end: "09:30" }] });
     const coursePage = await request(app).get(`/courses/${cycle._id}`);
     expect(og(coursePage.text, "title")).toBe("אנגלית · מכללה לכל");
-    expect(og(coursePage.text, "description")).toBe("יום שלישי 08:00–09:30");
+    expect(og(coursePage.text, "description")).toBe("יום שלישי 08:00-09:30");
 
     const book = await makeBook({ title: "הזוג מהבית השכן", author: "שרי לפניה" });
     const bookPage = await request(app).get(`/library?book=${book._id}`);

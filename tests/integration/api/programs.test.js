@@ -1,5 +1,5 @@
 /**
- * Programs API — a student's memberships in מכללה לכל / תרבות לכל:
+ * Programs API - a student's memberships in מכללה לכל / תרבות לכל:
  * both at once (rare), transfers between them (rarer) with the whole story
  * logged on the profiles, and the unwinding of the program being left.
  */

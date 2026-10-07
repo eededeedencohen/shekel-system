@@ -1,14 +1,14 @@
 /**
  * The pure half of the senzey culture importer: title → category, display
  * names, venues, and the dataset shape built from the two exports (no DB,
- * no repo files — small inline fixtures in the exports' exact formats).
+ * no repo files - small inline fixtures in the exports' exact formats).
  */
 
 const {
   categoryOfTitle, displayTitle, locationOf, defaultStart, buildDataset, pseudonym, isPseudonym, UMBRELLA_ID, INTEREST_ID,
 } = require("../../../scripts/lib/senzeyCulture");
 
-describe("pseudonym — the test world never carries a real name", () => {
+describe("pseudonym - the test world never carries a real name", () => {
   it("is deterministic, gender-matched, and steps to a letter on collision", () => {
     const used = new Set();
     const a = pseudonym({ key: "111", gender: "female" }, used);
@@ -23,7 +23,7 @@ describe("pseudonym — the test world never carries a real name", () => {
   });
 });
 
-describe("categoryOfTitle — the real תשפ\"ו titles land on the right kind", () => {
+describe("categoryOfTitle - the real תשפ\"ו titles land on the right kind", () => {
   const cases = [
     ['הצגה "החולה ההודי"', "theatre"],
     ['הצגה - " לנקות את הראש"', "theatre"],
@@ -70,9 +70,9 @@ describe("categoryOfTitle — the real תשפ\"ו titles land on the right kind"
 describe("displayTitle / locationOf / defaultStart", () => {
   it("fixes the coordinator's typos and spells out bare performer names", () => {
     expect(displayTitle("בוצר נשים")).toBe("בוקר נשים");
-    expect(displayTitle("גיא הוכמן")).toBe("סטנדאפ — גיא הוכמן");
-    expect(displayTitle('הצגה" הזוג המוזר"')).toBe('הצגה — "הזוג המוזר"');
-    expect(displayTitle("מוסא - צעירים")).toBe("מוסא — צעירים");
+    expect(displayTitle("גיא הוכמן")).toBe("סטנדאפ - גיא הוכמן");
+    expect(displayTitle('הצגה" הזוג המוזר"')).toBe('הצגה - "הזוג המוזר"');
+    expect(displayTitle("מוסא - צעירים")).toBe("מוסא - צעירים");
     expect(displayTitle("  סדנת   אפיה ")).toBe("סדנת אפיה");
   });
   it("completes venues with the street numbers the raw names carry", () => {
@@ -91,7 +91,7 @@ describe("displayTitle / locationOf / defaultStart", () => {
   });
 });
 
-describe("buildDataset — the two exports become members, guests, outings, cancellations", () => {
+describe("buildDataset - the two exports become members, guests, outings, cancellations", () => {
   const CAT = "תרבות לכל (יציאות בקהילה)";
   const html = (course, name, idn, type, regAt, id = "1500", date = "05/05/2026", price = "0.00") =>
     [id, course, CAT, name, idn, type, "ג`", "17:00", "דרעי שירן", date, "מחיר קבוע", price, regAt];

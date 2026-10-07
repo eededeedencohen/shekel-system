@@ -1,10 +1,10 @@
 /**
- * @file activitySeed — a person's record (לשונית פעילויות) in the test world
+ * @file activitySeed - a person's record (לשונית פעילויות) in the test world
  * @module scripts/lib/activitySeed
  *
  * Gives the social worker's round (2026-10-07) something to look at:
- *   · follow-up calls at every distance — one due now, one overdue, one
- *     fresh — so the dashboard's "שיחת מעקב" group shows every state;
+ *   · follow-up calls at every distance - one due now, one overdue, one
+ *     fresh - so the dashboard's "שיחת מעקב" group shows every state;
  *   · an evaluation that is due (a committee date two years back);
  *   · a hospitalisation, general updates, a first call;
  *   · one incident report (mirrored on the record), one without a manager told;
@@ -47,11 +47,11 @@ async function seedActivities({ world, placed, intakeDone = [], log = () => {} }
   }
   if (b) {
     await add(b, "followUp", daysAgo(200), "שיחה בטלפון. מגיעה חלקית בגלל עבודה חדשה.", { attendance: "חלקית", motivation: "בינונית", impression: "עייפה אבל רוצה להמשיך", next: "לבדוק אם אפשר לעבור לקבוצת ערב" });
-    await add(b, "update", daysAgo(150), "דיברתי עם מתאמת הטיפול — מסכימה למעבר לערב.", {});
+    await add(b, "update", daysAgo(150), "דיברתי עם מתאמת הטיפול - מסכימה למעבר לערב.", {});
   }
   if (c) {
     await add(c, "followUp", daysAgo(10), "שיחה קצרה אחרי השיעור. הכל טוב.", { attendance: "סדירה", motivation: "גבוהה", impression: "מרוצה", next: "" });
-    await add(c, "hospitalization", daysAgo(40), "אשפוז קצר במחלקה הפסיכיאטרית בהדסה. חזר לקורסים אחרי שבועיים.", { where: "הדסה עין כרם", from: daysAgo(45), to: daysAgo(31), contact: "אחות אחראית — 02-6777111" });
+    await add(c, "hospitalization", daysAgo(40), "אשפוז קצר במחלקה הפסיכיאטרית בהדסה. חזר לקורסים אחרי שבועיים.", { where: "הדסה עין כרם", from: daysAgo(45), to: daysAgo(31), contact: "אחות אחראית - 02-6777111" });
   }
   if (d) {
     // a committee date two years back → the evaluation is due now
@@ -93,7 +93,7 @@ async function seedActivities({ world, placed, intakeDone = [], log = () => {} }
 
   /* someone who finished the intake: a first call on the record */
   for (const p of intakeDone.slice(0, 2)) {
-    await add(p, "update", daysAgo(3), "התקשרתי לוודא שהגיע/ה לשיעור הראשון — הכל בסדר.", {}, { by: "ייטב" });
+    await add(p, "update", daysAgo(3), "התקשרתי לוודא שהגיע/ה לשיעור הראשון - הכל בסדר.", {}, { by: "ייטב" });
   }
 
   /* the follow-up template, changed by the staff */

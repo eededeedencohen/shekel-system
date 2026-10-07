@@ -1,12 +1,12 @@
 /**
- * @file Program controller — a student's memberships in the two programs
+ * @file Program controller - a student's memberships in the two programs
  * @module controllers/programController
  * @see services/programService
  *
  *   POST /api/people/:id/transfer      { from*, to*, by?, note?, stage? }
  *   GET  /api/people/:id/programs      the merged program timeline
  *   POST /api/profiles/:id/close       { by?, note? }
- *   POST /api/profiles/:id/leave       { reason*, leftAt?, shkediaReported?, by?, note? } — דיווח עזיבה
+ *   POST /api/profiles/:id/leave       { reason*, leftAt?, shkediaReported?, by?, note? } - דיווח עזיבה
  *   POST /api/profiles/:id/reopen      { by?, note?, stage? }
  */
 

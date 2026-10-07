@@ -1,5 +1,5 @@
 /**
- * @file Voucher routes — /api/vouchers (תרבות לכל)
+ * @file Voucher routes - /api/vouchers (תרבות לכל)
  * @module routes/voucherRoutes
  * @see controllers/voucherController
  */

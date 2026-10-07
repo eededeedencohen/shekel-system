@@ -1,27 +1,27 @@
 /**
- * @file migrateRemodel — the 2026 DB remodel (8 → 7 collections)
+ * @file migrateRemodel - the 2026 DB remodel (8 → 7 collections)
  * @module scripts/migrateRemodel
  *
  * Rebuilds the app's data into the new model (see db-remodel-plan.html at
  * the repo root):
  *
- *   users+students+teachers → people      (same _id as User — refs survive)
+ *   users+students+teachers → people      (same _id as User - refs survive)
  *   basecourses             → subjects    (same _id; category → English key)
  *   courses+courseinstances → cycles      (same _id as CourseInstance;
  *                                          Course layer dissolved into import.*)
  *   enrolledStudents rows   → enrollments (first-class; unique {cycle,student})
  *   lessons                 → lessons_v2  (renamed fields; source live|archive)
- *   room name strings       → rooms_v2    (the old rooms collection is EMPTY —
+ *   room name strings       → rooms_v2    (the old rooms collection is EMPTY -
  *                                          every room today is a free string)
  *   domain.HOSTELS          → hostels     (managed entity)
  *
  * Everything is DERIVED from the untouched source collections, so --apply
  * is idempotent by construction (drop-and-rebuild of the NEW collections
- * only — sources are never written).
+ * only - sources are never written).
  *
  * IMPORTANT: the `users` collection is SHARED with other apps on this Atlas
  * DB (it holds foreign username/passwordHash docs). It is therefore never
- * renamed or written — the app simply stops reading it after cutover.
+ * renamed or written - the app simply stops reading it after cutover.
  *
  * Modes:
  *   node scripts/migrateRemodel.js --dry-run   reports only, writes nothing
@@ -32,7 +32,7 @@
  *                                              lessons_v2/rooms_v2
  *
  * Optional manual overrides (survives re-runs): migration-map.json next to
- * this file — { "subjects": {"raw string": "subject name"}, "hostels": {...} }.
+ * this file - { "subjects": {"raw string": "subject name"}, "hostels": {...} }.
  * Reports land in scripts/migration-reports/.
  */
 
@@ -128,7 +128,7 @@ function matchHostelPlace(raw) {
 
   /* ================= CUTOVER GUARD ================= */
   if (collNames.includes("zz_legacy_courseinstances")) {
-    console.log("⛔ cutover already happened (zz_legacy_* exists) — nothing to do.");
+    console.log("⛔ cutover already happened (zz_legacy_* exists) - nothing to do.");
     await mongoose.disconnect();
     return;
   }
@@ -171,7 +171,7 @@ function matchHostelPlace(raw) {
   }
   if (bad.length) {
     report("precondition-failures", bad);
-    console.error(`⛔ ${bad.length} cycles cannot resolve a subject — run backfillBaseCourses.js first.`);
+    console.error(`⛔ ${bad.length} cycles cannot resolve a subject - run backfillBaseCourses.js first.`);
     process.exit(1);
   }
   const foreignUsers = users.filter((u) => !APP_ROLES.includes(u.role));
@@ -194,7 +194,7 @@ function matchHostelPlace(raw) {
     const key = CATEGORY_MAP[norm(b.category)] || "other";
     if (key === "other" && b.category) unmappedCategories.push({ subject: b.name, category: b.category });
     return {
-      _id: b._id, // ASSERTED below — every cycle.subject ref depends on this
+      _id: b._id, // ASSERTED below - every cycle.subject ref depends on this
       world: worldOf(b.dataset),
       name: norm(b.name),
       category: key,
@@ -210,7 +210,7 @@ function matchHostelPlace(raw) {
   }
   // Resolver: (world, raw string) → subject _id.
   //
-  // Demo worlds (test/pokemon) were seeded on the REAL taxonomy — but in
+  // Demo worlds (test/pokemon) were seeded on the REAL taxonomy - but in
   // the new model subjects are per-world ({world,name} unique) and cycles
   // must ref a subject of their own world. So, exactly like rooms, demo
   // worlds get CLONES of the real subjects they use, created on demand.
@@ -267,7 +267,7 @@ function matchHostelPlace(raw) {
         subjByKey.get(`real|${n}`) || (manual && subjByKey.get(`real|${subjNorm(manual)}`));
       if (realHit) return subjectIdForWorld(world, realHit);
       // genuinely demo-only vocabulary (e.g. the 4 course-less pokemon
-      // types — real demand demo data) → create in that world
+      // types - real demand demo data) → create in that world
       const doc = {
         _id: new ObjectId(),
         world,
@@ -288,7 +288,7 @@ function matchHostelPlace(raw) {
 
   /* ================= 4 · rooms_v2 (built from the name strings) ================= */
   // The old rooms collection is empty and no ObjectId room ref exists in the
-  // data (verified: 0 defaultRoom, 0 actualRoom) — rooms are born from the
+  // data (verified: 0 defaultRoom, 0 actualRoom) - rooms are born from the
   // location.room / requiredRooms strings of non-hostel cycles.
   const roomIdByKey = new Map(); // `${world}|${name}` → _id
   const roomDocs = [];
@@ -368,7 +368,7 @@ function matchHostelPlace(raw) {
           }
         }
         // The singular free-text `subject` ("מורה למוזיקה ופסנתר") is a
-        // display label — consult it only when nothing else resolved.
+        // display label - consult it only when nothing else resolved.
         if (!subjIds.size && t.subject) {
           const id = resolveSubject(world, t.subject);
           if (id) subjIds.add(String(id));
@@ -654,7 +654,7 @@ function matchHostelPlace(raw) {
   report("lessons-without-cycle", lessonsWithoutCycle.map((l) => String(l._id)));
   report("lesson-date-collisions", dateCollisions);
   if (dateCollisions.length && MODE !== "dry-run") {
-    console.error("⛔ live-lesson date collisions — merge manually before --apply.");
+    console.error("⛔ live-lesson date collisions - merge manually before --apply.");
     process.exit(1);
   }
 
@@ -690,11 +690,11 @@ function matchHostelPlace(raw) {
   report("verify", verify);
   const verifyOk =
     Object.values(verify).every((v) => (typeof v === "boolean" ? v : v.expected === v.actual));
-  console.log(verifyOk ? "\n✅ VERIFY passed" : "\n⛔ VERIFY FAILED — see reports");
+  console.log(verifyOk ? "\n✅ VERIFY passed" : "\n⛔ VERIFY FAILED - see reports");
   if (!verifyOk && MODE !== "dry-run") process.exit(1);
 
   if (MODE === "dry-run") {
-    console.log("\n(dry-run — nothing written)");
+    console.log("\n(dry-run - nothing written)");
     await mongoose.disconnect();
     return;
   }
@@ -717,7 +717,7 @@ function matchHostelPlace(raw) {
           `enrollments ${enrollmentDocs.length} · lessons_v2 ${lessonDocs.length} · rooms_v2 ${roomDocs.length} · hostels ${hostelDocs.length}`
       );
 
-      // Indexes — identical specs to the Mongoose schemas.
+      // Indexes - identical specs to the Mongoose schemas.
       const ix = (name, keys, opts) => db.collection(name).createIndex(keys, opts || {});
       await ix("people", { world: 1, role: 1 });
       await ix("people", { world: 1, email: 1 }, { unique: true, partialFilterExpression: { email: { $exists: true } } });
@@ -753,7 +753,7 @@ function matchHostelPlace(raw) {
     for (const n of need) {
       if (!have.includes(n) || (await db.collection(n).countDocuments()) === 0) {
         if (n === "rooms_v2" && roomDocs.length === 0) continue;
-        console.error(`⛔ ${n} missing/empty — run --apply first.`);
+        console.error(`⛔ ${n} missing/empty - run --apply first.`);
         process.exit(1);
       }
     }

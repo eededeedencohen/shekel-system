@@ -1,11 +1,11 @@
 /**
- * @file Activity service — a person's record (לשונית פעילויות) and the
+ * @file Activity service - a person's record (לשונית פעילויות) and the
  *       templates the coordinators write from
  * @module services/activityService
  *
  * The social worker (2026-10-07): every event in a person's life with us
- * — intake, follow-up calls, evaluation calls, hospitalisations, general
- * updates, the closure report, the leave report, incidents — is one row
+ * - intake, follow-up calls, evaluation calls, hospitalisations, general
+ * updates, the closure report, the leave report, incidents - is one row
  * here, in order. Each kind has a template (title, opening text, small
  * fields); a world's stored template wins over the default in domain.js,
  * so a coordinator can change the questions without a deploy.
@@ -13,7 +13,7 @@
  * Rules:
  *  - the person must exist in the world (and not be archived);
  *  - `fields` are validated against the template: unknown keys dropped,
- *    required ones present (unless the caller says `skipRequired` — the
+ *    required ones present (unless the caller says `skipRequired` - the
  *    intake and the first call write their own fields), selects limited to
  *    their options, checkboxes booleans, dates real dates;
  *  - nothing here moves a pipeline; the follow-up clocks are derived by
@@ -50,7 +50,7 @@ function shapeTemplate(kind, doc) {
   return { kind, title: o.title || kindLabel(kind), body: o.body || "", fields: o.fields || [], stored: true, updatedBy: o.updatedBy, updatedAt: o.updatedAt };
 }
 
-/** Every kind's template for a world — the stored one where it exists, else the default. */
+/** Every kind's template for a world - the stored one where it exists, else the default. */
 async function templatesOf(world) {
   const stored = await ActivityTemplate.find({ world }).lean();
   const byKind = new Map(stored.map((t) => [t.kind, t]));

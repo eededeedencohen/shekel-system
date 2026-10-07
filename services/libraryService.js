@@ -1,5 +1,5 @@
 /**
- * @file Library service — the ONLY write path for הספרייה (books + loans)
+ * @file Library service - the ONLY write path for הספרייה (books + loans)
  * @module services/libraryService
  *
  * Eden's rules (2026-09-09):
@@ -15,7 +15,7 @@
  *    barcode restores the record (its loan history comes back with it).
  *
  * Covers live IN the book record (`cover.data`, see models/Book) since
- * 2026-09-22 — the deploy wipes the disk. UPLOAD_DIR/<world>/books/ is
+ * 2026-09-22 - the deploy wipes the disk. UPLOAD_DIR/<world>/books/ is
  * only read by the migration and by the cover route's legacy fallback.
  */
 
@@ -30,7 +30,7 @@ const { LIBRARY, BOOK_SOURCES } = require("../utils/domain");
 const lookup = require("./bookLookupService");
 
 const DAY = 86400000;
-// every image type a browser draws in <img> (HEIC is not one — the page converts it first)
+// every image type a browser draws in <img> (HEIC is not one - the page converts it first)
 const COVER_MIME_EXT = { "image/jpeg": "jpg", "image/jpg": "jpg", "image/pjpeg": "jpg", "image/png": "png", "image/x-png": "png", "image/webp": "webp", "image/gif": "gif", "image/avif": "avif", "image/bmp": "bmp" };
 const MAX_COVER_BYTES = lookup.MAX_COVER_BYTES;
 
@@ -47,7 +47,7 @@ function coverPath(book) {
 }
 /** The cover's bytes: the record's own, else the legacy file if it still exists. */
 function coverBuffer(book) {
-  // (a mongoose Buffer IS a Buffer — never reach for `.buffer`, that is the whole shared pool)
+  // (a mongoose Buffer IS a Buffer - never reach for `.buffer`, that is the whole shared pool)
   if (book?.cover?.data?.length) return Buffer.isBuffer(book.cover.data) ? book.cover.data : Buffer.from(book.cover.data);
   const p = coverPath(book);
   if (p && fs.existsSync(p)) return fs.readFileSync(p);
@@ -83,7 +83,7 @@ function startOfToday() {
 }
 
 /**
- * A return DAY out of "YYYY-MM-DD" (preferred) or any date string — local
+ * A return DAY out of "YYYY-MM-DD" (preferred) or any date string - local
  * midnight. null when unparsable.
  */
 function parseDueDate(input) {
@@ -146,7 +146,7 @@ async function createBook({ world, data, by, cover }) {
   if (!data.title || !String(data.title).trim()) throw AppError.of("MISSING_FIELDS", 400, "title");
 
   // The same book under any spelling of its code (leading zeros, ISBN
-  // twins) is the same record — refuse a live one, restore a deleted one.
+  // twins) is the same record - refuse a live one, restore a deleted one.
   let book = await Book.findOne({ world, barcode: { $in: lookup.barcodeVariants(barcode) } });
   if (book && !book.deletedAt) throw AppError.of("BOOK_EXISTS", 409);
   if (book) {
@@ -164,7 +164,7 @@ async function createBook({ world, data, by, cover }) {
       const dl = await lookup.downloadCover(data.imageUrl);
       if (dl && COVER_MIME_EXT[dl.mime]) saveCover(book, dl);
     } catch {
-      /* the cover is a nicety — the book is added without it */
+      /* the cover is a nicety - the book is added without it */
     }
   }
   await book.save();
@@ -190,7 +190,7 @@ async function updateBook({ world, bookId, data, by, cover, removeCoverFlag }) {
   return book;
 }
 
-/** Soft delete — never while the book is out. */
+/** Soft delete - never while the book is out. */
 async function deleteBook({ world, bookId }) {
   const book = await loadBook(world, bookId);
   if (await openLoanOf(world, book._id)) throw AppError.of("BOOK_ON_LOAN", 409);
@@ -238,7 +238,7 @@ async function loadLoan(world, loanId) {
   return loan;
 }
 
-/** הארכת זמן — a later return day; the old one is kept in `extensions`. */
+/** הארכת זמן - a later return day; the old one is kept in `extensions`. */
 async function extend({ world, loanId, dueAt, by, note }) {
   const loan = await loadLoan(world, loanId);
   if (!loan.open) throw AppError.of("LOAN_CLOSED", 409);
@@ -251,7 +251,7 @@ async function extend({ world, loanId, dueAt, by, note }) {
   return loan;
 }
 
-/** החזרת ספר — closes the loan; the book is back on the shelf. */
+/** החזרת ספר - closes the loan; the book is back on the shelf. */
 async function returnBook({ world, loanId, by, note }) {
   const loan = await loadLoan(world, loanId);
   if (!loan.open) throw AppError.of("LOAN_CLOSED", 409);

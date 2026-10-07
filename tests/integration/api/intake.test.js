@@ -1,5 +1,5 @@
 /**
- * קליטה (אינטייק) — the public sign-up page and the social worker's flow,
+ * קליטה (אינטייק) - the public sign-up page and the social worker's flow,
  * with the social worker's corrections of 2026-10-07.
  *
  * Eden's pipeline (2026-09-17) end to end: landing → Interested (per
@@ -48,7 +48,7 @@ const stageOf = async (personId, kind) => (await Profile.findOne({ person: perso
 const dayStr = (daysFromNow) => new Date(Date.now() + daysFromNow * 86400000).toISOString().slice(0, 10);
 const NEXT_YEAR = dayStr(365);
 
-/** Staff tick — the dated report always carries its expiry. */
+/** Staff tick - the dated report always carries its expiry. */
 const tick = (intakeId, key, body = {}) =>
   request(app)
     .patch(`/api/intakes/${intakeId}/documents/${key}`)
@@ -70,7 +70,7 @@ describe("GET /api/public/join/options", () => {
     const o = res.body.data.options;
     expect(o.programs.map((p) => p.key)).toEqual(["StudentCollege", "StudentCulture"]);
     expect(o.subjects.map((s) => s.name)).toContain("ציור");
-    // the documents of the file — the social club letter is optional; שקדיה is not a document any more
+    // the documents of the file - the social club letter is optional; שקדיה is not a document any more
     expect(o.documents.map((d) => d.key)).toEqual(["psychiatric", "psychosocial", "waiver", "socialClub"]);
     expect(o.documents.find((d) => d.key === "socialClub").optional).toBe(true);
     expect(o.documents.find((d) => d.key === "psychiatric").validity).toBe("dated");
@@ -187,7 +187,7 @@ describe("the personal documents link", () => {
       .send({ key: "waiver", fileName: "photo.jpg", mime: "image/jpeg", data: Buffer.alloc(13 * 1024 * 1024, 7).toString("base64") });
     expect(huge.status).toBe(413);
     expect(huge.body.code).toBe("PAYLOAD_TOO_LARGE");
-    // שקדיה is not a document any more — nothing to upload under that key
+    // שקדיה is not a document any more - nothing to upload under that key
     const unknown = await request(app)
       .post(`/api/public/join/${token}/documents`)
       .send({ key: "shkedia", fileName: "w.png", mime: "image/png", data: PNG_1PX });
@@ -205,7 +205,7 @@ describe("the personal documents link", () => {
     expect(res.body.code).toBe("DOCUMENT_LOCKED");
   });
 
-  it("locks a day after the submission (410) — a re-submission renews it", async () => {
+  it("locks a day after the submission (410) - a re-submission renews it", async () => {
     const { token } = (await submit({})).body.data;
     await Intake.updateOne({}, { $set: { "landing.linkExpiresAt": new Date(Date.now() - 1000) } });
     const expired = await request(app).get(`/api/public/join/${token}`);
@@ -234,7 +234,7 @@ describe("temporary upload links", () => {
     const made = await request(app).post(`/api/intakes/${intakeId}/links`).send({ minutes: 30, docs: ["psychiatric"], by: "נעה", token: "client-made-token-abcdef12" });
     expect(made.status).toBe(201);
     const link = made.body.data.link;
-    expect(link.token).toBe("client-made-token-abcdef12"); // the client may name the token — the page knows the link at once
+    expect(link.token).toBe("client-made-token-abcdef12"); // the client may name the token - the page knows the link at once
     expect(new Date(link.expiresAt).getTime()).toBeGreaterThan(Date.now() + 29 * 60000);
     expect(made.body.data.intake.log.at(-1).action).toBe("link");
 
@@ -282,7 +282,7 @@ describe("the social worker's flow", () => {
     expect(done.body.data.activity.kind).toBe("intake");
     expect(done.body.data.activity.fields.goals).toBe("קביעות");
     expect(await Activity.countDocuments({ person: personId, kind: "intake" })).toBe(1);
-    expect(await stageOf(personId, "StudentCulture")).toBe("Intake"); // one stage — the tags carry the sub-state
+    expect(await stageOf(personId, "StudentCulture")).toBe("Intake"); // one stage - the tags carry the sub-state
 
     for (const key of ["psychiatric", "psychosocial"]) await tick(intakeId, key);
     await request(app).patch(`/api/intakes/${intakeId}/documents/waiver`).send({ status: "waived", by: "ייטב", note: "נחתם ידנית" });
@@ -340,7 +340,7 @@ describe("the social worker's flow", () => {
     expect(held.status).toBe(201);
     expect(await stageOf(personId, "StudentCollege")).toBe("Intake");
 
-    // the meeting is ייטב's business — the college stage does not move for it
+    // the meeting is ייטב's business - the college stage does not move for it
     const sched = await request(app).post("/api/intakes/schedule").send({ person: personId, at: "2026-09-15T10:00:00", by: "ייטב" });
     expect(sched.body.data.moved).toEqual([]);
     expect(await stageOf(personId, "StudentCollege")).toBe("Intake");
@@ -360,7 +360,7 @@ describe("the social worker's flow", () => {
     expect(await stageOf(personId, "StudentCollege")).toBe("Placed");
     e = await Enrollment.findOne({ student: personId });
     expect(e.status).toBe("active");
-    const d = new Date(e.joinedAt); // sent as local midnight — compare in local time
+    const d = new Date(e.joinedAt); // sent as local midnight - compare in local time
     expect([d.getFullYear(), d.getMonth() + 1, d.getDate()]).toEqual([2026, 10, 4]);
     const prof = await Profile.findOne({ person: personId, kind: "StudentCollege" });
     expect(prof.stageHistory.at(-1).note).toMatch(/מתחיל\/ה/);
@@ -428,7 +428,7 @@ describe("the social worker's flow", () => {
       .post(`/api/intakes/${intakeId}/documents`)
       .send({ key: "psychiatric", fileName: "psy.png", mime: "image/png", data: PNG_1PX, by: "ייטב" });
     expect(up.body.data.intake.documents.find((d) => d.key === "psychiatric").status).toBe("uploaded");
-    // a completed file STAYS complete — an expiry later is an alert, not a reopened file
+    // a completed file STAYS complete - an expiry later is an alert, not a reopened file
     expect(up.body.data.intake.status).toBe("complete");
   });
 
@@ -446,7 +446,7 @@ describe("the social worker's flow", () => {
     expect(entered.body.data.intake.log.at(-2).note).toMatch(/נקלט\/ה בשקדיה .* החלטה 77/);
     expect(entered.body.data.intake.log.at(-1).action).toBe("completed");
     expect(entered.body.data.intake.status).toBe("complete");
-    // a mistake, taken back — but the file was completed, so it stays complete (the student is already placed)
+    // a mistake, taken back - but the file was completed, so it stays complete (the student is already placed)
     const cleared = await request(app).patch(`/api/intakes/${intakeId}/shkedia`).send({ clear: true, by: "נעה" });
     expect(cleared.body.data.intake.shkedia?.enteredAt).toBeFalsy();
     expect(cleared.body.data.intake.status).toBe("complete");
@@ -457,14 +457,14 @@ describe("the social worker's flow", () => {
     await request(app).post(`/api/public/join/${token}/documents`).send({ key: "psychosocial", fileName: "ps.png", mime: "image/png", data: PNG_1PX });
     const reply = await request(app)
       .patch(`/api/intakes/${intakeId}/documents/psychosocial`)
-      .send({ status: "comment", by: "ייטב", note: "חסר העמוד השני — אפשר לצלם שוב?" });
+      .send({ status: "comment", by: "ייטב", note: "חסר העמוד השני - אפשר לצלם שוב?" });
     expect(reply.status).toBe(200);
     const row = reply.body.data.intake.documents.find((d) => d.key === "psychosocial");
     expect(row.status).toBe("uploaded"); // the status stays
-    expect(row.note).toBe("חסר העמוד השני — אפשר לצלם שוב?");
+    expect(row.note).toBe("חסר העמוד השני - אפשר לצלם שוב?");
     expect(reply.body.data.intake.log.at(-1)).toMatchObject({ action: "docNote" });
     const view = (await request(app).get(`/api/public/join/${token}`)).body.data.view;
-    expect(view.documents.find((d) => d.key === "psychosocial").note).toBe("חסר העמוד השני — אפשר לצלם שוב?");
+    expect(view.documents.find((d) => d.key === "psychosocial").note).toBe("חסר העמוד השני - אפשר לצלם שוב?");
 
     expect(await StoredFile.countDocuments()).toBe(1);
     const gone = await request(app).patch(`/api/intakes/${intakeId}/documents/psychosocial`).send({ status: "missing", by: "ייטב" });

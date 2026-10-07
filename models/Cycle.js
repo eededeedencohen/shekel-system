@@ -1,5 +1,5 @@
 /**
- * @file Cycle model — a concrete run of a subject ("מחזור")
+ * @file Cycle model - a concrete run of a subject ("מחזור")
  * @module models/Cycle
  *
  * Today's CourseInstance, renamed (the _id namespace is preserved). The
@@ -11,10 +11,10 @@
  *    at a slot by _id (slotId) instead of copying day/times.
  *  - Room appears ONLY as ObjectId refs (schedule[].room, requiredRooms[]).
  *  - `hostel` (track membership) and `venue` (physical meeting place) are
- *    two different facts — a hostel group often meets on campus. `site` is
+ *    two different facts - a hostel group often meets on campus. `site` is
  *    NOT stored: it's a virtual derived from schedule rooms / venue, and an
  *    exclusivity validator keeps the derivation unambiguous.
- *  - The enrolled cohort is NOT here — cycle documents are lean and
+ *  - The enrolled cohort is NOT here - cycle documents are lean and
  *    constant-size; membership lives in the enrollments collection.
  */
 
@@ -39,7 +39,7 @@ const cycleSchema = new mongoose.Schema(
       ref: "Subject",
       required: [true, "מחזור חייב מקצוע"],
     },
-    /** Nullable — legacy imports surface "ללא מורה". */
+    /** Nullable - legacy imports surface "ללא מורה". */
     teacher: { type: mongoose.Schema.Types.ObjectId, ref: "Person", default: null },
     status: {
       type: String,
@@ -50,20 +50,20 @@ const cycleSchema = new mongoose.Schema(
     },
     startDate: { type: Date, required: [true, "תאריך התחלה הוא חובה"] },
     endDate: { type: Date, required: [true, "תאריך סיום הוא חובה"] },
-    /** THE weekly schedule — 1–5 slots (private cycles: one per student). */
+    /** THE weekly schedule - 1-5 slots (private cycles: one per student). */
     schedule: [slotSchema],
     /** TRACK membership ("מכללה לכל הוסטלים" of hostel X). null = college. */
     hostel: { type: mongoose.Schema.Types.ObjectId, ref: "Hostel", default: null },
     /**
      * Physical meeting place when NOT a campus room: a hostel (ref, with an
      * optional in-hostel label like "סלון") or a free-text external venue.
-     * Campus rooms live on schedule[].room — never here.
+     * Campus rooms live on schedule[].room - never here.
      */
     venue: {
       hostel: { type: mongoose.Schema.Types.ObjectId, ref: "Hostel" },
       label: { type: String, trim: true },
     },
-    /** Matching rules — Noa sets these per cycle; ages/levels are soft. */
+    /** Matching rules - Noa sets these per cycle; ages/levels are soft. */
     matching: {
       ageMin: { type: Number, min: 0 },
       ageMax: { type: Number, min: 0 },
@@ -75,7 +75,7 @@ const cycleSchema = new mongoose.Schema(
       requirements: { type: String, trim: true },
       requiredRooms: [{ type: mongoose.Schema.Types.ObjectId, ref: "Room" }],
     },
-    /** Senzey quarantine — display/debug only, never matched on. */
+    /** Senzey quarantine - display/debug only, never matched on. */
     import: {
       senzeyCourseId: { type: String, trim: true },
       senzeyName: { type: String, trim: true },

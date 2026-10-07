@@ -1,11 +1,11 @@
 /**
- * @file ActivityTemplate model — the text a coordinator starts an activity from
+ * @file ActivityTemplate model - the text a coordinator starts an activity from
  * @module models/ActivityTemplate
  *
  * The social worker (2026-10-07): "הרכזת יכולה לערוך, להוסיף ולשנות את
- * התבניות בכל עת" — so the templates are DATA, one per (world, kind),
+ * התבניות בכל עת" - so the templates are DATA, one per (world, kind),
  * edited in the app and never needing a deploy. A world without a stored
- * template for a kind gets DEFAULT_ACTIVITY_TEMPLATES (domain) — the
+ * template for a kind gets DEFAULT_ACTIVITY_TEMPLATES (domain) - the
  * service merges the two, so this collection holds only what someone
  * changed.
  *

@@ -1,16 +1,16 @@
 /**
- * @file Loan model — a book with a student (הספרייה)
+ * @file Loan model - a book with a student (הספרייה)
  * @module models/Loan
  *
  * One document per loan: who took which book, when, until when, and (once
- * closed) when it came back. `open` is true while the book is out — it
+ * closed) when it came back. `open` is true while the book is out - it
  * carries the ONE-COPY invariant as a partial unique index on
  * (world, book, open:true): a second open loan of the same book is refused
  * by the database itself, whatever the caller did.
  *
  * Extensions (הארכת זמן) append to `extensions` and move `dueAt`; the
  * original date stays in the first row so the history reads naturally.
- * Every step is also logged (`log`) with the acting persona name — no
+ * Every step is also logged (`log`) with the acting persona name - no
  * auth yet, like the rest of the pipeline.
  */
 

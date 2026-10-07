@@ -1,5 +1,5 @@
 /**
- * @file Admin profile — מנהל/ת מערכת (סופר-אדמין)
+ * @file Admin profile - מנהל/ת מערכת (סופר-אדמין)
  * @module models/profiles/Admin
  */
 

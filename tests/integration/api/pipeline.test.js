@@ -1,5 +1,5 @@
 /**
- * Pipeline API — intake leads (no placeholder emails!), stage moves through
+ * Pipeline API - intake leads (no placeholder emails!), stage moves through
  * the one writer, and stage-filtered lists.
  */
 

@@ -1,5 +1,5 @@
 /**
- * תרבות לכל API — events, registrations (seats, waitlist, promotion,
+ * תרבות לכל API - events, registrations (seats, waitlist, promotion,
  * attendance), vouchers, and the actor rules from the ERD: culture staff
  * for staff things, the student themself or staff for registrations.
  */
@@ -14,7 +14,7 @@ const {
 const reg = (event, student, by, extra = {}) =>
   request(app).post("/api/event-registrations").send({ event: event._id, student: student._id, by: by._id, ...extra });
 
-describe("events — actors and lifecycle", () => {
+describe("events - actors and lifecycle", () => {
   it("only culture staff may create; a draft publishes and records who did it", async () => {
     const staff = await makeCultureStaff();
     const student = await makeCultureStudent();
@@ -65,7 +65,7 @@ describe("events — actors and lifecycle", () => {
   });
 });
 
-describe("registrations — who, capacity, waitlist, promotion", () => {
+describe("registrations - who, capacity, waitlist, promotion", () => {
   it("the student may register themself; a stranger may not", async () => {
     const staff = await makeCultureStaff();
     const ev = await makeEvent({ by: staff._id });
@@ -81,7 +81,7 @@ describe("registrations — who, capacity, waitlist, promotion", () => {
     expect(stranger.body.code).toBe("NOT_CULTURE_STAFF");
   });
 
-  it("a college-only student is NOT_CULTURE_STUDENT — unless staff bring them as a GUEST", async () => {
+  it("a college-only student is NOT_CULTURE_STUDENT - unless staff bring them as a GUEST", async () => {
     const staff = await makeCultureStaff();
     const ev = await makeEvent({ by: staff._id });
     const college = await makeStudent();
@@ -150,7 +150,7 @@ describe("registrations — who, capacity, waitlist, promotion", () => {
     expect(res.body.code).toBe("EVENT_FULL");
   });
 
-  it("settings are enforced (gender, age) — staff may force", async () => {
+  it("settings are enforced (gender, age) - staff may force", async () => {
     const staff = await makeCultureStaff();
     const womenOnly = await makeEvent({ by: staff._id, settings: { gender: "women", capacity: 5 } });
     const man = await makeCultureStudent({ gender: "male" });

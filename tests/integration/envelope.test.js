@@ -1,6 +1,6 @@
 /**
  * Tests that the standard response envelope contract is honoured across
- * the API — including the remodel's stable error codes.
+ * the API - including the remodel's stable error codes.
  */
 
 const request = require("supertest");

@@ -1,20 +1,20 @@
 /**
- * @file cultureSeed — the תרבות לכל layer of a demo world
+ * @file cultureSeed - the תרבות לכל layer of a demo world
  * @module scripts/lib/cultureSeed
  *
  * Shared by seedTestData.js and seedPokemon.js so both worlds get the same
  * SHAPES with their own flavour (names, places, events). Everything goes
- * through the real services — programService.transfer for the moves,
- * cultureService.register/reportAttendance for the seats — so the demo
+ * through the real services - programService.transfer for the moves,
+ * cultureService.register/reportAttendance for the seats - so the demo
  * history is exactly what the app would have produced, invariants
  * included (unique registrations, capacity → waitlist, promotion, actor
  * rules). `trusted` only lifts the "published + future" gate so PAST
  * events can be built.
  *
  * What it builds (counts are options):
- *   · culture STAFF (ManagerCulture) — the only legal actors
- *   · culture-only students (new people) — pipeline at mixed stages
- *   · BOTH-programs students — existing college students who also join
+ *   · culture STAFF (ManagerCulture) - the only legal actors
+ *   · culture-only students (new people) - pipeline at mixed stages
+ *   · BOTH-programs students - existing college students who also join
  *     culture (rare)
  *   · TRANSFERS college → culture and one culture → college (rarer), dated
  *     in the past, with cycle seats given back / future registrations
@@ -47,7 +47,7 @@ const DAY = 86400000;
  * @param {Function} [o.availabilityFn]  () → availability[] for new people
  * @param {Array}    [o.guestPool]       people WITHOUT a culture profile who may
  *                                       be brought along as אורח/ת (family at
- *                                       "ערב הורים וילדים" — senzey's guest type)
+ *                                       "ערב הורים וילדים" - senzey's guest type)
  */
 async function seedCulture({ world, rnd, collegeStudents, flavour, counts = {}, availabilityFn, guestPool = [] }) {
   const now = Date.now();
@@ -300,18 +300,18 @@ async function seedCulture({ world, rnd, collegeStudents, flavour, counts = {}, 
     }
   };
 
-  // past — done, attendance reported
+  // past - done, attendance reported
   for (let i = 0; i < C.pastEvents; i++) {
     const ev = await mkEvent({ dayOffset: -ri(4, 95), status: "done", i });
     await fillEvent(ev, { fillRatio: pick([0.6, 0.8, 1, 1]), waitlist: rnd() < 0.4 ? ri(1, 2) : 0, cancelSome: rnd() < 0.6, past: true, i });
   }
-  // upcoming — published; two of them full with a waitlist
+  // upcoming - published; two of them full with a waitlist
   for (let i = 0; i < C.upcomingEvents; i++) {
     const ev = await mkEvent({ dayOffset: ri(2, 60), status: "published", i });
     const full = i < 2;
     await fillEvent(ev, { fillRatio: full ? 1 : pick([0.3, 0.5, 0.7]), waitlist: full ? ri(2, 3) : 0, cancelSome: !full && rnd() < 0.3, i });
   }
-  // drafts — nobody registered yet
+  // drafts - nobody registered yet
   for (let i = 0; i < C.drafts; i++) await mkEvent({ dayOffset: ri(20, 75), status: "draft", i });
   // one cancelled future event with its seats cancelled
   {
@@ -399,7 +399,7 @@ async function seedCulture({ world, rnd, collegeStudents, flavour, counts = {}, 
   for (const t of out.transfers) {
     console.log(
       `   ↔ ${t.person.firstName} ${t.person.lastName}: ${t.from === "StudentCollege" ? "מכללה → תרבות" : "תרבות → מכללה"} ` +
-        `(${t.at.toISOString().slice(0, 10)}) — ` +
+        `(${t.at.toISOString().slice(0, 10)}) - ` +
         Object.entries(t.effects).filter(([, v]) => v).map(([k, v]) => `${k} ${v}`).join(", ")
     );
   }

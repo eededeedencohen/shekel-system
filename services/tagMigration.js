@@ -1,9 +1,9 @@
 /**
- * @file Tag migration — the old profiles → personTags / cycleTags
+ * @file Tag migration - the old profiles → personTags / cycleTags
  * @module services/tagMigration
  *
  * Additive and idempotent: run it as often as you like, on any world. It
- * never touches profiles, people or cycles — the old code keeps working
+ * never touches profiles, people or cycles - the old code keeps working
  * while the new tables fill up.
  *
  * What a person gets:
@@ -74,7 +74,7 @@ async function migrateWorld(world, { dry = false, log = () => {} } = {}) {
     for (const key of tags.KIND_TAGS[p.kind] || []) {
       if (key === "college" && active && liveHostelSeat.has(pid) && !anyCollegeSeat.has(pid)) {
         hostelOnly++;
-        // a hostels student, not a college one — an open college row (written beside the profile) closes
+        // a hostels student, not a college one - an open college row (written beside the profile) closes
         if (!dry) await tags.take({ world, personId: pid, key: "college", by: "מערכת", note: "לומד/ת רק בקורסים של הוסטל" });
         continue;
       }

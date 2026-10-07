@@ -5,7 +5,7 @@
  * Profiles created before the program-lifecycle log existed have no
  * `since` and an empty `log`. This stamps each one with a single `opened`
  * entry at its createdAt (the migration copied the person's original
- * createdAt, so this IS the day the role began) — additive only, never
+ * createdAt, so this IS the day the role began) - additive only, never
  * touches a profile that already has a log.
  *
  * Usage:
@@ -32,7 +32,7 @@ async function main() {
   for (const p of todo) byWorld[p.world] = (byWorld[p.world] || 0) + 1;
   console.log(`profiles without a lifecycle log: ${todo.length}`, byWorld);
   if (DRY) {
-    console.log("dry run — nothing written.");
+    console.log("dry run - nothing written.");
   } else {
     let n = 0;
     for (const p of todo) {

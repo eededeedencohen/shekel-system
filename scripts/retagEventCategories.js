@@ -1,11 +1,11 @@
 /**
- * @file retagEventCategories — re-file stored events into the finer
+ * @file retagEventCategories - re-file stored events into the finer
  * culture-event vocabulary of 2026-09-07 (theatre / concert / stand-up /
  * restaurant / museum … instead of the coarse show / outing / trip).
  *
  * Only events still carrying a PRE-SPLIT key are touched, and only when
  * the name makes the finer kind obvious (a "הצגה" is theatre, "מוסא" is a
- * restaurant, "מוזיאון" is a museum). Anything ambiguous keeps its key —
+ * restaurant, "מוזיאון" is a museum). Anything ambiguous keeps its key -
  * `show` is now the catch-all "מופע אחר", so nothing is ever invalid.
  * Idempotent: a second run finds nothing to do.
  *
@@ -57,7 +57,7 @@ const onlyWorld = (args.find((a) => a.startsWith("--world=")) || "").slice(8) ||
     console.log(`${world}: ${events.length} pre-split events, ${n} ${dry ? "would be " : ""}re-filed`);
     total += n;
   }
-  console.log(`${dry ? "[dry] " : ""}done — ${total} event(s)`);
+  console.log(`${dry ? "[dry] " : ""}done - ${total} event(s)`);
   await mongoose.disconnect();
 })().catch((e) => {
   console.error(e);

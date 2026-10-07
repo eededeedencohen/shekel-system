@@ -1,5 +1,5 @@
 /**
- * חשבוניות של מורים — a picture + the lessons written on it. The rules:
+ * חשבוניות של מורים - a picture + the lessons written on it. The rules:
  * at least one lesson, only the teacher's own lessons (the cycle's teacher
  * or the substitute written on the lesson), a lesson billed once, the
  * picture validated and served back, removal frees the lessons, worlds
@@ -75,7 +75,7 @@ describe("POST /api/invoices", () => {
     expect(res2.body.code).toBe("INVOICE_LESSON_NOT_TEACHERS");
   });
 
-  it("bills a lesson once — a second invoice naming it is refused and leaves nothing behind", async () => {
+  it("bills a lesson once - a second invoice naming it is refused and leaves nothing behind", async () => {
     const { teacher, lessons } = await teacherWithLessons(2);
     expect((await post({ teacher: teacher._id, lessons: [lessons[0]._id], imageData: IMAGE })).status).toBe(201);
     const res = await post({ teacher: teacher._id, lessons: [lessons[1]._id, lessons[0]._id], imageData: IMAGE });

@@ -1,8 +1,8 @@
 /**
- * @file Cycle controller — lean, world-scoped cycle CRUD
+ * @file Cycle controller - lean, world-scoped cycle CRUD
  * @module controllers/cycleController
  *
- * The cohort is NOT here (see enrollmentController) — list responses are
+ * The cohort is NOT here (see enrollmentController) - list responses are
  * lean and constant-size. Body writes are whitelisted; enrollment data can
  * no longer ride in on a cycle update (it lives in another collection with
  * a unique index).
@@ -69,7 +69,7 @@ exports.createCycle = catchAsync(async (req, res, next) => {
   res.status(201).json({ status: "success", data: { cycle } });
 });
 
-/** PUT /api/cycles/:id — whitelisted merge through document validation. */
+/** PUT /api/cycles/:id - whitelisted merge through document validation. */
 exports.updateCycle = catchAsync(async (req, res, next) => {
   const cycle = await Cycle.findOne({ _id: req.params.id, world: req.world });
   if (!cycle) return next(AppError.of("NOT_FOUND", 404, "מחזור"));
@@ -80,7 +80,7 @@ exports.updateCycle = catchAsync(async (req, res, next) => {
 });
 
 /**
- * DELETE /api/cycles/:id — refused while enrollments/lessons reference it
+ * DELETE /api/cycles/:id - refused while enrollments/lessons reference it
  * (end a cycle with status Cancelled/Completed instead).
  */
 exports.deleteCycle = catchAsync(async (req, res, next) => {

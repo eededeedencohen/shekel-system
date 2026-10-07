@@ -1,21 +1,21 @@
 /**
- * @file seedTestData — the TEST world (world:"test") for the matching desk
+ * @file seedTestData - the TEST world (world:"test") for the matching desk
  * @module scripts/seedTestData
  *
  * A generated, deterministic world whose only purpose is to make the
  * matching desk ("שולחן ההתאמות") comfortable to explore: lots of
  * candidates, teachers with real free windows, cycles with/without
- * seats, contested rooms — all with KNOWN shapes.
+ * seats, contested rooms - all with KNOWN shapes.
  *
  * Ground rules (per Eden, 2026-08-23):
  *   · People are fake (lastName "טסט", world:"test"); the real data is
  *     never touched and shows none of this (the dataset switch narrows
  *     every query by `world` IN THE SERVER now).
- *   · The taxonomy mirrors the REAL subjects — cloned into world:"test"
+ *   · The taxonomy mirrors the REAL subjects - cloned into world:"test"
  *     (subjects are per-world entities since the 2026 remodel).
  *   · Rooms are the real שק"ל rooms, likewise cloned into this world.
- *   · There are NO FRIDAYS: days are Sunday–Thursday (0–4), 08:00–20:00.
- *   · Every student declares availability covering 1/3–2/3 of the week.
+ *   · There are NO FRIDAYS: days are Sunday-Thursday (0-4), 08:00-20:00.
+ *   · Every student declares availability covering 1/3-2/3 of the week.
  *   · Every teacher declares ~1/3 of the week; inside it sit the cycles
  *     they teach AND free windows.
  *   · Every cycle is classified: capacity + age range + functioning
@@ -87,7 +87,7 @@ const sample = (arr, n) => shuffle(arr).slice(0, n);
 
 const DAY_START = 8 * 60;
 const DAY_END = 20 * 60;
-const WORK_DAYS = [0, 1, 2, 3, 4]; // א׳–ה׳ — no Fridays, ever
+const WORK_DAYS = [0, 1, 2, 3, 4]; // א׳-ה׳ - no Fridays, ever
 const DAY_HE = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳"];
 const toMin = (t) => {
   const [h, m] = t.split(":").map(Number);
@@ -122,7 +122,7 @@ function mergeRuns(wins) {
 
 /* ──────────────────────── the real campus ──────────────────────── */
 
-/** Rooms of the שק"ל centre (from the real course data — no hostels). */
+/** Rooms of the שק"ל centre (from the real course data - no hostels). */
 const ROOMS = [
   "מוזיקה",
   "אולפן הקלטות",
@@ -159,7 +159,7 @@ const ROOMS_FOR = {
 /* ─────────────────────────── teachers ─────────────────────────── */
 
 /** 15 fake teachers; two subjects (זוגיות, אירועים מיוחדים) have NO
- *  teacher on purpose — they live as domain demand. */
+ *  teacher on purpose - they live as domain demand. */
 const TEACHERS = [
   { firstName: "נועה", subjects: ["מוסיקה", "פסנתר"] },
   { firstName: "איתי", subjects: ["מוסיקה", "פיתוח קול"] },
@@ -175,11 +175,11 @@ const TEACHERS = [
   { firstName: "ליאור", subjects: ["כלבנות"] },
   { firstName: "גלית", subjects: ["נגרות"] },
   { firstName: "אביב", subjects: ["בישול ואפייה"] },
-  // Teaches nothing (yet) — a fully free teacher for the desk.
+  // Teaches nothing (yet) - a fully free teacher for the desk.
   { firstName: "דניאל", subjects: ["נגרות", "בישול ואפייה"], free: true },
 ];
 
-/** ~1/3 of the week (≈20h of 60): 3–4 days, one 4–7h run each. */
+/** ~1/3 of the week (≈20h of 60): 3-4 days, one 4-7h run each. */
 function teacherAvailability() {
   let wins;
   do {
@@ -221,7 +221,7 @@ const STAGE_PATHS = {
 const MOVED_BY = ["חגי", "נעה", "ייטב"];
 const RESIDENCES = ["קהילה", "דיור מוגן", "הוסטל ליבא", "הוסטל עתיד", "משפחה"];
 
-/** 1/3–2/3 of the week (20–40h of 60): 3–5 days, 1–2 runs of 3–8h. */
+/** 1/3-2/3 of the week (20-40h of 60): 3-5 days, 1-2 runs of 3-8h. */
 function studentAvailability(mustInclude = []) {
   let wins;
   do {
@@ -298,14 +298,14 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
   }
   purgeUploads(WORLD);
   console.log(
-    "Purged world:test — " +
+    "Purged world:test - " +
       Object.entries(purged).map(([k, v]) => `${k} ${v}`).join(" · ")
   );
 
   /* 2 ── taxonomy + rooms: clones of the real ones into this world */
   const realSubjects = await Subject.find({ world: "real" }).lean();
   if (!realSubjects.length) {
-    console.error('⛔ No real subjects found — seed the real world first.');
+    console.error('⛔ No real subjects found - seed the real world first.');
     process.exit(1);
   }
   const subjectDocs = await Subject.insertMany(
@@ -383,13 +383,13 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
     const nCycles = pick([2, 2, 3, 3, 4, 4]);
     const kinds = shuffle(["full", "private", "small", "open", "pair", "small", "full"]).slice(0, nCycles);
     for (const kind of kinds) {
-      // Least-loaded teacher of the subject first — every teaching teacher
+      // Least-loaded teacher of the subject first - every teaching teacher
       // ends up with cycles inside their availability (דניאל stays free).
       const load = (x) => cycles.filter((c) => c.teacher === x).length;
       const t = shuffle(tchs).sort((a, b) => load(a) - load(b))[0];
       const K = KINDS[kind];
       const slot = schedule(t, ROOMS_FOR[base], K.minutes);
-      if (!slot) continue; // teacher's week is full — skip this shape
+      if (!slot) continue; // teacher's week is full - skip this shape
       const cap = ri(K.cap[0], K.cap[1]);
       const fill = kind === "private" ? pick(["full", "fresh"]) : pick(FILLS);
       const [ageMin, ageMax] = pick(AGE_BANDS);
@@ -413,7 +413,7 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
       });
     }
   }
-  // A few PLANNED cycles (no teacher, no schedule) — demand placeholders.
+  // A few PLANNED cycles (no teacher, no schedule) - demand placeholders.
   for (const base of plannedBases) {
     if (!subjectByName[base]) continue;
     const roomName = ROOMS_FOR[base]?.[0];
@@ -477,7 +477,7 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
     }));
     const level = extra.level || pick(LEVELS);
     const groupPreference = extra.groupPreference || pick(["Group", "Group", "Group", "Flexible", "Private"]);
-    // pipeline.{stage,since} must agree with the history tail — the model's
+    // pipeline.{stage,since} must agree with the history tail - the model's
     // sync hook asserts exactly that on every save.
     const tail = stageHistory[stageHistory.length - 1];
     const { person } = await createPersonWithProfile("StudentCollege", {
@@ -493,7 +493,7 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
       stageHistory,
       matching: { functioningLevel: level, groupPreference, interests: subjIds(interests) },
       residence: { label: pick(RESIDENCES) },
-      notes: "סטודנט בדיקה — לא אמיתי",
+      notes: "סטודנט בדיקה - לא אמיתי",
       import: { registrationSource: "נתוני טסט" },
     }, { trusted: true });
     const s = { person, stage, interests, availability, level, age, groupPreference, enrolled: [] };
@@ -502,7 +502,7 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
     return s;
   };
 
-  // 5a — Placed students fill the cycles' seats (no time clashes).
+  // 5a - Placed students fill the cycles' seats (no time clashes).
   const openSeats = cycles.filter((c) => c.slot).map((c) => ({ c, left: wanted(c) }));
   for (let i = 0; i < placedCount; i++) {
     const mine = [];
@@ -537,7 +537,7 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
     st.enrolled = [o.c];
   }
 
-  // 5b — the desk candidates: designed interest mixes.
+  // 5b - the desk candidates: designed interest mixes.
   const candidateInterests = () => {
     const r = rnd();
     if (r < 0.45) return sample(basesWithSeats, ri(1, 2)); // clean fits
@@ -551,12 +551,12 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
     for (let i = 0; i < n; i++) {
       const interests =
         stage === "Interested" && rnd() < 0.4 ? [] : [...new Set(candidateInterests().filter(Boolean))];
-      const availability = studentAvailability(); // every student: 1/3–2/3
+      const availability = studentAvailability(); // every student: 1/3-2/3
       await mkStudent(stage, interests, availability);
     }
   }
   console.log(
-    `Students: ${students.length} — ` +
+    `Students: ${students.length} - ` +
       Object.entries(
         students.reduce((m, s) => ((m[s.stage] = (m[s.stage] || 0) + 1), m), {})
       )
@@ -610,11 +610,11 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
   }
   console.log(
     `Cycles: ${cycles.length} (${cycles.filter((c) => c.slot).length} active, ` +
-      `${cycles.filter((c) => !c.slot).length} planned) — כולם מסווגים · ${enrolled} שיבוצים`
+      `${cycles.filter((c) => !c.slot).length} planned) - כולם מסווגים · ${enrolled} שיבוצים`
   );
 
   /* 8 ── seat holds: Intake / AwaitingPlacement students reserve a seat
-   *      (an enrollment with status "reserved" — it counts against
+   *      (an enrollment with status "reserved" - it counts against
    *      capacity from every view) */
   const holders = students.filter((s) => s.stage === "Intake" || s.stage === "AwaitingPlacement").slice(0, 3);
   let held = 0;
@@ -665,11 +665,11 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
   }
 
   /* 10 ── summary per subject */
-  console.log("\nמקצוע · מחזורים [יום התחלה–סיום @חדר קיבולת/מלאים]:");
+  console.log("\nמקצוע · מחזורים [יום התחלה-סיום @חדר קיבולת/מלאים]:");
   for (const base of subjectNames) {
     const mine = cycles.filter((c) => c.base === base);
     if (!mine.length) {
-      if (ROOMS_FOR[base]) console.log(`  ${base}: — (אין מורה → ביקוש כתחום)`);
+      if (ROOMS_FOR[base]) console.log(`  ${base}: - (אין מורה → ביקוש כתחום)`);
       continue;
     }
     const tchs = teachersOf(base).map((t) => t.firstName).join("/") || "אין מורה";
@@ -678,7 +678,7 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
         mine
           .map((c) =>
             c.slot
-              ? `[${DAY_HE[c.slot.day]} ${fmt(c.slot.s)}–${fmt(c.slot.e)} @${c.slot.room} ${c.enrolledCount}/${c.cap}${c.matching.enrollmentOpen ? "" : " סגור"}]`
+              ? `[${DAY_HE[c.slot.day]} ${fmt(c.slot.s)}-${fmt(c.slot.e)} @${c.slot.room} ${c.enrolledCount}/${c.cap}${c.matching.enrollmentOpen ? "" : " סגור"}]`
               : `[מתוכנן 0/${c.cap}]`
           )
           .join(" ")
@@ -687,7 +687,7 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
   const avgStudentHours = (students.reduce((n, s) => n + hoursOf(s.availability), 0) / students.length).toFixed(1);
   const avgTeacherHours = (teachers.reduce((n, t) => n + hoursOf(t.availability), 0) / teachers.length).toFixed(1);
   console.log(
-    `\n✅ Done — עולם טסט (world:"test"): ${teachers.length} מורים (ממוצע ${avgTeacherHours} ש׳ זמינות), ` +
+    `\n✅ Done - עולם טסט (world:"test"): ${teachers.length} מורים (ממוצע ${avgTeacherHours} ש׳ זמינות), ` +
       `${students.length} סטודנטים (ממוצע ${avgStudentHours} ש׳ זמינות), ${cycles.length} מחזורים, ` +
       `${enrolled} שיבוצים, ${held} מקומות שמורים, ${lessonCount} שיעורים מדווחים. אין ימי שישי.`
   );
@@ -696,7 +696,7 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
    *       transfers (dated, with the seats given back), events + vouchers */
   // Guests = college students who are NOT in culture (family/friends in real
   // life; here the nearest fake stand-in). Excludes the ones seedCulture
-  // will move/join — it picks Placed students, so offer the others.
+  // will move/join - it picks Placed students, so offer the others.
   const guestPool = students.filter((s) => s.stage !== "Placed").map((s) => s.person);
   await seedCulture({
     world: WORLD,
@@ -709,9 +709,9 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
       emailPrefix: "test",
       emailDomain: "test.local",
       systemActor: "מערכת",
-      studentNote: "סטודנט/ית תרבות לכל — נתוני טסט",
+      studentNote: "סטודנט/ית תרבות לכל - נתוני טסט",
       // The real program is run by one coordinator (99% of the senzey rows)
-      // with an occasional second hand — same shape here, fake surnames.
+      // with an occasional second hand - same shape here, fake surnames.
       staff: [
         { firstName: "שירן", title: "רכזת תרבות לכל" },
         { firstName: "גפן", title: "עובד/ת תרבות ופנאי" },
@@ -723,11 +723,11 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
         "ניצן", "רון", "גפן", "יואב", "אגם", "בר",
       ],
       transferNotes: {
-        toCulture: ["העדיף/ה את הטיולים והמופעים על פני קורס שבועי", "הפסיק/ה ללמוד — ממשיך/ה רק באירועי תרבות", "לבקשת המשפחה — פחות מחויבות שבועית"],
+        toCulture: ["העדיף/ה את הטיולים והמופעים על פני קורס שבועי", "הפסיק/ה ללמוד - ממשיך/ה רק באירועי תרבות", "לבקשת המשפחה - פחות מחויבות שבועית"],
         toCollege: ["ביקש/ה ללמוד קורס קבוע אחרי שנה של אירועים", "עבר/ה למסלול המכללה בעקבות שיחת קליטה"],
       },
       cancelReasons: ["חולה", "עבודה באותו ערב", "לא מצא/ה הסעה", "שינוי תוכניות משפחתי"],
-      eventCancelReasons: ["המופע בוטל ע\"י התיאטרון", "מזג אוויר סוער — הטיול נדחה"],
+      eventCancelReasons: ["המופע בוטל ע\"י התיאטרון", "מזג אוויר סוער - הטיול נדחה"],
       attendanceNotes: {
         present: ["הגיע/ה עם מלווה", "נהנה/תה מאוד", "הצטרף/ה באיחור קל"],
         absent: ["הודיע/ה מראש", "לא הגיע/ה ולא הודיע/ה", "חולה"],
@@ -744,43 +744,43 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
       // The real "יציאות בקהילה" vocabulary (senzey, תשפ"ו): workshops and
       // social evenings at the department's own hall (פנאי · יד חרוצים 9),
       // cinema, Jerusalem Theatre, bowling, restaurant/café outings split
-      // צעירים/מבוגרים, women-only mornings, tours, nature, holiday parties —
+      // צעירים/מבוגרים, women-only mornings, tours, nature, holiday parties -
       // plus one template per finer performance kind (musical, dance,
       // stand-up, concert) and the new outing kinds (festival, a game, a
       // museum) so the calendar demo shows the whole vocabulary.
       events: [
         { name: "סדנת אפיה", category: "workshop", location: "מרכז פנאי · יד חרוצים 9", capacity: 20, hour: 17, endTime: "19:00", description: "סדנת אפיה שבועית עם שרה" },
         { name: "סדנת בישול", category: "workshop", location: "מרכז פנאי · יד חרוצים 9", capacity: 18, hour: 17, endTime: "19:00" },
-        { name: "בוקר נשים", category: "community", location: "מרכז פנאי · יד חרוצים 9", capacity: 15, gender: "women", hour: 11, endTime: "13:00", description: "מפגש נשים שבועי — קפה, שיחה ופעילות" },
+        { name: "בוקר נשים", category: "community", location: "מרכז פנאי · יד חרוצים 9", capacity: 15, gender: "women", hour: 11, endTime: "13:00", description: "מפגש נשים שבועי - קפה, שיחה ופעילות" },
         { name: "ערב הורים וילדים", category: "community", location: "מרכז פנאי · יד חרוצים 9", capacity: 16, hour: 17, endTime: "19:00", guests: true, description: "ערב משותף למשתתפים ולבני משפחה" },
         { name: "סרט בבוקר", category: "movie", location: "סינמה סיטי ירושלים · דרך רבין 10", capacity: 22, hour: 11, endTime: "13:00" },
         { name: "סרט בערב", category: "movie", location: "סינמה סיטי ירושלים · דרך רבין 10", capacity: 22, hour: 18, endTime: "20:30" },
-        { name: "הצגה — \"הזוג המוזר\"", category: "theatre", location: "תיאטרון ירושלים", capacity: 10, hour: 20, endTime: "22:15", price: 40 },
-        { name: "הצגה — \"משכנתא\"", category: "theatre", location: "תיאטרון ירושלים", capacity: 8, hour: 20, endTime: "22:15", price: 40 },
-        { name: "מחזמר — \"שלמה המלך ושלמי הסנדלר\"", category: "musical", location: "תיאטרון ירושלים", capacity: 12, hour: 20, endTime: "22:30", price: 60 },
-        { name: "מופע מחול — להקת בת-שבע", category: "dance", location: "תיאטרון ירושלים", capacity: 10, hour: 20, endTime: "21:30", price: 50 },
+        { name: "הצגה - \"הזוג המוזר\"", category: "theatre", location: "תיאטרון ירושלים", capacity: 10, hour: 20, endTime: "22:15", price: 40 },
+        { name: "הצגה - \"משכנתא\"", category: "theatre", location: "תיאטרון ירושלים", capacity: 8, hour: 20, endTime: "22:15", price: 40 },
+        { name: "מחזמר - \"שלמה המלך ושלמי הסנדלר\"", category: "musical", location: "תיאטרון ירושלים", capacity: 12, hour: 20, endTime: "22:30", price: 60 },
+        { name: "מופע מחול - להקת בת-שבע", category: "dance", location: "תיאטרון ירושלים", capacity: 10, hour: 20, endTime: "21:30", price: 50 },
         { name: "באולינג", category: "outing", location: "קניון לב תלפיות · האומן 17", capacity: 16, hour: 12, endTime: "14:00" },
         { name: "מוסא צעירים", category: "restaurant", location: "מסעדת מוסא · קניון מלחה", capacity: 14, hour: 18, endTime: "20:00", ageMin: 18, ageMax: 32, description: "ארוחת ערב לצעירים" },
         { name: "מוסא מבוגרים", category: "restaurant", location: "מסעדת מוסא · קניון מלחה", capacity: 12, hour: 12, endTime: "14:00", ageMin: 33 },
         { name: "ארומה מבוגרים", category: "restaurant", location: "ארומה · עמק רפאים 43", capacity: 12, hour: 11, endTime: "13:00", ageMin: 33 },
-        { name: "נוקטורנו — מופע מוזיקלי", category: "concert", location: "נוקטורנו · בצלאל 7", capacity: 17, hour: 19, endTime: "21:30" },
+        { name: "נוקטורנו - מופע מוזיקלי", category: "concert", location: "נוקטורנו · בצלאל 7", capacity: 17, hour: 19, endTime: "21:30" },
         { name: "פסטיבל האור בעיר העתיקה", category: "festival", location: "העיר העתיקה", capacity: 25, hour: 19, endTime: "22:00" },
-        { name: "משחק כדורסל — הפועל ירושלים", category: "sportEvent", location: "היכל הפיס ארנה · מלחה", capacity: 15, hour: 19, endTime: "21:30", price: 30 },
+        { name: "משחק כדורסל - הפועל ירושלים", category: "sportEvent", location: "היכל הפיס ארנה · מלחה", capacity: 15, hour: 19, endTime: "21:30", price: 30 },
         { name: "ביקור במוזיאון ישראל", category: "museum", location: "מוזיאון ישראל · רופין 11", capacity: 16, hour: 10, endTime: "13:00" },
         { name: "סטודיו מדרחוב", category: "workshop", location: "סטודיו מדרחוב · הלני המלכה 3", capacity: 12, hour: 18, endTime: "19:45" },
-        { name: "סיור יום ירושלים — הרובע היהודי", category: "trip", location: "העיר העתיקה", capacity: 18, hour: 11, endTime: "15:00", ageMax: 60 },
+        { name: "סיור יום ירושלים - הרובע היהודי", category: "trip", location: "העיר העתיקה", capacity: 18, hour: 11, endTime: "15:00", ageMax: 60 },
         { name: "סיור במוזיאון הכנסת", category: "museum", location: "רחוב המלך ג'ורג' 24", capacity: 14, hour: 13, endTime: "15:00" },
         { name: "פיקניק בטבע וארוחת בוקר", category: "trip", location: "יער ירושלים", capacity: 21, hour: 11, endTime: "14:30" },
         { name: "ערב על האש", category: "community", location: "גן הפעמון", capacity: 32, hour: 18, endTime: "21:00", guests: true },
         { name: "כלבנות טיפולית", category: "workshop", location: "מרכז פנאי · יד חרוצים 9", capacity: 15, hour: 16, endTime: "17:30" },
-        { name: "פייטנות", category: "workshop", location: "מרכז פנאי · יד חרוצים 9", capacity: 6, hour: 19, endTime: "19:45", description: "קבוצה קטנה — שירה ופיוט" },
-        { name: "סדנת כלים להתמודדות — \"מחשבות מגבילות\"", category: "workshop", location: "מרכז פנאי · יד חרוצים 9", capacity: 14, hour: 12, endTime: "13:30" },
+        { name: "פייטנות", category: "workshop", location: "מרכז פנאי · יד חרוצים 9", capacity: 6, hour: 19, endTime: "19:45", description: "קבוצה קטנה - שירה ופיוט" },
+        { name: "סדנת כלים להתמודדות - \"מחשבות מגבילות\"", category: "workshop", location: "מרכז פנאי · יד חרוצים 9", capacity: 14, hour: 12, endTime: "13:30" },
         { name: "סדנת סטיילינג עם אפרת", category: "workshop", location: "מרכז פנאי · יד חרוצים 9", capacity: 13, hour: 17, endTime: "18:30" },
         { name: "מסיבת חג", category: "party", location: "מרכז פנאי · יד חרוצים 9", capacity: 55, hour: 17, endTime: "20:00", guests: true },
-        { name: "התנדבות — אריזות לחיילים", category: "volunteering", location: "מרכז פנאי · יד חרוצים 9", capacity: 17, hour: 17, endTime: "19:00" },
+        { name: "התנדבות - אריזות לחיילים", category: "volunteering", location: "מרכז פנאי · יד חרוצים 9", capacity: 17, hour: 17, endTime: "19:00" },
         { name: "אימון טניס חוויתי", category: "sport", location: "מרכז הטניס במלחה", capacity: 8, hour: 11, endTime: "12:30", ageMax: 50 },
         { name: "קונצרט סוף שנה", category: "concert", location: "תיאטרון ירושלים", capacity: 14, hour: 19, endTime: "21:00" },
-        { name: "סטנדאפ — \"שלומי קוריאט\"", category: "standup", location: "זאפה ירושלים", capacity: 8, hour: 20, endTime: "22:00", price: 240, ageMin: 21 },
+        { name: "סטנדאפ - \"שלומי קוריאט\"", category: "standup", location: "זאפה ירושלים", capacity: 8, hour: 20, endTime: "22:00", price: 240, ageMin: 21 },
       ],
     },
   });
@@ -793,7 +793,7 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
 
   /* 13 ── קליטה: the social worker's board in every state of Eden's diagram
    *       (landing-page leads, held seats, scheduled/overdue meetings,
-   *       missing documents, completed intakes) — through the real services. */
+   *       missing documents, completed intakes) - through the real services. */
   const seatable = cycles.filter((c) => c.slot && c.matching.enrollmentOpen && c.enrolledCount < c.cap);
   let seatIdx = 0;
   const findSeat = () => {
@@ -822,7 +822,7 @@ const dayPart = (s) => (s < 12 * 60 ? "בוקר" : s < 16 * 60 ? "צהריים" 
   });
 
   /* 14 ── הספרייה: a dozen books, a few with students (one overdue, one
-   *       extended), some returned history — through libraryService. */
+   *       extended), some returned history - through libraryService. */
   await seedLibrary({
     world: WORLD,
     students: students.filter((s) => s.stage === "Placed").slice(0, 8).map((s) => s.person),

@@ -1,5 +1,5 @@
 /**
- * @file Activity routes — a person's record and the templates
+ * @file Activity routes - a person's record and the templates
  * @module routes/activityRoutes
  * @see controllers/activityController
  */

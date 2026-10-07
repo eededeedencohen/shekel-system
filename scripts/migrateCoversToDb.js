@@ -1,9 +1,9 @@
 /**
- * @file migrateCoversToDb — book covers move from the disk into the record
+ * @file migrateCoversToDb - book covers move from the disk into the record
  * @module scripts/migrateCoversToDb
  *
  * Until 2026-09-22 a cover was a file under UPLOAD_DIR/<world>/books/ and
- * the book kept only its name — and the deploy wiped the disk, so covers
+ * the book kept only its name - and the deploy wiped the disk, so covers
  * vanished within days (Eden: "שהתמונות יישמרו"). Now the bytes live in
  * `cover.data` (models/Book). For every book of every world:
  *
@@ -12,7 +12,7 @@
  *                                              Google Books), best effort
  *   nothing to recover                       → cover cleared
  *
- * Idempotent — a book that already carries `cover.data` is skipped:
+ * Idempotent - a book that already carries `cover.data` is skipped:
  *
  *   cd server && node scripts/migrateCoversToDb.js              # every world
  *   cd server && node scripts/migrateCoversToDb.js --world=test
@@ -60,7 +60,7 @@ const uploadRoot = process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads
           continue;
         }
       } catch {
-        /* the shop may not answer — the book stays without a cover */
+        /* the shop may not answer - the book stays without a cover */
       }
     }
     if (book.cover?.storedName || book.cover?.mime) {
@@ -71,7 +71,7 @@ const uploadRoot = process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads
   }
   const withCover = await Book.countDocuments({ ...(worldArg ? { world: worldArg } : {}), "cover.data": { $exists: true, $ne: null } });
   console.log(
-    `${worldArg || "every world"}: ${books.length} books looked at — ${n.fromDisk} covers copied from the disk, ${n.downloaded} downloaded again, ` +
+    `${worldArg || "every world"}: ${books.length} books looked at - ${n.fromDisk} covers copied from the disk, ${n.downloaded} downloaded again, ` +
       `${n.cleared} stale references cleared, ${n.untouched} never had one; ${withCover} books now carry their cover`
   );
   await mongoose.disconnect();

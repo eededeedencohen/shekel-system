@@ -1,5 +1,5 @@
 /**
- * The intake demo seed (scripts/lib/intakeSeed) — runs through the REAL
+ * The intake demo seed (scripts/lib/intakeSeed) - runs through the REAL
  * services, so it doubles as an end-to-end check of Eden's 2026-09-17
  * pipeline: every state of both boards comes out as the seed promises.
  */

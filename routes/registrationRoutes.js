@@ -1,5 +1,5 @@
 /**
- * @file Event-registration routes — /api/event-registrations
+ * @file Event-registration routes - /api/event-registrations
  * @module routes/registrationRoutes
  * @see controllers/eventController
  */

@@ -2,9 +2,9 @@
  * @file Per-file Jest setup
  *
  * Provides an in-memory MongoDB to every test file:
- *   • beforeAll  — boot a fresh MongoMemoryServer + connect mongoose
- *   • afterEach  — wipe every collection so tests cannot leak data
- *   • afterAll   — disconnect mongoose + stop the server
+ *   • beforeAll  - boot a fresh MongoMemoryServer + connect mongoose
+ *   • afterEach  - wipe every collection so tests cannot leak data
+ *   • afterAll   - disconnect mongoose + stop the server
  *
  * This file is wired via `setupFilesAfterEach` in jest.config.js, so
  * test files do NOT need to import it.

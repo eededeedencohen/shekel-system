@@ -1,5 +1,5 @@
 /**
- * @file Room controller — world-scoped rooms with referenced-delete guard
+ * @file Room controller - world-scoped rooms with referenced-delete guard
  * @module controllers/roomController
  */
 

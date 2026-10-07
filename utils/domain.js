@@ -8,10 +8,10 @@
  */
 
 /**
- * Attendance statuses (exactly three — anything else is inferred, not stored):
- *  - Present          = נכח    — attended the lesson.
- *  - AnnouncedAbsence = לא נכח — announced in advance they would not attend.
- *  - Missing          = נעדר   — did not show and whereabouts unknown (concerning).
+ * Attendance statuses (exactly three - anything else is inferred, not stored):
+ *  - Present          = נכח    - attended the lesson.
+ *  - AnnouncedAbsence = לא נכח - announced in advance they would not attend.
+ *  - Missing          = נעדר   - did not show and whereabouts unknown (concerning).
  * A past date with no record simply means "not reported" and is never stored.
  */
 const ATTENDANCE_STATUSES = ["Present", "AnnouncedAbsence", "Missing"];
@@ -23,19 +23,19 @@ const ATTENDANCE_LABELS = {
 };
 
 /**
- * The מכללה לכל pipeline — Eden's spec (2026-09-17), which replaced the
+ * The מכללה לכל pipeline - Eden's spec (2026-09-17), which replaced the
  * eight keys of the 2026-09-09 diagram with five stops and one side door:
  *
  *   landing page / "+ מתעניין חדש" ──► Interested   tag "מתעניין במכללה לכל"
  *   נועה/חגי move it BY HAND       ──► Matching     waiting for a cycle
  *   a seat is RESERVED (cycle only, ──► Intake       "קליטה אצל העובדת סוציאלית":
- *     no start date)                                  automatic — enrollmentService
+ *     no start date)                                  automatic - enrollmentService
  *       ייטב: שיחה ראשונית → בהמתנה לאינטייק → בוצע אינטייק,
- *       + אישור שקדייה + the four documents — all on the `intakes` record
- *   the file is complete           ──► AwaitingPlacement  automatic — intakeService:
+ *       + אישור שקדייה + the four documents - all on the `intakes` record
+ *   the file is complete           ──► AwaitingPlacement  automatic - intakeService:
  *                                                  the baton is back with the managers,
  *                                                  a seat is held, the start date is missing
- *   נועה/חגי enter the start date  ──► Placed       automatic — enrollmentService
+ *   נועה/חגי enter the start date  ──► Placed       automatic - enrollmentService
  *   a student who lost a course    ──► NeedsReplacement (shown inside "בחיפוש שיבוץ")
  *
  * תרבות לכל runs the short form: Interested → Intake (ייטב) → Placed.
@@ -61,7 +61,7 @@ const PIPELINE_STAGE_KEYS = PIPELINE_STAGES.map((s) => s.key);
  * old exports / notes can still be read.
  */
 const LEGACY_STAGE_MAP = { ReservedSeat: "Intake", AwaitingDocuments: "Intake" };
-/** The social worker's turf — college managers may not move this. */
+/** The social worker's turf - college managers may not move this. */
 const INTAKE_STAGES = ["Intake"];
 /** Stages a person is in BEFORE the intake begins. */
 const PRE_INTAKE_STAGES = ["Interested", "Matching"];
@@ -69,40 +69,40 @@ const PRE_INTAKE_STAGES = ["Interested", "Matching"];
 /* ───────────────────────── קליטה (אינטייק) ───────────────────────── */
 
 /**
- * The intake file — the documents the social worker listed (2026-10-07):
+ * The intake file - the documents the social worker listed (2026-10-07):
  * the THREE she requires, with the validity each one carries, plus the
  * social-club letter as an optional extra (she never mentioned it; Eden
  * keeps it until she says otherwise). The tag on the student reads "X מתוך
  * 3 מסמכים התקבלו" / "כל המסמכים התקבלו".
  *
- *   validity "dated"   the report names its own expiry (6 months – 2 years):
+ *   validity "dated"   the report names its own expiry (6 months - 2 years):
  *                      the coordinator types the exact date when she
  *                      receives it (DOCUMENT_DATE_REQUIRED); expired = open
  *                      again, alerted FOLLOW_UP.psychiatricNoticeDays ahead
  *   validity "signed"  valid exactly FOLLOW_UP.waiverMonths from the
- *                      signature — computed, never typed; expired = no
+ *                      signature - computed, never typed; expired = no
  *                      sharing with outsiders, alerted waiverNoticeDays ahead
  *
  * "אישור שקדייה" is NOT a document any more: there is no approval that
- * arrives from outside — the coordinator ENTERS the person in שקדיה and
+ * arrives from outside - the coordinator ENTERS the person in שקדיה and
  * marks it here with the date (`intake.shkedia`). The file is complete
  * when the intake was held, שקדיה was entered and every required document
  * is in and in force.
  */
 const INTAKE_DOCUMENTS = [
-  { key: "psychiatric", label: "דוח פסיכיאטרי", hint: "עדכני, חתום ע\"י פסיכיאטר/ית — עם תאריך התוקף הנקוב בו", upload: true, validity: "dated" },
-  { key: "psychosocial", label: "דוח פסיכוסוציאלי", hint: "מהעו\"ס המלווה — עם פרטי הקשר שלו/ה", upload: true },
+  { key: "psychiatric", label: "דוח פסיכיאטרי", hint: "עדכני, חתום ע\"י פסיכיאטר/ית - עם תאריך התוקף הנקוב בו", upload: true, validity: "dated" },
+  { key: "psychosocial", label: "דוח פסיכוסוציאלי", hint: "מהעו\"ס המלווה - עם פרטי הקשר שלו/ה", upload: true },
   { key: "waiver", label: "טופס ויתור סודיות", hint: "נחתם בפגישת האינטייק או מועלה חתום · בתוקף שנה מהחתימה", upload: true, validity: "signed" },
   { key: "socialClub", label: "אישור מועדון חברתי", hint: "אם יש", upload: true, optional: true },
 ];
 const INTAKE_DOCUMENT_KEYS = INTAKE_DOCUMENTS.map((d) => d.key);
 /** The documents behind the "מסמכים" tag (the optional one is not counted). */
 const INTAKE_REQUIRED_DOCUMENTS = INTAKE_DOCUMENTS.filter((d) => !d.optional);
-/** Legacy keys that may still sit on old records — dropped on save, migrated by scripts/migrateShkedia.js. */
+/** Legacy keys that may still sit on old records - dropped on save, migrated by scripts/migrateShkedia.js. */
 const RETIRED_DOCUMENT_KEYS = ["shkedia"];
 
 /**
- * The cadences the social worker set (2026-10-07) — every alert in the app
+ * The cadences the social worker set (2026-10-07) - every alert in the app
  * is DERIVED from dates with these numbers; nothing is stored as a reminder.
  */
 const FOLLOW_UP = {
@@ -141,7 +141,7 @@ const SCREENING_INTERESTS = [
 ];
 const SCREENING_INTEREST_KEYS = SCREENING_INTERESTS.map((i) => i.key);
 
-/** How long a temporary upload link lives (minutes) — the coordinator picks one. */
+/** How long a temporary upload link lives (minutes) - the coordinator picks one. */
 const UPLOAD_LINK_MINUTES = [
   { key: 10, label: "10 דקות" },
   { key: 30, label: "חצי שעה" },
@@ -155,7 +155,7 @@ const LANDING_LINK_HOURS = 24;
 
 /**
  * The activities tab (the social worker, 2026-10-07): every event in a
- * person's life with us, in order — each kind with the template the
+ * person's life with us, in order - each kind with the template the
  * coordinator starts from (editable per world: ActivityTemplate). `resets`
  * says which periodic clock saving this kind restarts (lib/followups).
  */
@@ -242,7 +242,7 @@ const DEFAULT_ACTIVITY_TEMPLATES = {
   incident: { title: "אירוע חריג", body: "", fields: [] },
 };
 
-/** דיווח עזיבה — the reason picked from a closed list (free text beside it). */
+/** דיווח עזיבה - the reason picked from a closed list (free text beside it). */
 const LEAVE_REASONS = [
   { key: "completed", label: "סיים/ה את התוכנית" },
   { key: "moved", label: "עבר/ה למסגרת אחרת" },
@@ -278,10 +278,10 @@ const DOCUMENT_OK_STATUSES = ["uploaded", "received", "waived"];
 
 /**
  * The intake record's own state (denormalized by intakeService):
- *   new        — no call yet
- *   scheduled  — the meeting is set ("בהמתנה לאינטייק")
- *   documents  — the meeting was held; שקדיה and/or documents are missing (or expired)
- *   complete   — held + entered in שקדיה + every required document in force
+ *   new        - no call yet
+ *   scheduled  - the meeting is set ("בהמתנה לאינטייק")
+ *   documents  - the meeting was held; שקדיה and/or documents are missing (or expired)
+ *   complete   - held + entered in שקדיה + every required document in force
  */
 const INTAKE_STATUSES = ["new", "scheduled", "documents", "complete"];
 const INTAKE_STATUS_LABELS = {
@@ -291,7 +291,7 @@ const INTAKE_STATUS_LABELS = {
   complete: "הקליטה הושלמה",
 };
 /**
- * The "סטטוס עובדת סוציאלית" tag on a student (Eden's three values) —
+ * The "סטטוס עובדת סוציאלית" tag on a student (Eden's three values) -
  * derived from the record: no meeting / meeting set / meeting held.
  */
 const INTAKE_SW_STATUSES = ["new", "scheduled", "done"];
@@ -313,7 +313,7 @@ const INTAKE_SOURCES = ["landing", "staff"];
 const INTAKE_LOG_ACTIONS = [
   "submitted", "scheduled", "rescheduled", "done", "completed",
   "docUploaded", "docReceived", "docWaived", "docRejected", "docReset", "docNote", "note",
-  // 2026-10-07 — the social worker's round
+  // 2026-10-07 - the social worker's round
   "shkedia", "coordinator", "screening", "committee", "link",
 ];
 /** Preferred time of day (landing page, מכללה לכל). */
@@ -338,7 +338,7 @@ const FUNCTIONING_LABELS = {
 const GROUP_PREFERENCES = ["Group", "Private", "Flexible"];
 
 /**
- * Known hostel names. Used to validate imports only — CourseInstance.hostel
+ * Known hostel names. Used to validate imports only - CourseInstance.hostel
  * stays a plain String so adding a hostel never requires a migration.
  */
 const HOSTELS = [
@@ -355,14 +355,14 @@ const HOSTELS = [
 
 /**
  * Data worlds (demo isolation). `world` is a REQUIRED field on every
- * collection, injected by server middleware from the X-Dataset header —
+ * collection, injected by server middleware from the X-Dataset header -
  * never taken from a request body. "real" is the default.
  */
 const WORLDS = ["real", "pokemon", "test"];
 const WORLD_LABELS = { real: "אמיתי", pokemon: "פוקימון", test: "טסט" };
 
 /**
- * Profile kinds — the user types of the identity+profiles split. A person
+ * Profile kinds - the user types of the identity+profiles split. A person
  * holds any number of profiles ({person,kind} unique); adding a kind here +
  * a discriminator file under models/profiles/ is ALL a new user type needs.
  */
@@ -381,7 +381,7 @@ const PROFILE_KIND_KEYS = PROFILE_KINDS.map((k) => k.key);
 const STUDENT_KINDS = ["StudentCollege", "StudentCulture"];
 
 /**
- * The PROGRAMS a student can belong to — exactly the student kinds, with
+ * The PROGRAMS a student can belong to - exactly the student kinds, with
  * the department name people use. A person may hold both (rare) and may
  * transfer between them; every step is logged on the profile (see
  * PROFILE_EVENTS + services/programService).
@@ -393,7 +393,7 @@ const PROGRAMS = [
 const PROGRAM_LABELS = Object.fromEntries(PROGRAMS.map((p) => [p.key, p.label]));
 
 /**
- * Profile lifecycle events — the append-only `log` on every profile.
+ * Profile lifecycle events - the append-only `log` on every profile.
  * transferredOut/transferredIn always come in pairs (one per side) and
  * carry `otherKind` so each side of the move is readable on its own.
  */
@@ -409,13 +409,13 @@ const PROFILE_EVENT_KEYS = PROFILE_EVENTS.map((e) => e.key);
 /* ───────────────────────── תרבות לכל ───────────────────────── */
 
 /**
- * Culture-event categories (English keys in the DB) — the vocabulary of the
+ * Culture-event categories (English keys in the DB) - the vocabulary of the
  * real "יציאות בקהילה" senzey data, at the grain Eden asked for (2026-09-07:
  * "אני ממש רוצה להבדיל בין סטנדאפ למופע של זמר והצגה"): every kind of
  * performance is its own category, restaurants are not bowling, a museum
  * is not a hike. `group` only organises the pick-list (optgroups) and the
  * legend; `hint` is the pick-list's parenthesis. The pre-split keys
- * (`show`, `outing`, `trip`…) stay valid so stored events never break —
+ * (`show`, `outing`, `trip`…) stay valid so stored events never break -
  * `show` is now the catch-all "מופע אחר" (scripts/retagEventCategories.js
  * re-files what a name makes obvious).
  */
@@ -466,7 +466,7 @@ const EVENT_GENDER_SCOPES = ["all", "men", "women"];
 const EVENT_GENDER_LABELS = { all: "כולם", men: "גברים", women: "נשים" };
 
 /**
- * Event-registration states — ONE record per (event, student):
+ * Event-registration states - ONE record per (event, student):
  *  registered = holds a seat
  *  waitlisted = in the queue (waitlist.position), promoted on a cancellation
  *  cancelled  = gave up the seat / removed (history says who and why)
@@ -498,10 +498,10 @@ const CYCLE_STATUS_LABELS = {
 };
 
 /**
- * Enrollment states — the ONE definition of occupancy:
+ * Enrollment states - the ONE definition of occupancy:
  *  reserved  = seat held by Noa during intake (counts against capacity)
  *  active    = enrolled and attending
- *  completed = finished the cycle (graduated — distinct from dropping out)
+ *  completed = finished the cycle (graduated - distinct from dropping out)
  *  left      = left before the cycle ended
  */
 const ENROLLMENT_STATUSES = ["reserved", "active", "completed", "left"];
@@ -515,7 +515,7 @@ const ENROLLMENT_STATUS_LABELS = {
 const OCCUPYING_STATUSES = ["reserved", "active"];
 
 /**
- * Subject taxonomy categories — English keys in the DB, Hebrew labels here.
+ * Subject taxonomy categories - English keys in the DB, Hebrew labels here.
  * Mapped from the legacy Hebrew BaseCourse.category values at migration.
  */
 const SUBJECT_CATEGORIES = [
@@ -535,7 +535,7 @@ const SUBJECT_CATEGORIES = [
 const SUBJECT_CATEGORY_KEYS = SUBJECT_CATEGORIES.map((c) => c.key);
 
 /**
- * הספרייה — books lent to students. ONE copy per book (Eden, 2026-09-09),
+ * הספרייה - books lent to students. ONE copy per book (Eden, 2026-09-09),
  * so a book is either on the shelf or with exactly one student. Return
  * dates skip Friday and Shabbat (the calendar the staff pick from greys
  * them out; the server refuses them too).
@@ -566,9 +566,9 @@ const ERROR_CODES = {
   INVALID_STATUS: "סטטוס לא חוקי",
   DUPLICATE_ENROLLMENT: "הסטודנט כבר משובץ במחזור הזה",
   CYCLE_FULL: "אין מקום פנוי במחזור",
-  WORLD_MISMATCH: "הרשומה שייכת לעולם נתונים אחר — החליפו מתג נתונים",
-  ARCHIVE_READONLY: "שיעור ארכיוני — לקריאה בלבד",
-  REFERENCED_BLOCKED: "אי אפשר למחוק — קיימות רשומות שמפנות לכאן",
+  WORLD_MISMATCH: "הרשומה שייכת לעולם נתונים אחר - החליפו מתג נתונים",
+  ARCHIVE_READONLY: "שיעור ארכיוני - לקריאה בלבד",
+  REFERENCED_BLOCKED: "אי אפשר למחוק - קיימות רשומות שמפנות לכאן",
   SLOT_NOT_FOUND: "המפגש המבוקש לא קיים במחזור הזה",
   EMAIL_TAKEN: "האימייל כבר קיים במערכת",
   PERSON_DELETED: "האדם הזה הועבר לארכיון",
@@ -595,7 +595,7 @@ const ERROR_CODES = {
   NO_PROGRAM: "יש לבחור לפחות תוכנית אחת",
   INVALID_PHONE: "מספר הטלפון לא תקין",
   INTAKE_LINK_INVALID: "הקישור אינו תקף",
-  INTAKE_LINK_EXPIRED: "הקישור פג — בקשו מהרכזת קישור חדש",
+  INTAKE_LINK_EXPIRED: "הקישור פג - בקשו מהרכזת קישור חדש",
   INTAKE_NOT_SCHEDULED: "עדיין לא נקבע מועד לאינטייק",
   INTAKE_ALREADY_DONE: "האינטייק כבר בוצע",
   INTAKE_COMPLETE: "הקליטה כבר הושלמה",
@@ -609,23 +609,23 @@ const ERROR_CODES = {
   TEMPLATE_INVALID: "התבנית לא תקינה",
   INCIDENT_INVALID: "בדיווח אירוע חריג חסרים פרטים: מתי, מי דיווח, סיווג ותיאור",
   LEAVE_REASON_INVALID: "סיבת העזיבה לא מוכרת",
-  DOCUMENT_INVALID: "הקובץ לא נתמך — מותר PDF, תמונה או Word עד 8MB",
+  DOCUMENT_INVALID: "הקובץ לא נתמך - מותר PDF, תמונה או Word עד 8MB",
   DOCUMENT_LOCKED: "המסמך כבר אושר ע\"י הצוות ואי אפשר להחליף אותו",
   SPAM_REJECTED: "הבקשה נדחתה",
   // הספרייה
   BARCODE_INVALID: "ברקוד לא תקין",
   BOOK_EXISTS: "הספר עם הברקוד הזה כבר קיים בספרייה",
-  BOOK_ON_LOAN: "הספר מושאל כרגע — קודם צריך להחזיר אותו",
+  BOOK_ON_LOAN: "הספר מושאל כרגע - קודם צריך להחזיר אותו",
   BOOK_AVAILABLE: "הספר לא מושאל לאף אחד",
   LOAN_CLOSED: "ההשאלה הזו כבר הוחזרה",
   DUE_DATE_INVALID: "תאריך ההחזרה חייב להיות תאריך עתידי",
-  DUE_DATE_CLOSED: "הספרייה סגורה בשישי ובשבת — בחרו יום אחר",
+  DUE_DATE_CLOSED: "הספרייה סגורה בשישי ובשבת - בחרו יום אחר",
   DUE_DATE_TOO_FAR: "תאריך ההחזרה רחוק מדי",
   DUE_DATE_NOT_LATER: "הארכה חייבת לקבוע תאריך מאוחר מהנוכחי",
-  COVER_INVALID: "תמונת הכריכה לא נתמכת — מותר JPG / PNG / WebP / GIF / AVIF עד 3MB",
-  LOOKUP_FAILED: "החיפוש באינטרנט נכשל — אפשר להזין את פרטי הספר ידנית",
+  COVER_INVALID: "תמונת הכריכה לא נתמכת - מותר JPG / PNG / WebP / GIF / AVIF עד 3MB",
+  LOOKUP_FAILED: "החיפוש באינטרנט נכשל - אפשר להזין את פרטי הספר ידנית",
   // חשבוניות של מורים
-  INVOICE_IMAGE_INVALID: "תמונת החשבונית לא נתמכת — מותר JPG / PNG / WebP / GIF / AVIF עד 8MB",
+  INVOICE_IMAGE_INVALID: "תמונת החשבונית לא נתמכת - מותר JPG / PNG / WebP / GIF / AVIF עד 8MB",
   INVOICE_NO_LESSONS: "חשבונית חייבת לפחות שיעור אחד",
   INVOICE_NOT_A_TEACHER: "חשבונית אפשר להעלות רק למורה פעיל",
   INVOICE_LESSON_NOT_TEACHERS: "אחד השיעורים שסומנו לא של המורה הזה",
@@ -636,7 +636,7 @@ const ERROR_CODES = {
 };
 
 /**
- * The single payload GET /api/meta/domain serves — the client renders
+ * The single payload GET /api/meta/domain serves - the client renders
  * labels from this instead of maintaining mirror tables.
  */
 const DOMAIN_META = {
@@ -661,7 +661,7 @@ const DOMAIN_META = {
   intakeSwStatuses: INTAKE_SW_STATUSES.map((k) => ({ key: k, label: INTAKE_SW_STATUS_LABELS[k] })),
   intakeFilledBy: INTAKE_FILLED_BY,
   dayParts: DAY_PARTS,
-  // 2026-10-07 — the social worker's round
+  // 2026-10-07 - the social worker's round
   followUp: FOLLOW_UP,
   screeningEligibility: SCREENING_ELIGIBILITY,
   screeningInterests: SCREENING_INTERESTS,

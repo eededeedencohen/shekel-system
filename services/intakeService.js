@@ -1,15 +1,15 @@
 /**
- * @file Intake service — the social worker's flow (קליטה / אינטייק) and the
+ * @file Intake service - the social worker's flow (קליטה / אינטייק) and the
  *       public sign-up page behind it
  * @module services/intakeService
  *
  * Eden's spec (2026-09-17) with the social worker's corrections
- * (2026-10-07), in code — the record carries the tags of the "קליטה אצל
+ * (2026-10-07), in code - the record carries the tags of the "קליטה אצל
  * העובדת סוציאלית" stage:
  *
  *   סטטוס עו"ס     schedule() sets the meeting (new → scheduled), markDone()
  *                  marks it held (→ done) and writes the intake activity
- *   קליטה בשקדיה   setShkedia() — the COORDINATOR entered the person in
+ *   קליטה בשקדיה   setShkedia() - the COORDINATOR entered the person in
  *                  שקדיה (date + the committee's decision number); there is
  *                  no approval that arrives from outside
  *   מסמכים         the required document rows (uploads / staff ticks), each
@@ -20,11 +20,11 @@
  *   complete = held + entered in שקדיה + every required document in force,
  *   then settle():
  *     תרבות לכל profile (Interested / Intake)      → Placed
- *     מכללה לכל profile at Intake                  → AwaitingPlacement — the
+ *     מכללה לכל profile at Intake                  → AwaitingPlacement - the
  *       held seat stays reserved; the managers enter the start date and
  *       enrollmentService moves the student to Placed (an already ACTIVE
  *       seat means the date exists → Placed right away)
- *     מכללה לכל profile still at Interested/Matching (no seat yet) stays —
+ *     מכללה לכל profile still at Interested/Matching (no seat yet) stays -
  *       the seat reservation will send it straight to AwaitingPlacement
  *   A file that was completed STAYS complete: a document that expires later
  *   is an alert (tags, the dashboard), never a reopened file.
@@ -124,7 +124,7 @@ function fileKind(mime, fileName) {
 
 /* ───────────────────────── files ───────────────────────── */
 
-/** Root of the LEGACY document store on disk — env-overridable (tests use a temp dir). */
+/** Root of the LEGACY document store on disk - env-overridable (tests use a temp dir). */
 function uploadRoot() {
   return process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads");
 }
@@ -134,7 +134,7 @@ function documentPath(intake, doc) {
   if (!doc?.file?.storedName) return null;
   return path.join(fileDir(intake), doc.file.storedName);
 }
-/** The bytes of a document — from the `files` table, else (legacy) the disk. → { mime, name, data } | null */
+/** The bytes of a document - from the `files` table, else (legacy) the disk. → { mime, name, data } | null */
 async function documentFile(intake, doc) {
   if (!doc?.file) return null;
   if (doc.file.stored) {
@@ -164,7 +164,7 @@ const startOfToday = () => {
 const docExpired = (d) => DOCUMENT_OK_STATUSES.includes(d?.status) && !!d?.validUntil && new Date(d.validUntil) < startOfToday();
 /**
  * Does the row satisfy its document? Waived always; received while in
- * force; a student's upload only when the document carries no validity —
+ * force; a student's upload only when the document carries no validity -
  * a dated report or a signed waiver waits for the staff to confirm it
  * with its date (the social worker's rule: she types the exact expiry).
  */
@@ -207,7 +207,7 @@ function computeStatus(intake) {
 
 const freshDocuments = () => INTAKE_DOCUMENTS.map((d) => ({ key: d.key, status: "missing" }));
 
-/** The document row of a key — created on the fly for records seeded before a key existed. */
+/** The document row of a key - created on the fly for records seeded before a key existed. */
 function docOf(intake, key) {
   if (!DOC_BY_KEY[key]) throw AppError.of("DOCUMENT_UNKNOWN", 400, key);
   let d = intake.documents.find((x) => x.key === key);
@@ -221,12 +221,12 @@ function docOf(intake, key) {
 /* ───────────────────────── helpers ───────────────────────── */
 
 const HE_DAYS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"];
-/** "30.6.2027" — for dates in the log. */
+/** "30.6.2027" - for dates in the log. */
 function fmtDate(d) {
   const x = new Date(d);
   return `${x.getDate()}.${x.getMonth() + 1}.${x.getFullYear()}`;
 }
-/** "יום ג׳ 15.9 · 10:00" — for stage notes. */
+/** "יום ג׳ 15.9 · 10:00" - for stage notes. */
 function fmtHe(d) {
   const x = new Date(d);
   const hm = `${String(x.getHours()).padStart(2, "0")}:${String(x.getMinutes()).padStart(2, "0")}`;
@@ -349,7 +349,7 @@ async function submitLanding({ world, body = {} }) {
     phone: normalizePhone(body.filledBy?.phone) || undefined,
   };
 
-  // 1 · the human — never twice
+  // 1 · the human - never twice
   let person = await findPerson({ world, phone, email });
   const personExisted = !!person;
   if (!person) {
@@ -360,7 +360,7 @@ async function submitLanding({ world, body = {} }) {
       ...(gender && { gender }),
     });
   } else {
-    // Fill blanks only — the staff's data wins over a re-submission.
+    // Fill blanks only - the staff's data wins over a re-submission.
     let touched = false;
     for (const [k, v] of Object.entries({ email, birthDate, gender })) {
       if (v && !person[k]) { person[k] = v; touched = true; }
@@ -390,7 +390,7 @@ async function submitLanding({ world, body = {} }) {
       await reopenProfile({ profile, world, by: LANDING_ACTOR, note: "נרשם/ה מחדש דרך דף הנחיתה" });
       results.push({ kind, reopened: true });
     } else {
-      // Already in the program — merge the preferences, touch nothing else.
+      // Already in the program - merge the preferences, touch nothing else.
       if (kind === "StudentCollege" && subjects.length) {
         const cur = (profile.matching?.interests || []).map(String);
         profile.matching = { ...(profile.matching?.toObject?.() || profile.matching || {}), interests: [...new Set([...cur, ...subjects.map(String)])] };
@@ -446,8 +446,8 @@ const linkLabel = (minutes) => UPLOAD_LINK_MINUTES.find((m) => m.key === minutes
 
 /**
  * A temporary upload link (the social worker: 10 minutes / half an hour /
- * an hour / 24 hours, locked after). `token` may come from the client —
- * then the link is known the moment the button is pressed — else it is
+ * an hour / 24 hours, locked after). `token` may come from the client -
+ * then the link is known the moment the button is pressed - else it is
  * made here. `docs` narrows the page to particular documents.
  */
 async function createUploadLink({ intake, minutes, docs, by, token, note }) {
@@ -501,7 +501,7 @@ async function resolveToken({ world, token }) {
  * Store a file for a document key. `data` = Buffer or base64 (data-URI
  * tolerated). A student upload (staff=false) can replace its own earlier
  * upload but never a document the staff already confirmed. A staff upload
- * counts as received — except a dated document without its `validUntil`,
+ * counts as received - except a dated document without its `validUntil`,
  * which stays "uploaded" until the date is given; a signed one takes
  * `signedAt` (today when not given) and is good for a year.
  */
@@ -567,7 +567,7 @@ async function removeStudentDocument({ intake, key }) {
 }
 
 /**
- * Staff tick: received / waived / rejected / missing (reset — the file is
+ * Staff tick: received / waived / rejected / missing (reset - the file is
  * deleted) / comment (a reply on the document the student sees on the
  * personal link; the status stays). A dated document (דוח פסיכיאטרי) is
  * received only WITH its `validUntil` (DOCUMENT_DATE_REQUIRED); a signed
@@ -641,7 +641,7 @@ const interestLabel = (k) => SCREENING_INTERESTS.find((i) => i.key === k)?.label
 
 /**
  * The first call's facts (her stage 1: eligibility for סל שיקום, what the
- * person is interested in) — written on the record and as a "שיחה
+ * person is interested in) - written on the record and as a "שיחה
  * ראשונית" activity on the person. The pipeline move itself (Interested →
  * Matching) stays the managers' button.
  */
@@ -679,7 +679,7 @@ async function setCoordinator({ intake, name, by }) {
   return intake;
 }
 
-/** The rehab committee's date — the evaluation clock counts from it. */
+/** The rehab committee's date - the evaluation clock counts from it. */
 async function setCommitteeDate({ intake, committeeDate, by }) {
   const d = parseDate(committeeDate);
   intake.committeeDate = d;
@@ -689,7 +689,7 @@ async function setCommitteeDate({ intake, committeeDate, by }) {
 }
 
 /**
- * Entered in שקדיה (her stage 5) — the coordinator did it herself; this is
+ * Entered in שקדיה (her stage 5) - the coordinator did it herself; this is
  * the record of that, with the date and the committee's decision number.
  * `clear` takes it back (a mistake).
  */
@@ -712,7 +712,7 @@ async function setShkedia({ intake, enteredAt, by, decisionNo, note, clear = fal
 
 /**
  * The תרבות לכל profile of the person, when it is still waiting for the
- * social worker (Interested) — schedule()/markDone() move it to Intake.
+ * social worker (Interested) - schedule()/markDone() move it to Intake.
  * A מכללה profile is never moved here: a reserved seat puts it at Intake.
  */
 async function cultureIntoIntake(personId, by, note, moved) {
@@ -792,7 +792,7 @@ async function settle(intake, by) {
   const now = new Date();
   if (next === "complete" && !intake.completedAt) {
     intake.completedAt = now;
-    intake.log.push({ action: "completed", at: now, by, note: "בוצע אינטייק, נקלט/ה בשקדיה וכל המסמכים התקבלו — הקליטה הושלמה" });
+    intake.log.push({ action: "completed", at: now, by, note: "בוצע אינטייק, נקלט/ה בשקדיה וכל המסמכים התקבלו - הקליטה הושלמה" });
   }
   await intake.save();
 
@@ -808,14 +808,14 @@ async function settle(intake, by) {
         continue;
       }
       // מכללה לכל: only a profile the seat already parked with the social
-      // worker moves on — the start date is the managers' step.
+      // worker moves on - the start date is the managers' step.
       if (!INTAKE_STAGES.includes(stage)) continue;
       const live = await Enrollment.find({ student: intake.person, status: { $in: OCCUPYING_STATUSES } });
       if (live.some((e) => e.status === "active")) {
-        await p.moveToStage("Placed", by, "הקליטה הושלמה — השיבוץ בתוקף");
+        await p.moveToStage("Placed", by, "הקליטה הושלמה - השיבוץ בתוקף");
         moved.push({ kind: p.kind, stage: "Placed" });
       } else {
-        await p.moveToStage("AwaitingPlacement", by, live.length ? "הקליטה הושלמה — נשאר לקבוע תאריך התחלה" : "הקליטה הושלמה — ממתין/ה לשיבוץ");
+        await p.moveToStage("AwaitingPlacement", by, live.length ? "הקליטה הושלמה - נשאר לקבוע תאריך התחלה" : "הקליטה הושלמה - ממתין/ה לשיבוץ");
         moved.push({ kind: p.kind, stage: "AwaitingPlacement" });
       }
     }
@@ -865,11 +865,11 @@ function publicView(intake, person, link = null) {
         fileName: row?.file?.name || null,
         uploadedAt: row?.file?.uploadedAt || null,
         validUntil: row?.validUntil || null,
-        /** The document was in, and its date has passed — a new one is needed. */
+        /** The document was in, and its date has passed - a new one is needed. */
         expired: docExpired(row),
         /** Uploaded, but the staff still has to confirm it with its date. */
         pending: row?.status === "uploaded" && !!d.validity,
-        /** The staff's comment (a rejection reason or a reply) — the student reads it here. */
+        /** The staff's comment (a rejection reason or a reply) - the student reads it here. */
         note: row?.note || null,
       };
     }),

@@ -1,5 +1,5 @@
 /**
- * @file Lesson model — a dated occurrence of a cycle + its attendance ledger
+ * @file Lesson model - a dated occurrence of a cycle + its attendance ledger
  * @module models/Lesson
  *
  * Attendance stays EMBEDDED by design: it is written together (one grid
@@ -8,11 +8,11 @@
  * the multikey {'attendance.student', date} index makes per-student history
  * one indexed, paginated read.
  *
- * Hardened invariants — all at the schema layer:
+ * Hardened invariants - all at the schema layer:
  *  - `date` is normalized to UTC midnight by a PATH SETTER, which (unlike a
- *    pre-validate hook) also runs on findOneAndUpdate/$set — so the unique
+ *    pre-validate hook) also runs on findOneAndUpdate/$set - so the unique
  *    partial index {cycle,date} on source:'live' holds from EVERY write path.
- *  - `source` (live | archive) is required with a default — no missing-field
+ *  - `source` (live | archive) is required with a default - no missing-field
  *    ambiguity, and the list filter {source:'live'} exactly matches the
  *    index predicate.
  *  - Archive docs (the pre-overhaul import; may hold retired statuses that
@@ -20,7 +20,7 @@
  *    rejected, and every query-update/delete path is silently scoped to
  *    non-archive docs.
  *  - No student may appear twice in one lesson's attendance (the embed
- *    can't carry a unique index — a validator fills that role).
+ *    can't carry a unique index - a validator fills that role).
  */
 
 const mongoose = require("mongoose");
@@ -79,7 +79,7 @@ const lessonSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// One LIVE lesson per (cycle, day) — enforceable because the date setter
+// One LIVE lesson per (cycle, day) - enforceable because the date setter
 // normalizes on every path.
 lessonSchema.index(
   { cycle: 1, date: 1 },
@@ -105,7 +105,7 @@ lessonSchema.pre("validate", function (next) {
 /** Archive docs refuse document saves… */
 lessonSchema.pre("save", function (next) {
   if (!this.isNew && this.source === "archive") {
-    return next(new Error("שיעור ארכיוני — לקריאה בלבד"));
+    return next(new Error("שיעור ארכיוני - לקריאה בלבד"));
   }
   next();
 });
@@ -115,7 +115,7 @@ lessonSchema.pre("save", function (next) {
 function excludeArchive(next) {
   const q = this.getQuery() || {};
   if (q.source === undefined) this.where({ source: { $ne: "archive" } });
-  else if (q.source === "archive") return next(new Error("שיעור ארכיוני — לקריאה בלבד"));
+  else if (q.source === "archive") return next(new Error("שיעור ארכיוני - לקריאה בלבד"));
   next();
 }
 lessonSchema.pre("updateOne", excludeArchive);

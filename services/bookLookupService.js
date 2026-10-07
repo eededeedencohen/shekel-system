@@ -1,5 +1,5 @@
 /**
- * @file Book lookup — a barcode in, the book's details (and cover) out
+ * @file Book lookup - a barcode in, the book's details (and cover) out
  * @module services/bookLookupService
  *
  * The port of Eden's `booknet_book_downloader.ipynb` (2026-09):
@@ -12,10 +12,10 @@
  *      (fallback: /Images/Site/Products/<barcode>.jpg).
  *   3. download the cover (checked to be an image).
  *
- * Plus a second source the notebook did not have — Google Books by ISBN —
+ * Plus a second source the notebook did not have - Google Books by ISBN -
  * for the books booknet doesn't list. A code is looked up in every form it
  * may arrive in (`barcodeVariants`: leading zeros on or off, UPC-A / EAN-13
- * padding, ISBN-10 ⇄ ISBN-13) — a camera reads the sticker of booknet's
+ * padding, ISBN-10 ⇄ ISBN-13) - a camera reads the sticker of booknet's
  * 36200054208 as "036200054208". No HTML library: the two pages are
  * regular enough for a handful of regexes, and this keeps the server
  * dependency-free. `fetch` is Node's own (v18+); tests swap it via
@@ -40,7 +40,7 @@ function setFetch(fn) {
 
 /* ───────────────────────── text helpers ───────────────────────── */
 
-const NAMED_ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", laquo: "«", raquo: "»", hellip: "…", ndash: "–", mdash: "—" };
+const NAMED_ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", laquo: "«", raquo: "»", hellip: "…", ndash: "-", mdash: "-" };
 
 /** Decode the HTML entities a shop page actually uses. */
 function decodeEntities(s) {
@@ -99,7 +99,7 @@ const isValidIsbn13 = (s) => /^97[89]\d{10}$/.test(s) && isbn13Check(s.slice(0, 
  * reads the sticker of booknet's 36200054208 as the UPC-A "036200054208"
  * (or the EAN-13 "0036200054208"), a USB scanner types it without the
  * zeros, and an old book carries an ISBN-10 where the shop lists the
- * ISBN-13 — so: as scanned, without leading zeros, zero-padded to 12 / 13
+ * ISBN-13 - so: as scanned, without leading zeros, zero-padded to 12 / 13
  * digits, and the ISBN-10 ⇄ ISBN-13 twins. [] when it isn't a barcode.
  */
 function barcodeVariants(raw) {
@@ -152,7 +152,7 @@ function parseBooknetSearch(html, barcode) {
 }
 
 /**
- * The text of the element that follows position `from` — the first tag
+ * The text of the element that follows position `from` - the first tag
  * after it, matched to its closing tag by depth (the summary is a <div>
  * with children). Falls back to the text up to the next heading.
  */
@@ -248,7 +248,7 @@ async function lookupBooknet(barcode) {
   return { found: true, source: "booknet", productUrl, ...info };
 }
 
-/** Google Books by ISBN — the fallback for titles booknet does not carry. */
+/** Google Books by ISBN - the fallback for titles booknet does not carry. */
 async function lookupGoogle(barcode) {
   const r = await get(`${GOOGLE_BOOKS}?q=isbn:${encodeURIComponent(barcode)}&maxResults=1`, { headers: { Accept: "application/json" } });
   if (!r.ok) throw new Error(`google books HTTP ${r.status}`);
@@ -259,7 +259,7 @@ async function lookupGoogle(barcode) {
   return {
     found: true,
     source: "google",
-    title: [v.title, v.subtitle].filter(Boolean).join(" — "),
+    title: [v.title, v.subtitle].filter(Boolean).join(" - "),
     author: (v.authors || []).join(", ") || null,
     summary: v.description || null,
     imageUrl: thumb ? thumb.replace(/^http:/, "https:").replace("&edge=curl", "") : null,

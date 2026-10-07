@@ -1,5 +1,5 @@
 /**
- * Attendance API — grid upsert on (cycle, date), single-cell edits,
+ * Attendance API - grid upsert on (cycle, date), single-cell edits,
  * un-reporting, and the read-only archive.
  */
 
@@ -102,7 +102,7 @@ describe("DELETE endpoints", () => {
 });
 
 describe("GET /api/lessons", () => {
-  it("requires a filter — download-everything is gone", async () => {
+  it("requires a filter - download-everything is gone", async () => {
     const res = await request(app).get("/api/lessons");
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("MISSING_FIELDS");

@@ -1,17 +1,17 @@
 /**
- * @file Enrollment model — first-class membership in a cycle
+ * @file Enrollment model - first-class membership in a cycle
  * @module models/Enrollment
  *
  * The ONE definition of occupancy, roster and held seats:
  *   free seats = capacity − count({cycle, status ∈ [reserved, active]})
  *
- * A reservation is the same record with status "reserved" — fulfilling it
+ * A reservation is the same record with status "reserved" - fulfilling it
  * is a single-document status flip, replacing the old three uncoordinated
  * writes across two collections. The unique {cycle, student} index makes
- * double-enrollment impossible from EVERY write path — no controller can
+ * double-enrollment impossible from EVERY write path - no controller can
  * forget the check.
  *
- * Membership facts only — scheduling lives solely on cycles.schedule;
+ * Membership facts only - scheduling lives solely on cycles.schedule;
  * a private-cycle student links to their slot via slotId.
  *
  * Future waitlist extension point: a new status value or a sibling
@@ -34,7 +34,7 @@ const enrollmentSchema = new mongoose.Schema(
       required: [true, "שיבוץ חייב סטודנט"],
     },
     /** Write-once, copied from the cycle by the service (WORLD_MISMATCH is
-     *  rejected there) — a declared denormalized copy, for indexing. */
+     *  rejected there) - a declared denormalized copy, for indexing. */
     world: { type: String, enum: WORLDS, required: true, immutable: true },
     status: {
       type: String,
@@ -48,7 +48,7 @@ const enrollmentSchema = new mongoose.Schema(
     joinedAt: { type: Date },
     /** Senzey system row-creation timestamp (the old registrationDate). */
     registeredAt: { type: Date },
-    /** Membership end — distinct from the cycle's own endDate. */
+    /** Membership end - distinct from the cycle's own endDate. */
     leftAt: { type: Date },
     reservedAt: { type: Date },
     note: { type: String, trim: true },

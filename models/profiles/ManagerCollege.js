@@ -1,5 +1,5 @@
 /**
- * @file ManagerCollege profile — מנהל/ת מכללה לכל
+ * @file ManagerCollege profile - מנהל/ת מכללה לכל
  * @module models/profiles/ManagerCollege
  */
 

@@ -1,5 +1,5 @@
 /**
- * @file Activity controller — /api/activities (לשונית פעילויות + the templates)
+ * @file Activity controller - /api/activities (לשונית פעילויות + the templates)
  * @module controllers/activityController
  *
  *   GET    /?person=&kind=         the rows, newest first
@@ -8,7 +8,7 @@
  *   DELETE /:id
  *   GET    /templates              every kind's template of the world (stored or default)
  *   GET    /templates/:kind
- *   PUT    /templates/:kind        { title, body, fields[], by } — the world's own version
+ *   PUT    /templates/:kind        { title, body, fields[], by } - the world's own version
  *   DELETE /templates/:kind        back to the default
  *
  * Every rule lives in services/activityService.

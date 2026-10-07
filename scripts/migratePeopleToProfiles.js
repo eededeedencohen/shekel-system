@@ -5,7 +5,7 @@
  * Phase 2 of people-remodel-plan.html. For every person that still carries
  * the old `role` field, creates the matching profile document and finally
  * $unsets the role-shaped fields off `people`. Identity (_id!) is never
- * touched — enrollments / lessons / cycles are not mentioned here at all.
+ * touched - enrollments / lessons / cycles are not mentioned here at all.
  *
  * Idempotent: an existing {person, kind} profile is skipped, so re-running
  * after a partial failure is safe.
@@ -63,13 +63,13 @@ async function main() {
     .toArray();
   console.log("== people still carrying a role field ==");
   for (const r of byRoleWorld) console.log(`  ${r._id.world} / ${r._id.role}: ${r.n}`);
-  if (!byRoleWorld.length) console.log("  (none — nothing to migrate)");
+  if (!byRoleWorld.length) console.log("  (none - nothing to migrate)");
 
   let created = 0, skipped = 0, unknown = 0;
   const cursor = people.find(filter);
   for await (const doc of cursor) {
     const map = ROLE_MAP[doc.role];
-    if (!map) { unknown++; console.warn(`  ? unknown role "${doc.role}" — ${doc._id}`); continue; }
+    if (!map) { unknown++; console.warn(`  ? unknown role "${doc.role}" - ${doc._id}`); continue; }
 
     const exists = await Profile.exists({ person: doc._id, kind: map.kind });
     if (exists) { skipped++; continue; }
@@ -100,15 +100,15 @@ async function main() {
     ])
     .toArray();
   const missing = verify[0]?.missing || 0;
-  console.log(`verify — people with a role but NO profile: ${missing}${DRY ? " (dry run: expected > 0)" : ""}`);
+  console.log(`verify - people with a role but NO profile: ${missing}${DRY ? " (dry run: expected > 0)" : ""}`);
 
   if (CLEANUP) {
-    if (DRY) console.log("cleanup requested with --dry — skipping.");
-    else if (missing > 0) console.log("cleanup REFUSED — migrate the missing people first.");
+    if (DRY) console.log("cleanup requested with --dry - skipping.");
+    else if (missing > 0) console.log("cleanup REFUSED - migrate the missing people first.");
     else {
       const unset = Object.fromEntries(LEGACY_PATHS.map((p) => [p, ""]));
       const r = await people.updateMany(worldArg ? { world: worldArg } : {}, { $unset: unset });
-      console.log(`cleanup — $unset legacy fields on ${r.modifiedCount} people.`);
+      console.log(`cleanup - $unset legacy fields on ${r.modifiedCount} people.`);
       try {
         await people.dropIndex("world_1_role_1");
         console.log("dropped index world_1_role_1");

@@ -1,5 +1,5 @@
 /**
- * @file ManagerCulture profile — צוות תרבות לכל (מנהל/ת, רכז/ת, עובד/ת)
+ * @file ManagerCulture profile - צוות תרבות לכל (מנהל/ת, רכז/ת, עובד/ת)
  * @module models/profiles/ManagerCulture
  *
  * The ERD's "מנהל/עובדי תרבות לכל": the only people who may create and
@@ -12,7 +12,7 @@ const mongoose = require("mongoose");
 const { Profile } = require("../Profile");
 
 const schema = new mongoose.Schema({
-  /** Free-text role title — "מנהלת", "רכז תרבות", "מתנדב". */
+  /** Free-text role title - "מנהלת", "רכז תרבות", "מתנדב". */
   title: { type: String, trim: true },
 });
 

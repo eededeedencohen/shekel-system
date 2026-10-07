@@ -1,5 +1,5 @@
 /**
- * @file importCultureSenzey — put the real תרבות לכל history (senzey, תשפ"ו)
+ * @file importCultureSenzey - put the real תרבות לכל history (senzey, תשפ"ו)
  *       into a world. See scripts/lib/senzeyCulture.js for what and how.
  *
  * Usage:
@@ -9,7 +9,7 @@
  *   node scripts/importCultureSenzey.js --world=test --reset    re-import the events
  *   node scripts/importCultureSenzey.js --world=real --no-interest   without the interest list
  *
- * Idempotent — run it again and it reports "existing" everywhere.
+ * Idempotent - run it again and it reports "existing" everywhere.
  */
 
 require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") });
@@ -27,7 +27,7 @@ if (!WORLDS.includes(world)) {
 }
 const people = opt("people") || (world === "real" ? "real" : "fake");
 if (world !== "real" && people === "real") {
-  console.error("real people go into the real world only — the demo worlds stay fake");
+  console.error("real people go into the real world only - the demo worlds stay fake");
   process.exit(1);
 }
 

@@ -1,10 +1,10 @@
 /**
- * @file Public routes — the sign-up page (no login)
+ * @file Public routes - the sign-up page (no login)
  * @module routes/publicRoutes
  * @see controllers/publicController
  *
  * Mounted at /api/public. Document uploads travel as base64 in the body
- * (one file per request, ≤ 8MB) — the body limit that allows it is the
+ * (one file per request, ≤ 8MB) - the body limit that allows it is the
  * global one in app.js.
  */
 

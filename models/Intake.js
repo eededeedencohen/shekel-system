@@ -1,8 +1,8 @@
 /**
- * @file Intake model — one person's קליטה (intake) case
+ * @file Intake model - one person's קליטה (intake) case
  * @module models/Intake
  *
- * The social worker meets a HUMAN once, whichever programs they join —
+ * The social worker meets a HUMAN once, whichever programs they join -
  * so the intake facts live here, one document per (world, person), and
  * NOT on the two student profiles (a person in both programs would carry
  * the same checklist twice). The profiles keep their own pipeline stage;
@@ -11,7 +11,7 @@
  * The tags of Eden's spec (2026-09-17), with the social worker's
  * corrections (2026-10-07), are all derived from here:
  *   סטטוס עובדת סוציאלית  scheduled.at / done.at   (new → scheduled → done)
- *   קליטה בשקדיה           shkedia.enteredAt — the COORDINATOR enters the
+ *   קליטה בשקדיה           shkedia.enteredAt - the COORDINATOR enters the
  *                          person in שקדיה and marks it here; nothing
  *                          arrives from outside (the old "אישור שקדייה"
  *                          document row is gone)
@@ -23,18 +23,18 @@
  *
  *   profile  תרבות: Interested ─▶ Intake ─▶ Placed
  *            מכללה: Intake ─▶ AwaitingPlacement (a seat is held; the managers
- *                   enter the start date → Placed — enrollmentService)
+ *                   enter the start date → Placed - enrollmentService)
  *
  * `landing` is what the public sign-up page wrote (who filled it, which
  * programs, preferences); `landing.token` is the personal link that lets
- * the student come back and upload the rest of the documents — it now
+ * the student come back and upload the rest of the documents - it now
  * EXPIRES (`landing.linkExpiresAt`, LANDING_LINK_HOURS after a submission);
  * after that the coordinator hands out a temporary link (models/UploadLink).
  * `coordinator` is the staff member who owns the file (her stage 3),
  * `screening` the facts of the first call (her stage 1), `committeeDate`
  * the rehab committee's date (the evaluation clock), `shkedia` the
  * admission in שקדיה (her stage 5).
- * `documents[]` holds one row per INTAKE_DOCUMENTS key — the file bytes
+ * `documents[]` holds one row per INTAKE_DOCUMENTS key - the file bytes
  * live in `files` (models/StoredFile, `file.stored`); records from before
  * 2026-10-07 may still point at the disk (`file.storedName`, read-only
  * until scripts/migrateDocsToDb.js moves them). Rows of retired keys are
@@ -58,7 +58,7 @@ const {
 
 const documentSchema = new mongoose.Schema(
   {
-    /** An INTAKE_DOCUMENTS key — checked by the service (no enum here, so a
+    /** An INTAKE_DOCUMENTS key - checked by the service (no enum here, so a
      *  record seeded under an older checklist still loads; see the save hook). */
     key: { type: String, trim: true, required: true },
     status: { type: String, enum: DOCUMENT_STATUSES, default: "missing" },
@@ -77,11 +77,11 @@ const documentSchema = new mongoose.Schema(
     },
     receivedAt: { type: Date },
     receivedBy: { type: String, trim: true },
-    /** validity "signed" (ויתור סודיות): when it was signed — validUntil is computed from it. */
+    /** validity "signed" (ויתור סודיות): when it was signed - validUntil is computed from it. */
     signedAt: { type: Date },
     /** When the document stops being in force (typed for "dated", computed for "signed"). */
     validUntil: { type: Date },
-    /** The staff's comment — a rejection reason or a reply the student sees on the personal link. */
+    /** The staff's comment - a rejection reason or a reply the student sees on the personal link. */
     note: { type: String, trim: true },
   },
   { _id: true }
@@ -107,7 +107,7 @@ const intakeSchema = new mongoose.Schema(
     /** What the public sign-up page wrote. */
     landing: {
       submittedAt: { type: Date },
-      /** Personal link secret — lets the student finish the documents later. */
+      /** Personal link secret - lets the student finish the documents later. */
       token: { type: String, trim: true },
       /** The personal link stops working here (LANDING_LINK_HOURS after the last submission). */
       linkExpiresAt: { type: Date },
@@ -120,7 +120,7 @@ const intakeSchema = new mongoose.Schema(
       preferences: {
         subjects: [{ type: mongoose.Schema.Types.ObjectId, ref: "Subject" }],
         categories: [{ type: String, enum: EVENT_CATEGORY_KEYS }],
-        /** 0–4 (Sunday–Thursday). */
+        /** 0-4 (Sunday-Thursday). */
         days: [{ type: Number, min: 0, max: 6 }],
         dayParts: [{ type: String, trim: true }],
         notes: { type: String, trim: true },
@@ -147,7 +147,7 @@ const intakeSchema = new mongoose.Schema(
       note: { type: String, trim: true },
     },
 
-    /** The rehab committee's date — the evaluation clock counts from here. */
+    /** The rehab committee's date - the evaluation clock counts from here. */
     committeeDate: { type: Date },
 
     /** The meeting the social worker set. */
@@ -165,7 +165,7 @@ const intakeSchema = new mongoose.Schema(
       summary: { type: String, trim: true },
     },
 
-    /** Entered in שקדיה by the coordinator (her stage 5) — with the date and the committee's decision number. */
+    /** Entered in שקדיה by the coordinator (her stage 5) - with the date and the committee's decision number. */
     shkedia: {
       enteredAt: { type: Date },
       by: { type: String, trim: true },
@@ -197,7 +197,7 @@ intakeSchema.pre("save", function (next) {
   next();
 });
 
-/** world must equal the person's world — asserted once, on create. */
+/** world must equal the person's world - asserted once, on create. */
 intakeSchema.pre("validate", async function (next) {
   if (!this.isNew || !this.person) return next();
   try {

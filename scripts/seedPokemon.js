@@ -1,5 +1,5 @@
 /**
- * @file seedPokemon — the isolated "עולם פוקימון" demo dataset
+ * @file seedPokemon - the isolated "עולם פוקימון" demo dataset
  * @module scripts/seedPokemon
  *
  * A complete parallel world the client can switch to (Topbar toggle →
@@ -14,9 +14,9 @@
  *   - 7 Rooms (the shared campus rooms of ליגת קאנטו).
  *   - 10 teachers, each the gym leader of their type, last name = the
  *     type (= the base course): ברוק סלע, מיסטי מים, סרג' חשמל, ...
- *   - ~45 course cycles in a deliberate MIX of shapes per type — private
+ *   - ~45 course cycles in a deliberate MIX of shapes per type - private
  *     lesson (one Pokémon), pair, small group with seats, full group,
- *     open group, brand-new empty group, planned cycle — all classified
+ *     open group, brand-new empty group, planned cycle - all classified
  *     for the desk, taught by the type's leader, and scheduled by a small
  *     solver into SHARED campus rooms (6 rooms + "חדר אישי" for privates)
  *     with varied durations/start times and no teacher or room clashes.
@@ -27,7 +27,7 @@
  *         ~53% Placed (enrolled in a cycle of their type), ~20% Matching,
  *         the rest Interested / Intake / AwaitingPlacement / NeedsReplacement.
  *       15 have a primary type with NO course (לחימה/רוחות/דרקון/קרח) →
- *         all in Matching — their interest is natural demand for a new
+ *         all in Matching - their interest is natural demand for a new
  *         course.
  *
  * Usage:  node scripts/seedPokemon.js
@@ -102,8 +102,8 @@ const ROOM_OF = {
 };
 const PRIVATE_ROOM = "חדר אישי";
 
-/** Each leader's availability — deliberately different (mornings,
- *  afternoons, evenings, 2–3 days) so the week isn't one big 10:00. */
+/** Each leader's availability - deliberately different (mornings,
+ *  afternoons, evenings, 2-3 days) so the week isn't one big 10:00. */
 const TEACHER_WINDOWS = {
   Water: [[0, "08:00", "14:00"], [2, "09:00", "13:00"], [4, "14:00", "19:00"]],
   Normal: [[1, "09:00", "15:00"], [3, "09:00", "12:00"], [4, "08:00", "12:00"]],
@@ -349,12 +349,12 @@ function availabilityFor(dex) {
     purged[name] = (await Model.deleteMany({ world: WORLD })).deletedCount;
   }
   console.log(
-    "Purged world:pokemon — " +
+    "Purged world:pokemon - " +
       Object.entries(purged).map(([k, v]) => `${k} ${v}`).join(" · ")
   );
 
   /* 2 ── subjects: one per type. The 10 taught types plus the 4 that have
-   *      no course — those exist purely as demand ("צריך מורה"). */
+   *      no course - those exist purely as demand ("צריך מורה"). */
   const subjectByType = {};
   for (const t of Object.keys(TYPE_HE)) {
     subjectByType[t] = await Subject.create({
@@ -437,7 +437,7 @@ function availabilityFor(dex) {
       gender: dex % 2 ? "male" : "female",
       avatar: { style: "image", src: `/pokemon/${slug}.png` },
       // Availability is only declared by the students who are actively
-      // being matched — exactly like the old world.
+      // being matched - exactly like the old world.
       availability: needsProfile ? availabilityFor(dex) : [],
       pipeline: { stage: tail.stage, since: tail.movedAt },
       stageHistory,
@@ -455,10 +455,10 @@ function availabilityFor(dex) {
     studentUser[dex] = person;
     counts[stage] = (counts[stage] || 0) + 1;
   }
-  console.log(`Students: ${POKEMON.length}` + (missingImg ? ` (⚠ ${missingImg} תמונות חסרות)` : " — כל התמונות נמצאו"));
+  console.log(`Students: ${POKEMON.length}` + (missingImg ? ` (⚠ ${missingImg} תמונות חסרות)` : " - כל התמונות נמצאו"));
 
   /* 5 ── course cycles: a MIX of shapes per type (not "cram everyone in")
-   *      — private lesson (one Pokémon), pair, small group with seats,
+   *      - private lesson (one Pokémon), pair, small group with seats,
    *      full group, open group, brand-new empty group, planned cycle.
    *      The Placed students are dealt into the shapes in order; the
    *      template is rotated per type so no two types look alike.       */
@@ -562,9 +562,9 @@ function availabilityFor(dex) {
           requirements: kind === "private" ? "מפגש אישי עם המנהיג/ה" : "",
           requiredRooms: [roomByName[room]._id],
         },
-        import: { senzeyName: `${TYPE_HE[t]} — ${label}` },
+        import: { senzeyName: `${TYPE_HE[t]} - ${label}` },
       });
-      // Membership is its own collection now — one record per student.
+      // Membership is its own collection now - one record per student.
       for (const [j, [dex]] of students.entries()) {
         await Enrollment.create({
           world: WORLD,
@@ -586,7 +586,7 @@ function availabilityFor(dex) {
           .map(
             (c) =>
               `${KINDS[c.kind].label || "קבוצה"} ${c.n}/${c.capacity}` +
-              (c.slot ? ` [${DAYS_HE[c.slot.day]}׳ ${c.slot.start}–${c.slot.end} @${c.room}]` : " [מתוכנן]")
+              (c.slot ? ` [${DAYS_HE[c.slot.day]}׳ ${c.slot.start}-${c.slot.end} @${c.room}]` : " [מתוכנן]")
           )
           .join(" · ")
     );
@@ -594,7 +594,7 @@ function availabilityFor(dex) {
   console.log(`Course cycles: ${cycleCount} · enrollments: ${enrollCount}`);
   shapeSummary.forEach((l) => console.log(l));
 
-  /* 5b ── תרבות לכל: no new humans (all 151 Pokémon exist) — a few join
+  /* 5b ── תרבות לכל: no new humans (all 151 Pokémon exist) - a few join
    *       culture in ADDITION to the league, a dozen TRANSFER to it (their
    *       league seats are given back with the reason), one transfers back. */
   let seedA = 151;
@@ -633,7 +633,7 @@ function availabilityFor(dex) {
         toCollege: ["רוצה להתאמן במכון קבוע לקראת הליגה"],
       },
       cancelReasons: ["נפצע/ה בקרב", "הוחלף/ה בקבוצה", "לא נמצאה הסעה מהעיר"],
-      eventCancelReasons: ["טים רוקט השתלט על האולם", "סופת ברקים — הטורניר נדחה"],
+      eventCancelReasons: ["טים רוקט השתלט על האולם", "סופת ברקים - הטורניר נדחה"],
       attendanceNotes: {
         present: ["הגיע/ה עם המאמן/ת", "ניצח/ה בסיבוב הראשון"],
         absent: ["הודיע/ה מראש", "נשאר/ה במרכז הפוקימון"],
@@ -653,7 +653,7 @@ function availabilityFor(dex) {
         { name: "הרצאה: אבולוציה בטבע", category: "lecture", location: "מוזיאון פיוטר", capacity: 25, hour: 18, endTime: "19:30" },
         { name: "מסיבת יום הפוקימון", category: "party", location: "מרכז הפוקימון", capacity: 40, hour: 19, endTime: "22:00" },
         { name: "שייט לאי סינבר", category: "trip", location: "נמל ורמיליון", capacity: 12, hour: 9, endTime: "17:00", ageMin: 21 },
-        { name: "ליגת הנשים — ערב סיסטר", category: "party", location: "מכון סרוליאן", capacity: 12, gender: "women", hour: 18, endTime: "21:00" },
+        { name: "ליגת הנשים - ערב סיסטר", category: "party", location: "מכון סרוליאן", capacity: 12, gender: "women", hour: 18, endTime: "21:00" },
         { name: "מרוץ רפידאש", category: "sport", location: "כביש 7", capacity: 10, gender: "men", hour: 7, endTime: "09:00" },
         { name: "התנדבות במרכז הפוקימון", category: "volunteering", location: "מרכז הפוקימון", capacity: 10, hour: 10, endTime: "13:00" },
         { name: "קונצרט מיסטי ובנד", category: "concert", location: "מכון סרוליאן", capacity: 18, hour: 20, endTime: "22:00" },
@@ -661,7 +661,7 @@ function availabilityFor(dex) {
         { name: "טיול להר הירח", category: "trip", location: "הר הירח", capacity: 15, hour: 8, endTime: "18:00", ageMax: 40 },
         { name: "ערב סרט: פוקימון הסרט", category: "movie", location: "קולנוע סלדון", capacity: 30, hour: 20, endTime: "22:00" },
         { name: "מסיבת סוף הליגה", category: "party", location: "מישור האינדיגו", capacity: 60, hour: 19, endTime: "23:00" },
-        { name: "סדנת אמנות — ציור פוקימונים", category: "workshop", location: "סטודיו סלדון", capacity: 10, hour: 16, endTime: "18:00" },
+        { name: "סדנת אמנות - ציור פוקימונים", category: "workshop", location: "סטודיו סלדון", capacity: 10, hour: 16, endTime: "18:00" },
       ],
     },
   });

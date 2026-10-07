@@ -1,20 +1,20 @@
 /**
- * @file Book model — one physical book of the library (הספרייה)
+ * @file Book model - one physical book of the library (הספרייה)
  * @module models/Book
  *
  * A book is identified by the barcode printed on it (the EAN / the
- * bookshop's own code — booknet uses 11 digits, ISBNs 13). The library
+ * bookshop's own code - booknet uses 11 digits, ISBNs 13). The library
  * holds ONE copy per title (Eden, 2026-09-09), so "is it available" is a
  * question for the `loans` collection: an open Loan ⇒ with a student.
  *
  * The details come from the scan flow (services/bookLookupService pulls
  * title / author / summary / cover from booknet, then Google Books) or
- * were typed by hand — `source` says which. The cover image lives IN the
+ * were typed by hand - `source` says which. The cover image lives IN the
  * record (`cover.data`, 2026-09-22): the server's disk is wiped on every
  * deploy, so a file on it was gone within days (Eden: "שהתמונות יישמרו").
  * Covers are small (the page shrinks a photo to ~700px before sending;
  * booknet's are ~40KB), and a cover up to INLINE_COVER_BYTES travels with
- * the book itself as `coverData` (a data URL) in every JSON — the client
+ * the book itself as `coverData` (a data URL) in every JSON - the client
  * keeps it in its boot state and shows it at once, no second request.
  * Bigger ones are fetched from GET /books/:id/cover. Books are
  * soft-deleted so old loans keep their title.
@@ -43,7 +43,7 @@ const bookSchema = new mongoose.Schema(
     productUrl: { type: String, trim: true },
     /** The remote cover image (kept for re-download / reference). */
     imageUrl: { type: String, trim: true },
-    /** The stored cover — the image bytes themselves (see the header). */
+    /** The stored cover - the image bytes themselves (see the header). */
     cover: {
       data: { type: Buffer },
       /** Legacy (until scripts/migrateCoversToDb.js ran): the file's name under UPLOAD_DIR/<world>/books/. */
@@ -52,11 +52,11 @@ const bookSchema = new mongoose.Schema(
       size: { type: Number, min: 0 },
       savedAt: { type: Date },
     },
-    /** Free text for the staff — "עותק ישן", "תרומה של…". */
+    /** Free text for the staff - "עותק ישן", "תרומה של…". */
     notes: { type: String, trim: true, default: "" },
     /** Persona name (no auth yet). */
     addedBy: { type: String, trim: true },
-    /** Soft delete — old loans still point here. */
+    /** Soft delete - old loans still point here. */
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true, collection: "books" }

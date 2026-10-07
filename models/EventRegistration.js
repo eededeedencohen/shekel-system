@@ -1,8 +1,8 @@
 /**
- * @file EventRegistration model — a culture student ↔ an event
+ * @file EventRegistration model - a culture student ↔ an event
  * @module models/EventRegistration
  *
- * ONE record per (event, student) — the ERD draws two diamonds ("נרשם
+ * ONE record per (event, student) - the ERD draws two diamonds ("נרשם
  * לאירוע" and "נמצא ברשימת המתנה") but they are two STATES of the same
  * relationship, so they share a document and a unique index: a student can
  * never be both registered and waitlisted for the same event, and the
@@ -11,10 +11,10 @@
  *  - status      registered | waitlisted | cancelled
  *  - waitlist    {position, since, addedBy} while waitlisted (the ERD's
  *                מיקום ברשימה / חתימת זמן / הוכנס ע"י)
- *  - attendance  the ERD's נכח? + הערות — reported by staff after the event;
+ *  - attendance  the ERD's נכח? + הערות - reported by staff after the event;
  *                null until reported ("לא דווח" is inferred, never stored)
  *  - history     the ERD's היסטוריית הרשמות: every action with its actor
- *                (a person — the student themself or culture staff),
+ *                (a person - the student themself or culture staff),
  *                timestamp and reason. Append-only.
  *
  * Every write goes through services/cultureService (actor validation,
@@ -28,7 +28,7 @@ const historySchema = new mongoose.Schema(
   {
     action: { type: String, enum: REGISTRATION_ACTION_KEYS, required: true },
     at: { type: Date, default: Date.now },
-    /** מבצע הפעולה — the student or a ManagerCulture (service-checked). */
+    /** מבצע הפעולה - the student or a ManagerCulture (service-checked). */
     by: { type: mongoose.Schema.Types.ObjectId, ref: "Person" },
     reason: { type: String, trim: true },
   },
@@ -52,7 +52,7 @@ const registrationSchema = new mongoose.Schema(
     },
     status: { type: String, enum: REGISTRATION_STATUSES, required: true },
     /**
-     * אורח/ת — a person WITHOUT a culture profile brought along by staff
+     * אורח/ת - a person WITHOUT a culture profile brought along by staff
      * (family at "ערב הורים וילדים", a friend at a show). The senzey data
      * carries these as student type "אורח/ת". Guests never count as
      * members; staff only.

@@ -1,5 +1,5 @@
 /**
- * @file Hostel controller — the managed hostel entity
+ * @file Hostel controller - the managed hostel entity
  * @module controllers/hostelController
  */
 

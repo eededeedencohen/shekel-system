@@ -1,5 +1,5 @@
 /**
- * @file Share previews — the Open Graph head a link needs to look right in
+ * @file Share previews - the Open Graph head a link needs to look right in
  * WhatsApp (and any other chat / feed).
  * @module utils/sharePreview
  *
@@ -8,14 +8,14 @@
  * never runs. So the SERVER decides, per URL, what the preview says and
  * which picture it shows, and stamps that into the page before sending it
  * (app.js → `injectPreview`). Eden's ask (2026-09-15): "לא טקסט קבוע לכל
- * עמוד אלא דינמי" — the landing page, מכללה לכל, תרבות לכל, the library
+ * עמוד אלא דינמי" - the landing page, מכללה לכל, תרבות לכל, the library
  * each get their own title / text / image, and a link to a specific event,
  * course, hostel or book names it.
  *
  * Nothing personal ever goes into a preview: student and teacher pages
  * describe the section, never the person.
  *
- * The picture is always the logo — client/public/og/logo.png (1200×630,
+ * The picture is always the logo - client/public/og/logo.png (1200×630,
  * rendered from public/logo.svg by client/scripts/brand-assets.mjs; chats
  * do not show SVG). The title and the text are what change per page.
  */
@@ -33,23 +33,23 @@ const TZ = "Asia/Jerusalem";
 
 const COLLEGE_DESC = "מערכת הניהול של מכללה לכל: קורסים, מערכת שבועית, נוכחות, קליטה ושיבוץ.";
 
-/** Static previews by section — the fallback for every URL without a record. */
+/** Static previews by section - the fallback for every URL without a record. */
 const STATIC = {
   home: { title: `${SITE} · מכללה לכל`, description: "מערכת הניהול של מכללה לכל ותרבות לכל: מערכת שבועית, קליטה ושיבוץ, נוכחות, הספרייה ואירועי תרבות." },
-  join: { title: "הצטרפות לשק״ל", description: "כמה שאלות קצרות ואנחנו מתחילים — מכללה לכל ותרבות לכל בירושלים. ממלאים לבד, עם ההורים או עם מתאם/ת הטיפול." },
-  joinDocs: { title: "המסמכים שלי · שק״ל", description: "העלאת המסמכים לתיק הקליטה — מהטלפון, בכל זמן. רואים מה כבר התקבל ומה חסר." },
-  schedule: { title: "מערכת שבועית · מכללה לכל", description: "כל המפגשים של השבוע — לפי יום, מורה, קטגוריה והוסטל." },
-  gantt: { title: "ציר זמן · מכללה לכל", description: "הקורסים על פני השנה — מתי כל מחזור מתחיל ומסתיים." },
+  join: { title: "הצטרפות לשק״ל", description: "כמה שאלות קצרות ואנחנו מתחילים - מכללה לכל ותרבות לכל בירושלים. ממלאים לבד, עם ההורים או עם מתאם/ת הטיפול." },
+  joinDocs: { title: "המסמכים שלי · שק״ל", description: "העלאת המסמכים לתיק הקליטה - מהטלפון, בכל זמן. רואים מה כבר התקבל ומה חסר." },
+  schedule: { title: "מערכת שבועית · מכללה לכל", description: "כל המפגשים של השבוע - לפי יום, מורה, קטגוריה והוסטל." },
+  gantt: { title: "ציר זמן · מכללה לכל", description: "הקורסים על פני השנה - מתי כל מחזור מתחיל ומסתיים." },
   rooms: { title: "זמינות חדרים · מכללה לכל", description: "מי בכל חדר, מתי, ואיפה יש מקום פנוי." },
-  pipeline: { title: "קליטה ושיבוץ · מכללה לכל", description: "המסלול של כל מתעניין/ת — מהשיחה הראשונה ועד שיבוץ לקורס." },
-  intake: { title: "קליטה (אינטייק) · שק״ל", description: "הלוח של העו״ס — ממתינים לשיחה, פגישות אינטייק, מסמכים ונקלטו." },
-  matching: { title: "שולחן ההתאמות · מכללה לכל", description: "סטודנט, קורס ומורה — מי מתאים למי, לפי זמינות, גיל ורמת תפקוד." },
+  pipeline: { title: "קליטה ושיבוץ · מכללה לכל", description: "המסלול של כל מתעניין/ת - מהשיחה הראשונה ועד שיבוץ לקורס." },
+  intake: { title: "קליטה (אינטייק) · שק״ל", description: "הלוח של העו״ס - ממתינים לשיחה, פגישות אינטייק, מסמכים ונקלטו." },
+  matching: { title: "שולחן ההתאמות · מכללה לכל", description: "סטודנט, קורס ומורה - מי מתאים למי, לפי זמינות, גיל ורמת תפקוד." },
   hostels: { title: "הוסטלים · מכללה לכל", description: "הקורסים והסטודנטים של כל הוסטל." },
-  culture: { title: "תרבות לכל · שק״ל", description: "אירועים, שוברים והסטודנטים של התוכנית — לוח שנה עברי-לועזי עם החגים." },
+  culture: { title: "תרבות לכל · שק״ל", description: "אירועים, שוברים והסטודנטים של התוכנית - לוח שנה עברי-לועזי עם החגים." },
   courses: { title: "קורסים · מכללה לכל", description: COLLEGE_DESC },
-  students: { title: "סטודנטים · מכללה לכל", description: "הסטודנטים של מכללה לכל ותרבות לכל — פרטים, תוכניות, מערכת ונוכחות." },
+  students: { title: "סטודנטים · מכללה לכל", description: "הסטודנטים של מכללה לכל ותרבות לכל - פרטים, תוכניות, מערכת ונוכחות." },
   teachers: { title: "מורים · מכללה לכל", description: "המורים, הקורסים שלהם וזמינות לשיבוץ." },
-  library: { title: "הספרייה · שק״ל", description: "סריקה, השאלה והחזרה — עותק אחד לכל ספר, וההחזרה בלי שישי ושבת." },
+  library: { title: "הספרייה · שק״ל", description: "סריקה, השאלה והחזרה - עותק אחד לכל ספר, וההחזרה בלי שישי ושבת." },
   database: { title: "בסיס הנתונים · שק״ל", description: "מבט חי על האוספים והשדות של המערכת." },
   settings: { title: "הגדרות · שק״ל", description: "העדפות תצוגה אישיות." },
 };
@@ -107,7 +107,7 @@ function safeDecode(s) {
 
 /**
  * A record's own words, when the URL points at one (event, course, hostel,
- * book) — looked up in `world` (crawlers carry no header, so the real
+ * book) - looked up in `world` (crawlers carry no header, so the real
  * world; `?world=test` works like everywhere else). Failures fall back to
  * the section's static text: a preview must never break a page.
  */
@@ -118,7 +118,7 @@ async function enrich(preview, world = "real") {
       const ev = await Event.findOne({ _id: params.event, world }).lean();
       if (ev) {
         const d = new Date(ev.date);
-        const when = `${fmtDay(d)}, ${fmtDate(d)} · ${fmtTime(d)}${ev.endTime ? `–${ev.endTime}` : ""}`;
+        const when = `${fmtDay(d)}, ${fmtDate(d)} · ${fmtTime(d)}${ev.endTime ? `-${ev.endTime}` : ""}`;
         const bits = [when, categoryLabel(ev.category), ev.location].filter(Boolean);
         return { ...preview, title: `${ev.name} · תרבות לכל`, description: clip([bits.join(" · "), ev.description].filter(Boolean).join(". ")) };
       }
@@ -127,7 +127,7 @@ async function enrich(preview, world = "real") {
       const ci = await Cycle.findOne({ _id: params.cycle, world }).populate("subject", "name").populate("hostel", "name").lean();
       if (ci) {
         const name = ci.subject?.name || "קורס";
-        const slots = (ci.schedule || []).map((s) => `יום ${DAY_NAMES[s.day] || ""} ${s.start}–${s.end}`.trim());
+        const slots = (ci.schedule || []).map((s) => `יום ${DAY_NAMES[s.day] || ""} ${s.start}-${s.end}`.trim());
         const bits = [slots.join(", "), ci.hostel?.name ? `הוסטל ${ci.hostel.name}` : null].filter(Boolean);
         return { ...preview, title: `${name} · מכללה לכל`, description: clip(bits.length ? bits.join(" · ") : COLLEGE_DESC) };
       }
@@ -138,7 +138,7 @@ async function enrich(preview, world = "real") {
     }
     if (params.book) {
       const b = await Book.findOne({ _id: params.book, world, deletedAt: null }).lean();
-      if (b) return { ...preview, title: `${b.title} · הספרייה`, description: clip([b.author, b.summary].filter(Boolean).join(" — ") || STATIC.library.description) };
+      if (b) return { ...preview, title: `${b.title} · הספרייה`, description: clip([b.author, b.summary].filter(Boolean).join(" - ") || STATIC.library.description) };
     }
   } catch {
     /* fall through to the static text */

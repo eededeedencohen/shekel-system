@@ -1,5 +1,5 @@
 /**
- * הספרייה — the scan flow end to end: lookup (library first, then the
+ * הספרייה - the scan flow end to end: lookup (library first, then the
  * internet), add with a cover, lend / extend / return with Eden's rules
  * (one copy per book, no Fri/Shabbat return days), soft delete + restore,
  * world isolation.

@@ -7,20 +7,20 @@
  * and kept in sync with the standalone schema doc (database-model.html).
  *
  * Three endpoints:
- *   GET /api/db/schema           — live Mongoose introspection: every
+ *   GET /api/db/schema           - live Mongoose introspection: every
  *                                  collection's fields (types, refs, enums,
  *                                  flags, defaults), document counts and
  *                                  the full reference graph.
- *   GET /api/db/:collection      — raw documents, lean and WITHOUT populate
+ *   GET /api/db/:collection      - raw documents, lean and WITHOUT populate
  *                                  (refs stay ObjectIds), with pagination,
  *                                  search, and a batched labels map so the
  *                                  client can render each ref as a readable
  *                                  link ("יוסי כהן" instead of a hex id).
- *   GET /api/db/:collection/:id  — one document + labels for every ref in
+ *   GET /api/db/:collection/:id  - one document + labels for every ref in
  *                                  it + every INCOMING reference: who, from
  *                                  which collection and path, points here.
  *
- * Deliberately ignores the X-Dataset demo scoping — this is the raw-truth
+ * Deliberately ignores the X-Dataset demo scoping - this is the raw-truth
  * view, demo worlds included (each row's `dataset` tag is visible as-is).
  * Read-only by design: no write endpoint exists here.
  */
@@ -31,7 +31,7 @@ const catchAsync = require("../utils/catchAsync");
 
 // Explicit requires so every model is registered regardless of route load
 // order. Profile discriminators (the user-type kinds) share the `profiles`
-// collection — their extra paths are merged into the Profile entry below.
+// collection - their extra paths are merged into the Profile entry below.
 const { Person } = require("../models/Person");
 const { Profile, MODEL_BY_KIND } = require("../models/profiles");
 const MODELS = [
@@ -82,7 +82,7 @@ const KEY_BY_MODEL = Object.fromEntries(
   MODELS.map((m) => [m.modelName, m.collection.name])
 );
 
-/** Mongoose options sometimes come as `[value, message]` — take the value. */
+/** Mongoose options sometimes come as `[value, message]` - take the value. */
 const bare = (v) => (Array.isArray(v) ? v[0] : v);
 
 /**
@@ -116,7 +116,7 @@ function describePath(path, st) {
 
   if (st.instance === "Array") {
     if (st.schema) {
-      // Array of subdocuments — recurse (skip each element's auto _id).
+      // Array of subdocuments - recurse (skip each element's auto _id).
       out.type = "Subdocs[]";
       out.fields = [];
       st.schema.eachPath((p, sub) => {
@@ -359,7 +359,7 @@ exports.getDbSchema = catchAsync(async (req, res) => {
       try {
         count = await M.estimatedDocumentCount();
       } catch {
-        /* DB not reachable — structure still renders */
+        /* DB not reachable - structure still renders */
       }
       return {
         key: M.collection.name,
@@ -446,7 +446,7 @@ exports.getDbRecord = catchAsync(async (req, res, next) => {
 
   const labels = await resolveRefLabels(M, [doc]);
 
-  // Incoming references — who points at this record, from where.
+  // Incoming references - who points at this record, from where.
   const incoming = [];
   for (const FM of MODELS) {
     for (const r of REFS_BY_MODEL[FM.modelName]) {

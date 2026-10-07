@@ -1,5 +1,5 @@
 /**
- * @file Invoice routes — /api/invoices (חשבוניות של מורים)
+ * @file Invoice routes - /api/invoices (חשבוניות של מורים)
  * @module routes/invoiceRoutes
  * @see controllers/invoiceController
  */

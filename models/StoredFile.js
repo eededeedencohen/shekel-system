@@ -1,5 +1,5 @@
 /**
- * @file StoredFile model — a file kept IN the database (collection `files`)
+ * @file StoredFile model - a file kept IN the database (collection `files`)
  * @module models/StoredFile
  *
  * The first table of the small-tables model (Eden, 2026-10-05): one thing,
@@ -8,7 +8,7 @@
  * document). The bytes live in the database because the server's disk is
  * wiped on every deploy.
  *
- * JSON never carries the bytes — a route streams them (see getImage in
+ * JSON never carries the bytes - a route streams them (see getImage in
  * controllers/invoiceController).
  */
 

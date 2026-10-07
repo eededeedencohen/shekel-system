@@ -1,5 +1,5 @@
 /**
- * @file exportStudentsCSV — produce a clean CSV from סטודנטים.xls
+ * @file exportStudentsCSV - produce a clean CSV from סטודנטים.xls
  * @module scripts/exportStudentsCSV
  *
  * Parses the HTML-encoded Excel export, filters to rows whose status

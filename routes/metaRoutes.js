@@ -1,5 +1,5 @@
 /**
- * @file Meta routes — domain enums + world counts
+ * @file Meta routes - domain enums + world counts
  * @module routes/metaRoutes
  * @see controllers/metaController
  */

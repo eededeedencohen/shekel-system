@@ -1,5 +1,5 @@
 /**
- * @file Incident controller — /api/incidents (דיווח אירוע חריג)
+ * @file Incident controller - /api/incidents (דיווח אירוע חריג)
  * @module controllers/incidentController
  *
  *   GET    /?person=     newest first

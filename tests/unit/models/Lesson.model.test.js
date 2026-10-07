@@ -1,5 +1,5 @@
 /**
- * Lesson model — the UTC-midnight path setter (covers query updates too),
+ * Lesson model - the UTC-midnight path setter (covers query updates too),
  * the live-uniqueness index, archive immutability at the schema layer, and
  * the no-duplicate-student attendance validator.
  */
@@ -13,7 +13,7 @@ describe("date normalization (path setter)", () => {
     expect(lesson.date.toISOString()).toBe("2026-03-15T00:00:00.000Z");
   });
 
-  it("normalizes on findOneAndUpdate too — the setter closes the update-path hole", async () => {
+  it("normalizes on findOneAndUpdate too - the setter closes the update-path hole", async () => {
     const lesson = await makeLesson();
     const updated = await Lesson.findOneAndUpdate(
       { _id: lesson._id },

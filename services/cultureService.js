@@ -1,5 +1,5 @@
 /**
- * @file Culture service — the ONLY write path for תרבות לכל
+ * @file Culture service - the ONLY write path for תרבות לכל
  *       (events, registrations + waitlist, attendance, vouchers)
  * @module services/cultureService
  *
@@ -11,7 +11,7 @@
  *    persona; the check is on the id, exactly like the ERD demands.)
  *  - REGISTRATION: only a published, future event; the student must hold an
  *    active StudentCulture profile in the same world; the event's
- *    settings (gender scope, age range) must fit — staff may `force`.
+ *    settings (gender scope, age range) must fit - staff may `force`.
  *  - CAPACITY: registered < capacity, checked in a transaction; when full,
  *    the student joins the WAITLIST (position = last+1) unless told not to.
  *  - PROMOTION: a cancelled seat goes to the lowest waitlist position,
@@ -47,7 +47,7 @@ async function assertStaff(personId, world) {
   return p;
 }
 
-/** The student themself or culture staff — returns "self" | "staff". */
+/** The student themself or culture staff - returns "self" | "staff". */
 async function assertActor({ actorId, world, studentId }) {
   if (!actorId) throw AppError.of("NO_ACTOR", 400);
   if (String(actorId) === String(studentId)) return "self";
@@ -139,7 +139,7 @@ async function markEventDone({ eventId, world, by }) {
   return event.save();
 }
 
-/** Only an untouched draft may be deleted — anything else is history. */
+/** Only an untouched draft may be deleted - anything else is history. */
 async function deleteEvent({ eventId, world, by }) {
   await assertStaff(by, world);
   const event = await requireEvent(eventId, world);
@@ -161,7 +161,7 @@ const ageAt = (birthDate, when) => {
 };
 
 /**
- * Why a person does NOT fit an event's settings — [] when they do.
+ * Why a person does NOT fit an event's settings - [] when they do.
  * Unknown facts (no gender / no birth date) are not held against them.
  */
 function eligibilityIssues(event, person) {
@@ -173,8 +173,8 @@ function eligibilityIssues(event, person) {
   }
   const age = ageAt(person.birthDate, event.date);
   if (age != null) {
-    if (s.ageMin != null && age < s.ageMin) issues.push(`גיל ${age} — מתחת לגיל המינימלי ${s.ageMin}`);
-    if (s.ageMax != null && age > s.ageMax) issues.push(`גיל ${age} — מעל לגיל המקסימלי ${s.ageMax}`);
+    if (s.ageMin != null && age < s.ageMin) issues.push(`גיל ${age} - מתחת לגיל המינימלי ${s.ageMin}`);
+    if (s.ageMax != null && age > s.ageMax) issues.push(`גיל ${age} - מעל לגיל המקסימלי ${s.ageMax}`);
   }
   return issues;
 }
@@ -232,7 +232,7 @@ async function promoteNext(eventId, at) {
   return next;
 }
 
-/** A person who is NOT a culture member — allowed on as a guest by staff. */
+/** A person who is NOT a culture member - allowed on as a guest by staff. */
 async function assertGuestPerson(personId, world) {
   const person = await Person.findById(personId);
   if (!person) throw AppError.of("NOT_FOUND", 404, "אדם");
@@ -405,7 +405,7 @@ async function redeemVoucher({ voucherId, world, by, at }) {
   return v.save();
 }
 
-/** Take back an un-redeemed grant (a mistake) — the voucher returns to stock. */
+/** Take back an un-redeemed grant (a mistake) - the voucher returns to stock. */
 async function revokeGrant({ voucherId, world, by }) {
   await assertStaff(by, world);
   const v = await requireVoucher(voucherId, world);

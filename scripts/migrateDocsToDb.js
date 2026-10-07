@@ -1,9 +1,9 @@
 /**
- * @file migrateDocsToDb — intake documents from the server's disk into the `files` table
+ * @file migrateDocsToDb - intake documents from the server's disk into the `files` table
  * @module scripts/migrateDocsToDb
  *
  * Until 2026-10-07 every intake document was a file under
- * UPLOAD_DIR/<world>/<intakeId>/ — and Render wipes that disk on every
+ * UPLOAD_DIR/<world>/<intakeId>/ - and Render wipes that disk on every
  * deploy (flagged to Eden 2026-09-22). This copies every file that still
  * exists on the disk into StoredFile (`files`), points the document row
  * at it (`file.stored`) and clears `file.storedName`. A row whose disk

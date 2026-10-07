@@ -1,5 +1,5 @@
 /**
- * @file Public controller — the sign-up page (דף הנחיתה) and the upload links, no login
+ * @file Public controller - the sign-up page (דף הנחיתה) and the upload links, no login
  * @module controllers/publicController
  *
  * Everything under /api/public is reachable WITHOUT a user: the options
@@ -9,13 +9,13 @@
  * can exercise the whole flow without touching real people.
  *
  * A token opens either a temporary upload link the coordinator made
- * (models/UploadLink — alive for the minutes she picked) or the landing
+ * (models/UploadLink - alive for the minutes she picked) or the landing
  * page's personal link (alive for a day after the submission). Both lock
  * when their time is over: 410 INTAKE_LINK_EXPIRED, and the page says to
  * ask for a new one.
  *
  * Guards (no auth exists yet): a honeypot field, server-side validation,
- * per-file size/type limits, and the token as the only key to a record —
+ * per-file size/type limits, and the token as the only key to a record -
  * nothing here reads back other people's data.
  */
 
@@ -35,7 +35,7 @@ const {
 } = require("../utils/domain");
 const intake = require("../services/intakeService");
 
-/** GET /api/public/join/options — everything the page renders from. */
+/** GET /api/public/join/options - everything the page renders from. */
 exports.joinOptions = catchAsync(async (req, res) => {
   const [subjects, hostels] = await Promise.all([
     Subject.find({ world: req.world, active: { $ne: false } }).select("name category").sort({ name: 1 }).lean(),
@@ -62,7 +62,7 @@ exports.joinOptions = catchAsync(async (req, res) => {
   });
 });
 
-/** POST /api/public/join — the submission. */
+/** POST /api/public/join - the submission. */
 exports.join = catchAsync(async (req, res) => {
   const out = await intake.submitLanding({ world: req.world, body: req.body || {} });
   res.status(201).json({
@@ -78,13 +78,13 @@ exports.join = catchAsync(async (req, res) => {
   });
 });
 
-/** GET /api/public/join/:token — the documents page behind a link. */
+/** GET /api/public/join/:token - the documents page behind a link. */
 exports.viewByToken = catchAsync(async (req, res) => {
   const { intake: doc, person, link } = await intake.resolveToken({ world: req.world, token: req.params.token });
   res.status(200).json({ status: "success", data: { view: intake.publicView(doc, person, link) } });
 });
 
-/** POST /api/public/join/:token/documents — { key, fileName, mime, data(base64) } */
+/** POST /api/public/join/:token/documents - { key, fileName, mime, data(base64) } */
 exports.uploadByToken = catchAsync(async (req, res) => {
   const { intake: doc, person, link } = await intake.resolveToken({ world: req.world, token: req.params.token });
   const { key, fileName, mime, data } = req.body || {};
@@ -93,7 +93,7 @@ exports.uploadByToken = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: { view: intake.publicView(saved, person, link) } });
 });
 
-/** DELETE /api/public/join/:token/documents/:key — pull back an unconfirmed upload. */
+/** DELETE /api/public/join/:token/documents/:key - pull back an unconfirmed upload. */
 exports.removeByToken = catchAsync(async (req, res) => {
   const { intake: doc, person, link } = await intake.resolveToken({ world: req.world, token: req.params.token });
   const out = await intake.removeStudentDocument({ intake: doc, key: req.params.key });

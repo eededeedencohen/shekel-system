@@ -1,5 +1,5 @@
 /**
- * @file Incident model — דיווח אירוע חריג
+ * @file Incident model - דיווח אירוע חריג
  * @module models/Incident
  *
  * The Ministry of Health procedure the social worker described
@@ -17,7 +17,7 @@ const incidentSchema = new mongoose.Schema(
   {
     world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     person: { type: mongoose.Schema.Types.ObjectId, ref: "Person", required: true, index: true },
-    /** When it happened — date AND time. */
+    /** When it happened - date AND time. */
     at: { type: Date, required: true },
     reportedBy: {
       name: { type: String, trim: true, required: true },

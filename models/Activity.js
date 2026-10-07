@@ -1,5 +1,5 @@
 /**
- * @file Activity model — one entry of a person's record (לשונית פעילויות)
+ * @file Activity model - one entry of a person's record (לשונית פעילויות)
  * @module models/Activity
  *
  * The social worker (2026-10-07): "כל אירוע בחיי המתמודד מתועד בלשונית
@@ -11,7 +11,7 @@
  *
  * Two kinds restart a periodic clock when saved (domain ACTIVITY_KINDS
  * `resets`): a שיחת מעקב sets the next one three months on, a שיחת הערכה
- * two years on — lib/followups on the client reads the latest of each.
+ * two years on - lib/followups on the client reads the latest of each.
  * `program` says which program the entry belongs to when that matters
  * (a closure report, a leave report); `related` points at the row of
  * another table the entry mirrors (an incident report).
@@ -30,7 +30,7 @@ const activitySchema = new mongoose.Schema(
     by: { type: String, trim: true },
     title: { type: String, trim: true },
     body: { type: String, trim: true },
-    /** The template's small fields — { attendance: "סדירה", motivation: "גבוהה", … }. */
+    /** The template's small fields - { attendance: "סדירה", motivation: "גבוהה", … }. */
     fields: { type: mongoose.Schema.Types.Mixed, default: {} },
     program: { type: String, enum: STUDENT_KINDS },
     related: {

@@ -1,5 +1,5 @@
 /**
- * Person + Profile — the identity/profiles split: identity stays lean, one
+ * Person + Profile - the identity/profiles split: identity stays lean, one
  * profile per (person, kind), the pipeline lives on the student profile
  * with the same sync-rule guards it had on Person.
  */
@@ -10,7 +10,7 @@ const { createProfile, createPersonWithProfile } = require("../../../services/pr
 const { makeStudent, makeHostel } = require("../../helpers/factories");
 
 describe("identity + profiles split", () => {
-  it("a person carries no role — kinds come from the profiles collection", async () => {
+  it("a person carries no role - kinds come from the profiles collection", async () => {
     const s = await makeStudent();
     const viaBase = await Person.findById(s._id);
     expect(viaBase.role).toBeUndefined();
@@ -20,12 +20,12 @@ describe("identity + profiles split", () => {
     expect(Profile.collection.name).toBe("profiles");
   });
 
-  it("email is optional — an intake lead needs no placeholder", async () => {
+  it("email is optional - an intake lead needs no placeholder", async () => {
     const p = await Person.create({ firstName: "ליד" });
     expect(p.email).toBeUndefined();
   });
 
-  it("one person can hold several kinds — but never the same kind twice", async () => {
+  it("one person can hold several kinds - but never the same kind twice", async () => {
     const s = await makeStudent();
     const hostel = await makeHostel();
     const manager = await createProfile(s, "ManagerHostel", { hostels: [hostel._id] });

@@ -1,5 +1,5 @@
 /**
- * Profiles API — the identity+profiles split over HTTP: adding roles to an
+ * Profiles API - the identity+profiles split over HTTP: adding roles to an
  * existing person, multi-role people, the profile-addressed pipeline, and
  * the intake find-or-create that kills duplicate humans.
  */
@@ -60,7 +60,7 @@ describe("profile-addressed pipeline (the canonical path)", () => {
     expect(res.status).toBe(200);
     expect(res.body.data.profile.pipeline.stage).toBe("Matching");
 
-    // the college profile is untouched — each department runs its own
+    // the college profile is untouched - each department runs its own
     const college = await request(app).get(`/api/profiles/${s.profile._id}`);
     expect(college.body.data.profile.pipeline?.stage).toBeUndefined();
   });
@@ -76,7 +76,7 @@ describe("profile-addressed pipeline (the canonical path)", () => {
 });
 
 describe("GET /api/profiles?kind=", () => {
-  it("lists across people — e.g. all hostel managers", async () => {
+  it("lists across people - e.g. all hostel managers", async () => {
     const s = await makeStudent();
     const hostel = await makeHostel();
     await request(app)
@@ -89,7 +89,7 @@ describe("GET /api/profiles?kind=", () => {
   });
 });
 
-describe("POST /api/people/intake — find-or-create", () => {
+describe("POST /api/people/intake - find-or-create", () => {
   it("a returning lead gets a second PROFILE, never a second human", async () => {
     const first = await request(app)
       .post("/api/people/intake")

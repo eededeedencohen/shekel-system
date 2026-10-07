@@ -2,11 +2,11 @@
  * @file Shared TimeRange sub-schema
  * @module models/schemas/timeRange
  *
- * THE one shape for a weekly time window — person availability and cycle
+ * THE one shape for a weekly time window - person availability and cycle
  * schedule slots both build on it, so "HH:mm" validation and start<end
  * live in exactly one place (the remodel killed the three drifted copies).
  *
- * Days are Sunday–Thursday (0–4); Fridays/Saturdays don't exist in Shekel's
+ * Days are Sunday-Thursday (0-4); Fridays/Saturdays don't exist in Shekel's
  * week. Times are zero-padded "HH:mm", which makes lexicographic comparison
  * safe for the start<end check.
  */

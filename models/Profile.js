@@ -1,24 +1,24 @@
 /**
- * @file Profile model — one document per (person, kind): "what this person
+ * @file Profile model - one document per (person, kind): "what this person
  *       is in Shekel"
  * @module models/Profile
  *
  * The base of the identity+profiles split (people-remodel-plan.html).
  * Inheritance lives HERE, where it belongs: every profile shares the same
  * skeleton (person, world, active, lifecycle log) and each user type is a
- * discriminator on `kind` under models/profiles/ — adding a user type is
+ * discriminator on `kind` under models/profiles/ - adding a user type is
  * one schema file + a registry line, no migration, no controller change.
  *
  * Invariants at the schema layer:
- *  - {person, kind} unique — a person holds each role at most once
+ *  - {person, kind} unique - a person holds each role at most once
  *    (deactivate with active:false, never duplicate; reopen later).
- *  - `world` must equal the person's world, asserted once here on create —
+ *  - `world` must equal the person's world, asserted once here on create -
  *    no controller has to remember (WORLD_MISMATCH by construction).
- *  - person/world/kind are immutable — a profile never migrates between
+ *  - person/world/kind are immutable - a profile never migrates between
  *    humans or worlds.
  *
  * Lifecycle ("הכל מתועד אצל הסטודנט"): `log` is the append-only story of
- * the role — opened / closed / reopened / transferredOut / transferredIn —
+ * the role - opened / closed / reopened / transferredOut / transferredIn -
  * and `since`/`until` are the current open interval. A student who moves
  * from מכללה לכל to תרבות לכל keeps BOTH profiles: the old one closed with
  * transferredOut, the new one opened with transferredIn. The only writers
@@ -53,7 +53,7 @@ const profileSchema = new mongoose.Schema(
     world: { type: String, enum: WORLDS, required: true, immutable: true },
     /** Deactivate a role, keep the person (and the history). */
     active: { type: Boolean, default: true },
-    /** Current open interval — since = last opened/reopened, until = closed. */
+    /** Current open interval - since = last opened/reopened, until = closed. */
     since: { type: Date },
     until: { type: Date, default: null },
     /** Append-only lifecycle log (see PROFILE_EVENTS). */
@@ -66,7 +66,7 @@ const profileSchema = new mongoose.Schema(
 profileSchema.index({ person: 1, kind: 1 }, { unique: true });
 profileSchema.index({ world: 1, kind: 1, active: 1 });
 
-/** world must equal the person's world — asserted once, on create. */
+/** world must equal the person's world - asserted once, on create. */
 profileSchema.pre("validate", async function (next) {
   if (!this.isNew || !this.person) return next();
   try {
@@ -86,7 +86,7 @@ profileSchema.pre("validate", async function (next) {
  * First save = the role opens: stamp `since` and an `opened` entry unless
  * the caller (a transfer, a seed with history) already wrote the log.
  * A student profile created WITH a historical pipeline opened when that
- * pipeline began — not at insert time.
+ * pipeline began - not at insert time.
  */
 profileSchema.pre("save", function (next) {
   if (this.isNew) {
@@ -104,7 +104,7 @@ profileSchema.pre("save", function (next) {
 });
 
 // Guard pipeline/stageHistory against query-update bypasses for EVERY kind
-// (harmless for kinds without a pipeline) — must be registered BEFORE the
+// (harmless for kinds without a pipeline) - must be registered BEFORE the
 // model is compiled, or the hooks never fire.
 const { blockPipelineQueryWrites } = require("./profiles/studentCore");
 profileSchema.pre("updateOne", blockPipelineQueryWrites);

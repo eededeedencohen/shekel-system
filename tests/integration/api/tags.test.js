@@ -1,5 +1,5 @@
 /**
- * תגיות — the catalog, the migration from the old profiles (additive,
+ * תגיות - the catalog, the migration from the old profiles (additive,
  * idempotent, hostels students kept out of מכללה לכל), the tags every
  * person and cycle answer carries, and the writers (give / take / reopen).
  */

@@ -16,7 +16,7 @@ const handleCastError = (err) =>
 
 /** Mongoose duplicate-key error (E11000) → 400/409 */
 const handleDuplicateFields = (err) => {
-  // The {cycle, student} unique index is the no-double-enroll invariant —
+  // The {cycle, student} unique index is the no-double-enroll invariant -
   // surface it as its stable domain code rather than a generic message.
   if (err.keyPattern && err.keyPattern.cycle && err.keyPattern.student) {
     return AppError.of("DUPLICATE_ENROLLMENT", 409);
@@ -51,7 +51,7 @@ const handleValidationError = (err) => {
 };
 
 /**
- * Express error middleware.  Note the 4-arg signature — required for
+ * Express error middleware.  Note the 4-arg signature - required for
  * Express to recognise this as an error handler.
  */
 module.exports = (err, req, res, next) => {
@@ -63,7 +63,7 @@ module.exports = (err, req, res, next) => {
   else if (err.code === 11000) mapped = handleDuplicateFields(err);
   else if (err.name === "ValidationError") mapped = handleValidationError(err);
   // body-parser: a body over the JSON limit (an upload too big) or unparsable
-  else if (err.type === "entity.too.large") mapped = Object.assign(new AppError("הקובץ גדול מדי — עד 8MB לקובץ", 413), { code: "PAYLOAD_TOO_LARGE" });
+  else if (err.type === "entity.too.large") mapped = Object.assign(new AppError("הקובץ גדול מדי - עד 8MB לקובץ", 413), { code: "PAYLOAD_TOO_LARGE" });
   else if (err.type === "entity.parse.failed") mapped = Object.assign(new AppError("גוף הבקשה לא תקין", 400), { code: "BAD_JSON" });
 
   // Operational, trusted error: surface to client (code = stable English

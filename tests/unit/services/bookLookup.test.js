@@ -1,5 +1,5 @@
 /**
- * bookLookupService — the port of booknet_book_downloader.ipynb, parsed
+ * bookLookupService - the port of booknet_book_downloader.ipynb, parsed
  * against page fixtures (no network): the search → product link, the
  * product page → title / author / summary / cover, and the source
  * fallback order with a fake fetch.
@@ -138,7 +138,7 @@ describe("lookupBook (fake network)", () => {
     expect(calls.some((u) => u.includes("googleapis"))).toBe(false);
   });
 
-  it("finds a booknet book scanned with a leading zero — asks for it without the zero", async () => {
+  it("finds a booknet book scanned with a leading zero - asks for it without the zero", async () => {
     const searches = [];
     lookup.setFetch(async (url) => {
       if (url.includes("%D7%97%D7%99%D7%A4%D7%95%D7%A9")) {

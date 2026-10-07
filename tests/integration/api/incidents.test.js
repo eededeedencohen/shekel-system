@@ -1,5 +1,5 @@
 /**
- * דיווח אירוע חריג — the Ministry of Health form, mirrored on the record.
+ * דיווח אירוע חריג - the Ministry of Health form, mirrored on the record.
  */
 
 const request = require("supertest");

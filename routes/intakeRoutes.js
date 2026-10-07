@@ -1,5 +1,5 @@
 /**
- * @file Intake routes — the social worker's board
+ * @file Intake routes - the social worker's board
  * @module routes/intakeRoutes
  * @see controllers/intakesController
  */
@@ -28,7 +28,7 @@ const {
 } = require("../controllers/intakesController");
 
 // staff uploads carry base64 files too
-// (staff uploads are base64 in JSON — the body limit is the global one in app.js)
+// (staff uploads are base64 in JSON - the body limit is the global one in app.js)
 
 // Static paths before /:id
 router.post("/open", openIntake);
@@ -43,7 +43,7 @@ router.post("/:id/done", markDone);
 router.post("/:id/documents", uploadDocument);
 router.patch("/:id/documents/:key", setDocument);
 router.get("/:id/documents/:key/file", getDocumentFile);
-// 2026-10-07 — the social worker's round
+// 2026-10-07 - the social worker's round
 router.patch("/:id/shkedia", setShkedia);
 router.patch("/:id/coordinator", setCoordinator);
 router.patch("/:id/screening", setScreening);

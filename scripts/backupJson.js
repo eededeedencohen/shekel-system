@@ -1,5 +1,5 @@
 /**
- * @file backupJson — full EJSON dump of every collection
+ * @file backupJson - full EJSON dump of every collection
  * @module scripts/backupJson
  *
  * mongodump-free safety net for the remodel migration: writes every

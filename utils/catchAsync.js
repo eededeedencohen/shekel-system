@@ -1,5 +1,5 @@
 /**
- * @file catchAsync — async-route error wrapper
+ * @file catchAsync - async-route error wrapper
  * @module utils/catchAsync
  *
  * Express does not pipe rejected promises to next() automatically. Wrapping

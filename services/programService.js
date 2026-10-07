@@ -1,12 +1,12 @@
 /**
- * @file Program service — a student's memberships in מכללה לכל / תרבות לכל
+ * @file Program service - a student's memberships in מכללה לכל / תרבות לכל
  *       over time, and the ONLY writer of a profile's lifecycle log
  * @module services/programService
  *
  * The business facts (Eden, Sept 2026):
- *  - a student can be in BOTH programs at once — rare, but real → two
+ *  - a student can be in BOTH programs at once - rare, but real → two
  *    profiles on one person, nothing special.
- *  - a student can MOVE from one program to the other — very rare, and
+ *  - a student can MOVE from one program to the other - very rare, and
  *    everything must stay documented on the student → `transfer()` closes
  *    the source profile (transferredOut) and opens/reopens the target
  *    (transferredIn) in one story, and unwinds the live memberships of the
@@ -14,7 +14,7 @@
  *    → cancelled + waitlist promotion) with a reason on every record.
  *
  * Nothing here deletes anything: a closed profile keeps its pipeline,
- * history, enrollments and registrations — they just become past tense.
+ * history, enrollments and registrations - they just become past tense.
  */
 
 const { Person } = require("../models/Person");
@@ -47,7 +47,7 @@ async function leaveProgramEffects({ personId, kind, at, reason }) {
     const live = await Enrollment.find({ student: personId, status: { $in: OCCUPYING_STATUSES } });
     for (const e of live) {
       e.status = "left";
-      // leftAt may never precede joinedAt (schema rule) — a back-dated
+      // leftAt may never precede joinedAt (schema rule) - a back-dated
       // transfer closes the seat on the day it was taken at the earliest.
       e.leftAt = e.joinedAt && e.joinedAt > at ? e.joinedAt : at;
       e.note = [e.note, reason].filter(Boolean).join(" · ");
@@ -65,7 +65,7 @@ async function leaveProgramEffects({ personId, kind, at, reason }) {
       status: { $in: ["registered", "waitlisted"] },
     }).populate({ path: "event", select: "date status" });
     for (const r of live) {
-      // Past events are history — only future seats are given back.
+      // Past events are history - only future seats are given back.
       if (r.event?.date && r.event.date.getTime() < at.getTime()) continue;
       const wasRegistered = r.status === "registered";
       r.status = "cancelled";
@@ -105,7 +105,7 @@ async function transfer({ personId, world, from, to, by, note, at, stage }) {
   if (!source || !source.active) throw AppError.of("PROFILE_INACTIVE", 400, PROGRAM_LABELS[from]);
   let target = await Profile.findOne({ person: person._id, kind: to });
   if (target && target.active) {
-    throw AppError.of("INVALID_TRANSFER", 400, `כבר פעיל/ה ב${PROGRAM_LABELS[to]} — סגרו את ${PROGRAM_LABELS[from]} במקום`);
+    throw AppError.of("INVALID_TRANSFER", 400, `כבר פעיל/ה ב${PROGRAM_LABELS[to]} - סגרו את ${PROGRAM_LABELS[from]} במקום`);
   }
 
   // 1 · close the source side of the story
@@ -175,12 +175,12 @@ async function closeProfile({ profile, world, by, note, at }) {
 }
 
 /**
- * דיווח עזיבה (the social worker, 2026-10-07) — the one-click, budget-side
+ * דיווח עזיבה (the social worker, 2026-10-07) - the one-click, budget-side
  * report: the official leave date, a reason from the closed list, and
  * whether שקדיה was told. It closes the program the way closeProfile does
  * (seats / registrations given back) and writes a "leave" activity on
  * the person's record beside the narrative closure report (which the
- * coordinator writes first — the client reminds her; nothing blocks).
+ * coordinator writes first - the client reminds her; nothing blocks).
  */
 async function leaveProgram({ profile, world, by, leftAt, reason, note, shkediaReported = false }) {
   if (!STUDENT_KINDS.includes(profile.kind)) throw AppError.of("INVALID_KIND", 400, profile.kind);
@@ -228,7 +228,7 @@ async function reopenProfile({ profile, world, by, note, at, stage }) {
 
 /**
  * The person's program story, merged across ALL their student profiles
- * (active and closed), oldest first — what the student page renders.
+ * (active and closed), oldest first - what the student page renders.
  */
 async function programTimeline(personId) {
   const profiles = await Profile.find({ person: personId, kind: { $in: STUDENT_KINDS } }).lean();
@@ -238,7 +238,7 @@ async function programTimeline(personId) {
       entries.push({ kind: p.kind, program: PROGRAM_LABELS[p.kind], profile: p._id, ...l });
     }
   }
-  // Both halves of a transfer share one timestamp — the leaving side reads
+  // Both halves of a transfer share one timestamp - the leaving side reads
   // first, so a tie breaks on the event's natural order.
   const RANK = { opened: 0, closed: 1, transferredOut: 1, transferredIn: 2, reopened: 2 };
   entries.sort((a, b) => new Date(a.at) - new Date(b.at) || (RANK[a.event] ?? 9) - (RANK[b.event] ?? 9));

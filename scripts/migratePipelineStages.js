@@ -1,5 +1,5 @@
 /**
- * @file migratePipelineStages — the 2026-09-17 pipeline spec on stored data
+ * @file migratePipelineStages - the 2026-09-17 pipeline spec on stored data
  * @module scripts/migratePipelineStages
  *
  * Eden's מכללה לכל pipeline folded the 2026-09-09 diagram's three
@@ -16,7 +16,7 @@
  *
  * Writes go through the native driver on purpose: the Profile model blocks
  * query updates of pipeline/stageHistory (moveToStage() is the only legal
- * writer for the app) — a data migration is the one place that may bypass
+ * writer for the app) - a data migration is the one place that may bypass
  * it. Idempotent; run it as many times as you like:
  *
  *   cd server && node scripts/migratePipelineStages.js            # every world

@@ -1,5 +1,5 @@
 /**
- * @file Intakes controller — the social worker's board (קליטה / אינטייק)
+ * @file Intakes controller - the social worker's board (קליטה / אינטייק)
  * @module controllers/intakesController
  *
  * Reads and writes the `intakes` records (one per person) and lets the
@@ -49,21 +49,21 @@ exports.getIntake = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: { intake: await populated(doc) } });
 });
 
-/** GET /api/intakes/person/:personId — 404 when the person has no record. */
+/** GET /api/intakes/person/:personId - 404 when the person has no record. */
 exports.getByPerson = catchAsync(async (req, res, next) => {
   const doc = await Intake.findOne({ world: req.world, person: req.params.personId }).populate([PERSON_POP, SUBJECT_POP]);
   if (!doc) return next(AppError.of("NOT_FOUND", 404, "תיק קליטה"));
   res.status(200).json({ status: "success", data: { intake: doc } });
 });
 
-/** POST /api/intakes/open — { person, by }: open a record for a walk-in. */
+/** POST /api/intakes/open - { person, by }: open a record for a walk-in. */
 exports.openIntake = catchAsync(async (req, res) => {
   const person = await personOf(req, req.body.person);
   const doc = await intake.ensureIntake({ person, world: req.world, source: "staff", by: req.body.by });
   res.status(201).json({ status: "success", data: { intake: await populated(doc) } });
 });
 
-/** POST /api/intakes/schedule — { person, at, by, note } (find-or-create + schedule). */
+/** POST /api/intakes/schedule - { person, at, by, note } (find-or-create + schedule). */
 exports.scheduleForPerson = catchAsync(async (req, res) => {
   const person = await personOf(req, req.body.person);
   const doc = await intake.ensureIntake({ person, world: req.world, source: "staff", by: req.body.by });
@@ -72,7 +72,7 @@ exports.scheduleForPerson = catchAsync(async (req, res) => {
 });
 
 /**
- * POST /api/intakes/screening — { person, eligibility, interests[], calledAt, by, note }
+ * POST /api/intakes/screening - { person, eligibility, interests[], calledAt, by, note }
  * The first call's facts (find-or-create the record) + a "שיחה ראשונית" activity.
  */
 exports.screenPerson = catchAsync(async (req, res) => {
@@ -89,14 +89,14 @@ exports.screenPerson = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: { intake: await populated(doc), activity } });
 });
 
-/** POST /api/intakes/:id/schedule — { at, by, note } (re)schedule. */
+/** POST /api/intakes/:id/schedule - { at, by, note } (re)schedule. */
 exports.reschedule = catchAsync(async (req, res) => {
   const doc = await load(req);
   const { moved } = await intake.schedule({ intake: doc, at: req.body.at, by: req.body.by, note: req.body.note });
   res.status(200).json({ status: "success", data: { intake: await populated(doc), moved } });
 });
 
-/** POST /api/intakes/:id/done — { at?, by, waiverSigned, summary, fields{background, expectations, goals, treating} } */
+/** POST /api/intakes/:id/done - { at?, by, waiverSigned, summary, fields{background, expectations, goals, treating} } */
 exports.markDone = catchAsync(async (req, res) => {
   const doc = await load(req);
   const { moved, activity } = await intake.markDone({
@@ -111,7 +111,7 @@ exports.markDone = catchAsync(async (req, res) => {
 });
 
 /**
- * PATCH /api/intakes/:id/documents/:key — { status, by, note, validUntil, signedAt }
+ * PATCH /api/intakes/:id/documents/:key - { status, by, note, validUntil, signedAt }
  * status ∈ received (a dated document needs `validUntil`; a signed one
  * takes `signedAt`) | waived | rejected | missing (delete) | comment (a
  * reply the student sees; the status stays).
@@ -130,7 +130,7 @@ exports.setDocument = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: { intake: await populated(doc), moved } });
 });
 
-/** POST /api/intakes/:id/documents — { key, fileName, mime, data(base64), by, validUntil?, signedAt? } (staff upload = received). */
+/** POST /api/intakes/:id/documents - { key, fileName, mime, data(base64), by, validUntil?, signedAt? } (staff upload = received). */
 exports.uploadDocument = catchAsync(async (req, res, next) => {
   const doc = await load(req);
   const { key, fileName, mime, data, by, validUntil, signedAt } = req.body || {};
@@ -139,7 +139,7 @@ exports.uploadDocument = catchAsync(async (req, res, next) => {
   res.status(200).json({ status: "success", data: { intake: await populated(doc), moved } });
 });
 
-/** GET /api/intakes/:id/documents/:key/file — the stored file, inline (from the database; the disk for old records). */
+/** GET /api/intakes/:id/documents/:key/file - the stored file, inline (from the database; the disk for old records). */
 exports.getDocumentFile = catchAsync(async (req, res, next) => {
   const doc = await load(req);
   const row = (doc.documents || []).find((d) => d.key === req.params.key);
@@ -153,7 +153,7 @@ exports.getDocumentFile = catchAsync(async (req, res, next) => {
   res.send(file.data);
 });
 
-/** PATCH /api/intakes/:id/shkedia — { enteredAt, by, decisionNo, note } or { clear: true, by } */
+/** PATCH /api/intakes/:id/shkedia - { enteredAt, by, decisionNo, note } or { clear: true, by } */
 exports.setShkedia = catchAsync(async (req, res) => {
   const doc = await load(req);
   const { moved } = await intake.setShkedia({
@@ -167,14 +167,14 @@ exports.setShkedia = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: { intake: await populated(doc), moved } });
 });
 
-/** PATCH /api/intakes/:id/coordinator — { name, by } (an empty name clears). */
+/** PATCH /api/intakes/:id/coordinator - { name, by } (an empty name clears). */
 exports.setCoordinator = catchAsync(async (req, res) => {
   const doc = await load(req);
   await intake.setCoordinator({ intake: doc, name: req.body.name, by: req.body.by });
   res.status(200).json({ status: "success", data: { intake: await populated(doc) } });
 });
 
-/** PATCH /api/intakes/:id/screening — { eligibility, interests[], calledAt, by, note } */
+/** PATCH /api/intakes/:id/screening - { eligibility, interests[], calledAt, by, note } */
 exports.setScreening = catchAsync(async (req, res) => {
   const doc = await load(req);
   const { activity } = await intake.setScreening({
@@ -188,14 +188,14 @@ exports.setScreening = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: { intake: await populated(doc), activity } });
 });
 
-/** PATCH /api/intakes/:id/committee — { committeeDate, by } (empty clears). */
+/** PATCH /api/intakes/:id/committee - { committeeDate, by } (empty clears). */
 exports.setCommittee = catchAsync(async (req, res) => {
   const doc = await load(req);
   await intake.setCommitteeDate({ intake: doc, committeeDate: req.body.committeeDate, by: req.body.by });
   res.status(200).json({ status: "success", data: { intake: await populated(doc) } });
 });
 
-/** POST /api/intakes/:id/links — { minutes, docs?[], by, token?, note? } → the link. */
+/** POST /api/intakes/:id/links - { minutes, docs?[], by, token?, note? } → the link. */
 exports.createLink = catchAsync(async (req, res) => {
   const doc = await load(req);
   const link = await intake.createUploadLink({
@@ -209,14 +209,14 @@ exports.createLink = catchAsync(async (req, res) => {
   res.status(201).json({ status: "success", data: { link, intake: await populated(doc) } });
 });
 
-/** GET /api/intakes/:id/links — every link of the record, newest first. */
+/** GET /api/intakes/:id/links - every link of the record, newest first. */
 exports.getLinks = catchAsync(async (req, res) => {
   const doc = await load(req);
   const links = await intake.linksOf(doc);
   res.status(200).json({ status: "success", results: links.length, data: { links } });
 });
 
-/** PATCH /api/intakes/:id — { notes, by } */
+/** PATCH /api/intakes/:id - { notes, by } */
 exports.updateIntake = catchAsync(async (req, res) => {
   const doc = await load(req);
   await intake.addNote({ intake: doc, by: req.body.by, note: req.body.notes });

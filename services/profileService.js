@@ -1,5 +1,5 @@
 /**
- * @file Profile service — the one place that knows people ↔ profiles
+ * @file Profile service - the one place that knows people ↔ profiles
  * @module services/profileService
  *
  * Everything role-shaped goes through here so the rules hold from every
@@ -10,7 +10,7 @@
  *    the dead `person.role` field.
  *  - splitBody separates identity fields from profile fields, so the HTTP
  *    layer keeps zero per-role field lists (each profile schema IS its own
- *    whitelist — strict mode drops anything foreign).
+ *    whitelist - strict mode drops anything foreign).
  */
 
 const { Person } = require("../models/Person");
@@ -19,7 +19,7 @@ const { STUDENT_KINDS } = require("../utils/domain");
 const AppError = require("../utils/AppError");
 const tags = require("./tagService");
 
-/** Identity paths — everything else in a body belongs to a profile. */
+/** Identity paths - everything else in a body belongs to a profile. */
 const IDENTITY_FIELDS = [
   "firstName", "lastName", "email", "phone", "birthDate", "gender",
   "senzeyId", "joinedShekelDate", "avatar", "availability",
@@ -63,9 +63,9 @@ function modelOfKind(kind) {
  * translates the duplicate-key race into PROFILE_EXISTS.
  *
  * Options:
- *  - pipelineInit {stage, movedBy, note}  — student kinds start here
- *  - opened {by, note, at}                — who opened the role (log entry)
- *  - trusted                               — seeds/migration may carry a full
+ *  - pipelineInit {stage, movedBy, note}  - student kinds start here
+ *  - opened {by, note, at}                - who opened the role (log entry)
+ *  - trusted                               - seeds/migration may carry a full
  *    historical pipeline AND lifecycle (since/until/active/log); the
  *    schema hooks still validate consistency.
  */
@@ -122,7 +122,7 @@ async function createPersonWithProfile(kind, data, opts = {}) {
   const { identity, profile } = splitBody(data);
   const person = await Person.create({ ...identity, ...(data.world && { world: data.world }) });
   // Guarded paths are dropped by splitBody; trusted callers (seeds) may
-  // still hand a historical pipeline + lifecycle through — createProfile
+  // still hand a historical pipeline + lifecycle through - createProfile
   // only applies them under `trusted`.
   const lifecycle = {};
   for (const k of ["pipeline", "stageHistory", "active", "since", "until", "log"]) {
@@ -146,7 +146,7 @@ async function kindsOf(personId) {
 }
 
 /**
- * The person's active student profile (any student kind) — or a 404-shaped
+ * The person's active student profile (any student kind) - or a 404-shaped
  * error. When several exist, prefers the college profile (the enrollable
  * default) unless `kind` narrows it.
  */
@@ -157,7 +157,7 @@ async function requireStudentProfile(personId, { kind } = {}) {
   return profiles.find((p) => p.kind === "StudentCollege") || profiles[0];
 }
 
-/** Active student profiles of a person — [] when none. */
+/** Active student profiles of a person - [] when none. */
 function studentProfilesOf(personId) {
   return Profile.find({ person: personId, active: true, kind: { $in: STUDENT_KINDS } });
 }
@@ -170,7 +170,7 @@ function studentProfilesOf(personId) {
  * Program view (always on): `kinds` = active roles, `pastKinds` = closed
  * roles, `profiles` = active docs, `closedProfiles` = closed docs, and
  * `programs` = one row per student kind ever held ({kind, active, since,
- * until, stage}) — the Students list badges and the student page's
+ * until, stage}) - the Students list badges and the student page's
  * "תוכניות" section read these; nothing else has to know about profiles.
  */
 function flattenPerson(person, profiles) {
@@ -192,7 +192,7 @@ function flattenPerson(person, profiles) {
         since: x.since || x.createdAt || null,
         until: x.until || null,
         stage: x.pipeline?.stage || null,
-        /** When the current stage began + the note written at that move —
+        /** When the current stage began + the note written at that move -
          *  per program, so a board can read either pipeline without the
          *  flattened (college-first) `pipeline` field. */
         stageSince: x.pipeline?.since || null,
@@ -229,7 +229,7 @@ function flattenPerson(person, profiles) {
 
 /**
  * Compat: merge student-profile fields into populated `student` objects of
- * PLAIN enrollment objects (call .toObject() first) — the client renders
+ * PLAIN enrollment objects (call .toObject() first) - the client renders
  * pipeline/matching/residence on the student there.
  */
 async function attachStudentData(enrollments) {

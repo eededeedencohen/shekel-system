@@ -1,10 +1,10 @@
 /**
- * @file CycleTag model — the program a cycle belongs to
+ * @file CycleTag model - the program a cycle belongs to
  * @module models/CycleTag
  *
  * A row per tag of a cycle (collection `cycleTags`). Today every cycle
- * carries exactly one program tag — מכללה לכל or הוסטלים (a hostel's
- * course is NOT a college course: Eden, 2026-10-05) — and the hostel
+ * carries exactly one program tag - מכללה לכל or הוסטלים (a hostel's
+ * course is NOT a college course: Eden, 2026-10-05) - and the hostel
  * itself stays on the cycle until that column moves to its own table.
  */
 

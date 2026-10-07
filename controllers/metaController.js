@@ -1,5 +1,5 @@
 /**
- * @file Meta controller — the single source the client reads enums from
+ * @file Meta controller - the single source the client reads enums from
  * @module controllers/metaController
  *
  * GET /api/meta/domain replaces every hand-mirrored enum table in the
@@ -14,7 +14,7 @@ exports.getDomain = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: { domain: DOMAIN_META } });
 });
 
-/** Student counts per world — feeds the dataset toggle. */
+/** Student counts per world - feeds the dataset toggle. */
 exports.getWorlds = catchAsync(async (req, res) => {
   const rows = await Profile.aggregate([
     { $match: { kind: { $in: STUDENT_KINDS }, active: true } },

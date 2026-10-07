@@ -1,5 +1,5 @@
 /**
- * @file Library routes — /api/library (הספרייה)
+ * @file Library routes - /api/library (הספרייה)
  * @module routes/libraryRoutes
  * @see controllers/libraryController
  */
@@ -9,7 +9,7 @@ const router = express.Router();
 const c = require("../controllers/libraryController");
 
 // covers arrive as base64 data URLs (≤ 3MB decoded)
-// (cover data URLs ride in JSON — the body limit is the global one in app.js)
+// (cover data URLs ride in JSON - the body limit is the global one in app.js)
 
 router.get("/lookup/:barcode", c.lookupBarcode);
 

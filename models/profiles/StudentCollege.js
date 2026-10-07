@@ -1,5 +1,5 @@
 /**
- * @file StudentCollege profile — סטודנט/ית מכללה לכל
+ * @file StudentCollege profile - סטודנט/ית מכללה לכל
  * @module models/profiles/StudentCollege
  *
  * Carries everything the old Person "Student" discriminator held: the
@@ -17,7 +17,7 @@ const schema = new mongoose.Schema({
   matching: {
     functioningLevel: { type: String, enum: FUNCTIONING_LEVELS },
     groupPreference: { type: String, enum: GROUP_PREFERENCES },
-    /** Real Subject refs — matched on, never free strings. */
+    /** Real Subject refs - matched on, never free strings. */
     interests: [{ type: mongoose.Schema.Types.ObjectId, ref: "Subject" }],
   },
   /** Where the student LIVES: ref when it's one of the hostels, plus the
@@ -35,7 +35,7 @@ const schema = new mongoose.Schema({
     phone: { type: String, trim: true },
     organization: { type: String, trim: true },
   },
-  /** Raw senzey import text — display-only, never matched on. */
+  /** Raw senzey import text - display-only, never matched on. */
   import: {
     statusLabel: { type: String, trim: true },
     typeTags: [{ type: String, trim: true }],

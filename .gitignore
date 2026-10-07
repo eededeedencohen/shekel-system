@@ -1,6 +1,6 @@
 node_modules/
 
-# secrets — the Atlas connection string lives here; copy .env.example
+# secrets - the Atlas connection string lives here; copy .env.example
 .env
 .env.*
 !.env.example

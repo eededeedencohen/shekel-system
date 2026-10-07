@@ -1,5 +1,5 @@
 /**
- * @file Tag service — the catalog of belongings and who holds what
+ * @file Tag service - the catalog of belongings and who holds what
  * @module services/tagService
  *
  * The seed catalog (two groups, ten tags) is written into a world once by

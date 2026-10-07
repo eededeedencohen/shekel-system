@@ -1,5 +1,5 @@
 /**
- * @file Seed script — populates Users + Teacher/Student profiles
+ * @file Seed script - populates Users + Teacher/Student profiles
  * @module seed
  *
  * Sources:
@@ -30,7 +30,7 @@ const {
 } = require("./utils/parsers");
 
 // ---------------------------------------------------------------------------
-// Teacher list (from staff sheet — only rows whose role contains "מורה")
+// Teacher list (from staff sheet - only rows whose role contains "מורה")
 // ---------------------------------------------------------------------------
 const TEACHERS = [
   { firstName: "אביה", lastName: "רוטשטיין", email: null, phone: null, birthDate: null, subject: "עיצוב גרפי" },
