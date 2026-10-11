@@ -15,7 +15,7 @@ describe("activity templates", () => {
   it("every kind has a default; a world stores its own version and can go back", async () => {
     const all = await request(app).get("/api/activities/templates");
     expect(all.status).toBe(200);
-    expect(all.body.results).toBe(9);
+    expect(all.body.results).toBe(10); // the nine kinds of the social worker's round + the signed waiver (2026-10-11)
     const followUp = all.body.data.templates.find((t) => t.kind === "followUp");
     expect(followUp.stored).toBe(false);
     expect(followUp.fields.map((f) => f.key)).toEqual(["attendance", "motivation", "impression", "next"]);
