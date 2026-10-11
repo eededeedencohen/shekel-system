@@ -18,6 +18,7 @@ const {
   setDocument,
   uploadDocument,
   getDocumentFile,
+  getDocumentThumb,
   setShkedia,
   setCoordinator,
   setScreening,
@@ -43,6 +44,7 @@ router.post("/:id/done", markDone);
 router.post("/:id/documents", uploadDocument);
 router.patch("/:id/documents/:key", setDocument);
 router.get("/:id/documents/:key/file", getDocumentFile);
+router.get("/:id/documents/:key/thumb", getDocumentThumb);
 // 2026-10-07 - the social worker's round
 router.patch("/:id/shkedia", setShkedia);
 router.patch("/:id/coordinator", setCoordinator);

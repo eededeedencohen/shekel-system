@@ -23,6 +23,13 @@ const storedFileSchema = new mongoose.Schema(
     mime: { type: String, required: true, trim: true },
     size: { type: Number, min: 0 },
     data: { type: Buffer, required: true },
+    /**
+     * A small JPEG of the file (≤ 256KB) the uploader rendered - an image
+     * shrunk, a PDF's first page - so a list can show what the file looks
+     * like without pulling the bytes (2026-10-11). Streamed by its own
+     * route; absent for Word files and uploads from before.
+     */
+    thumb: { type: Buffer },
     savedAt: { type: Date, default: Date.now },
   },
   { timestamps: true, collection: "files" }
@@ -30,6 +37,7 @@ const storedFileSchema = new mongoose.Schema(
 
 function stripData(doc, ret) {
   delete ret.data;
+  delete ret.thumb;
   return ret;
 }
 storedFileSchema.set("toJSON", { transform: stripData });

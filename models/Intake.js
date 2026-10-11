@@ -71,6 +71,8 @@ const documentSchema = new mongoose.Schema(
       storedName: { type: String, trim: true },
       mime: { type: String, trim: true },
       size: { type: Number, min: 0 },
+      /** The stored file carries a thumbnail (GET …/documents/:key/thumb). */
+      thumb: { type: Boolean },
       uploadedAt: { type: Date },
       /** "student" (via a link) or a staff persona name. */
       by: { type: String, trim: true },

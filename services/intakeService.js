@@ -150,6 +150,21 @@ async function removeFile(intake, doc) {
   const p = documentPath(intake, doc);
   if (p && fs.existsSync(p)) fs.unlinkSync(p);
 }
+/** The thumbnail of a document's file (a JPEG the uploader rendered) → { mime, data } | null */
+async function documentThumb(doc) {
+  if (!doc?.file?.stored || !doc.file.thumb) return null;
+  const f = await StoredFile.findById(doc.file.stored).select("thumb");
+  return f?.thumb?.length ? { mime: "image/jpeg", data: f.thumb } : null;
+}
+/** A thumbnail as sent by the client: base64 JPEG (data-URI tolerated), ≤ 256KB. Anything else is ignored. */
+const MAX_THUMB_BYTES = 256 * 1024;
+function parseThumb(thumb) {
+  if (!thumb || typeof thumb !== "string") return null;
+  const m = thumb.match(/^data:([^;]+);base64,/);
+  if (m && !/^image\/(jpeg|jpg|png|webp)$/i.test(m[1])) return null;
+  const buf = Buffer.from(thumb.replace(/^data:[^;]+;base64,/, ""), "base64");
+  return buf.length > 0 && buf.length <= MAX_THUMB_BYTES ? buf : null;
+}
 
 /* ───────────────────────── checklist ───────────────────────── */
 
@@ -505,7 +520,7 @@ async function resolveToken({ world, token }) {
  * which stays "uploaded" until the date is given; a signed one takes
  * `signedAt` (today when not given) and is good for a year.
  */
-async function uploadDocument({ intake, key, fileName, mime, data, by, staff = false, validUntil, signedAt, link }) {
+async function uploadDocument({ intake, key, fileName, mime, data, thumb, by, staff = false, validUntil, signedAt, link }) {
   const def = DOC_BY_KEY[key];
   if (!def) throw AppError.of("DOCUMENT_UNKNOWN", 400, key);
   if (!def.upload && !staff) throw AppError.of("DOCUMENT_UNKNOWN", 400, def.label);
@@ -524,9 +539,10 @@ async function uploadDocument({ intake, key, fileName, mime, data, by, staff = f
 
   await removeFile(intake, d);
   const name = clean(fileName, 120) || `${key}.${ext}`;
-  const stored = await StoredFile.create({ world: intake.world, name, mime: kind.mime, size: buffer.length, data: buffer });
+  const thumbBuf = parseThumb(thumb);
+  const stored = await StoredFile.create({ world: intake.world, name, mime: kind.mime, size: buffer.length, data: buffer, ...(thumbBuf && { thumb: thumbBuf }) });
   const now = new Date();
-  d.file = { name, stored: stored._id, storedName: undefined, mime: kind.mime, size: buffer.length, uploadedAt: now, by: staff ? by : "student" };
+  d.file = { name, stored: stored._id, storedName: undefined, mime: kind.mime, size: buffer.length, thumb: !!thumbBuf, uploadedAt: now, by: staff ? by : "student" };
   d.note = undefined;
   const confirmed = staff && (def.validity !== "dated" || until);
   if (confirmed) {
@@ -863,6 +879,10 @@ function publicView(intake, person, link = null) {
         key: d.key, label: d.label, hint: d.hint, optional: !!d.optional,
         status: row?.status || "missing",
         fileName: row?.file?.name || null,
+        /** The file itself: its type and size, and whether a thumbnail exists (GET …/documents/:key/file | /thumb). */
+        mime: row?.file?.name ? row.file.mime || null : null,
+        size: row?.file?.name ? row.file.size || null : null,
+        thumb: !!(row?.file?.name && row.file.thumb),
         uploadedAt: row?.file?.uploadedAt || null,
         validUntil: row?.validUntil || null,
         /** The document was in, and its date has passed - a new one is needed. */
@@ -885,6 +905,7 @@ module.exports = {
   uploadRoot,
   documentPath,
   documentFile,
+  documentThumb,
   docOk,
   docExpired,
   missingDocs,

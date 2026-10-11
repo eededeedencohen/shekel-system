@@ -87,10 +87,40 @@ exports.viewByToken = catchAsync(async (req, res) => {
 /** POST /api/public/join/:token/documents - { key, fileName, mime, data(base64) } */
 exports.uploadByToken = catchAsync(async (req, res) => {
   const { intake: doc, person, link } = await intake.resolveToken({ world: req.world, token: req.params.token });
-  const { key, fileName, mime, data } = req.body || {};
+  const { key, fileName, mime, data, thumb } = req.body || {};
   if (!key || !data) throw AppError.of("MISSING_FIELDS", 400, "key, data");
-  const { intake: saved } = await intake.uploadDocument({ intake: doc, key, fileName, mime, data, staff: false, link });
+  const { intake: saved } = await intake.uploadDocument({ intake: doc, key, fileName, mime, data, thumb, staff: false, link });
   res.status(200).json({ status: "success", data: { view: intake.publicView(saved, person, link) } });
+});
+
+/** The document row a link may show (a temporary link can be narrowed to some documents). */
+async function rowForLink(req) {
+  const { intake: doc, link } = await intake.resolveToken({ world: req.world, token: req.params.token });
+  const key = req.params.key;
+  if (link?.docs?.length && !link.docs.includes(key)) throw AppError.of("NOT_FOUND", 404, "קובץ");
+  return { doc, row: (doc.documents || []).find((d) => d.key === key) };
+}
+
+/** GET /api/public/join/:token/documents/:key/file - the person looks at what they (or the office) uploaded. */
+exports.fileByToken = catchAsync(async (req, res) => {
+  const { doc, row } = await rowForLink(req);
+  const file = row ? await intake.documentFile(doc, row) : null;
+  if (!file) throw AppError.of("NOT_FOUND", 404, "קובץ");
+  res.type(file.mime || "application/octet-stream");
+  const disposition = intake.INLINE_MIMES.has(file.mime) ? "inline" : "attachment";
+  res.setHeader("Content-Disposition", `${disposition}; filename*=UTF-8''${encodeURIComponent(file.name || req.params.key)}`);
+  res.set("Cache-Control", "private, no-store");
+  res.send(file.data);
+});
+
+/** GET /api/public/join/:token/documents/:key/thumb */
+exports.thumbByToken = catchAsync(async (req, res) => {
+  const { row } = await rowForLink(req);
+  const thumb = row ? await intake.documentThumb(row) : null;
+  if (!thumb) throw AppError.of("NOT_FOUND", 404, "תמונה מוקטנת");
+  res.type(thumb.mime);
+  res.set("Cache-Control", "private, no-store");
+  res.send(thumb.data);
 });
 
 /** DELETE /api/public/join/:token/documents/:key - pull back an unconfirmed upload. */

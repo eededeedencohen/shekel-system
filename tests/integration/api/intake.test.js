@@ -486,6 +486,37 @@ describe("the social worker's flow", () => {
     expect(list.body.data.intakes[0].person.firstName).toBe("סטודנט");
   });
 
+  it("a thumbnail rides with the upload and is served by its own routes; the person may view their own file", async () => {
+    const { token, intakeId } = (await submit({})).body.data;
+    // the office uploads with a thumbnail (a data URI), the student without one
+    const up = await request(app)
+      .post(`/api/intakes/${intakeId}/documents`)
+      .send({ key: "psychosocial", fileName: "ps.png", mime: "image/png", data: PNG_1PX, thumb: `data:image/jpeg;base64,${PNG_1PX}`, by: "ייטב" });
+    expect(up.status).toBe(200);
+    expect(up.body.data.intake.documents.find((d) => d.key === "psychosocial").file.thumb).toBe(true);
+    const thumb = await request(app).get(`/api/intakes/${intakeId}/documents/psychosocial/thumb`);
+    expect(thumb.status).toBe(200);
+    expect(thumb.headers["content-type"]).toMatch(/image\/jpeg/);
+    expect(thumb.body.length).toBe(Buffer.from(PNG_1PX, "base64").length);
+    // the JSON of the stored file never carries the bytes
+    const stored = await StoredFile.findOne();
+    expect(stored.toJSON().thumb).toBeUndefined();
+    expect(stored.toJSON().data).toBeUndefined();
+
+    await request(app).post(`/api/public/join/${token}/documents`).send({ key: "socialClub", fileName: "club.png", mime: "image/png", data: PNG_1PX });
+    expect((await request(app).get(`/api/intakes/${intakeId}/documents/socialClub/thumb`)).status).toBe(404);
+    const view = (await request(app).get(`/api/public/join/${token}`)).body.data.view;
+    expect(view.documents.find((d) => d.key === "psychosocial")).toMatchObject({ thumb: true, mime: "image/png", size: Buffer.from(PNG_1PX, "base64").length });
+    expect(view.documents.find((d) => d.key === "socialClub")).toMatchObject({ thumb: false });
+    // the person's own view of the files behind the link
+    const mine = await request(app).get(`/api/public/join/${token}/documents/psychosocial/file`);
+    expect(mine.status).toBe(200);
+    expect(mine.headers["content-type"]).toMatch(/image\/png/);
+    expect((await request(app).get(`/api/public/join/${token}/documents/psychosocial/thumb`)).status).toBe(200);
+    expect((await request(app).get(`/api/public/join/${token}/documents/psychiatric/file`)).status).toBe(404);
+    expect((await request(app).get(`/api/public/join/nope/documents/psychosocial/file`)).status).toBe(404);
+  });
+
   it("serves a stored file to staff (from the database) and lists the record by person", async () => {
     const { token, intakeId } = (await submit({})).body.data;
     await request(app).post(`/api/public/join/${token}/documents`).send({ key: "psychosocial", fileName: "ps.png", mime: "image/png", data: PNG_1PX });

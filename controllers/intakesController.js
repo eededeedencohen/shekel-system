@@ -133,9 +133,9 @@ exports.setDocument = catchAsync(async (req, res) => {
 /** POST /api/intakes/:id/documents - { key, fileName, mime, data(base64), by, validUntil?, signedAt? } (staff upload = received). */
 exports.uploadDocument = catchAsync(async (req, res, next) => {
   const doc = await load(req);
-  const { key, fileName, mime, data, by, validUntil, signedAt } = req.body || {};
+  const { key, fileName, mime, data, thumb, by, validUntil, signedAt } = req.body || {};
   if (!key || !data) return next(AppError.of("MISSING_FIELDS", 400, "key, data"));
-  const { moved } = await intake.uploadDocument({ intake: doc, key, fileName, mime, data, by, staff: true, validUntil, signedAt });
+  const { moved } = await intake.uploadDocument({ intake: doc, key, fileName, mime, data, thumb, by, staff: true, validUntil, signedAt });
   res.status(200).json({ status: "success", data: { intake: await populated(doc), moved } });
 });
 
@@ -151,6 +151,17 @@ exports.getDocumentFile = catchAsync(async (req, res, next) => {
   res.setHeader("Content-Disposition", `${disposition}; filename*=UTF-8''${encodeURIComponent(file.name || req.params.key)}`);
   res.set("Cache-Control", "private, max-age=3600");
   res.send(file.data);
+});
+
+/** GET /api/intakes/:id/documents/:key/thumb - the thumbnail the uploader rendered (404 when there is none). */
+exports.getDocumentThumb = catchAsync(async (req, res, next) => {
+  const doc = await load(req);
+  const row = (doc.documents || []).find((d) => d.key === req.params.key);
+  const thumb = row ? await intake.documentThumb(row) : null;
+  if (!thumb) return next(AppError.of("NOT_FOUND", 404, "תמונה מוקטנת"));
+  res.type(thumb.mime);
+  res.set("Cache-Control", "private, max-age=86400");
+  res.send(thumb.data);
 });
 
 /** PATCH /api/intakes/:id/shkedia - { enteredAt, by, decisionNo, note } or { clear: true, by } */
