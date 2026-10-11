@@ -56,6 +56,7 @@ const { Profile } = require("../models/profiles");
 const Intake = require("../models/Intake");
 const UploadLink = require("../models/UploadLink");
 const StoredFile = require("../models/StoredFile");
+const Waiver = require("../models/Waiver");
 const Enrollment = require("../models/Enrollment");
 const Subject = require("../models/Subject");
 const AppError = require("../utils/AppError");
@@ -570,6 +571,96 @@ async function uploadDocument({ intake, key, fileName, mime, data, thumb, by, st
   return settle(intake, staff ? by : LANDING_ACTOR);
 }
 
+/* ───────────────────────── ויתור סודיות, signed on the screen ───────────────────────── */
+
+const { WAIVER_PARTIES } = require("../utils/domain");
+const PARTY_BY_KEY = Object.fromEntries(WAIVER_PARTIES.map((p) => [p.key, p]));
+const MAX_SIGNATURE_BYTES = 256 * 1024;
+
+/** A signature as the pad sends it: a PNG data URI, ≤ 256KB → Buffer | null. */
+function parseSignature(raw) {
+  if (!raw || typeof raw !== "string") return null;
+  const m = raw.match(/^data:image\/png;base64,(.+)$/);
+  if (!m) return null;
+  const buf = Buffer.from(m[1], "base64");
+  return buf.length > 0 && buf.length <= MAX_SIGNATURE_BYTES ? buf : null;
+}
+
+/**
+ * The social worker and the person signed ויתור סודיות on the screen
+ * (Eden, 2026-10-11). The client renders the signed page and sends it
+ * as `document` (a PDF + its thumbnail); here it becomes the intake's
+ * "waiver" document, received and good for a year from `signedAt`, the
+ * agreement itself is kept in `waivers`, and the record gets a
+ * "ויתור סודיות" row. → { intake, moved, waiver, activity }
+ */
+async function signWaiver({ intake, by, signedAt, explained, parties, witness, guardian, signatures, document }) {
+  const when = parseDate(signedAt) || new Date();
+  if (!explained) throw AppError.of("WAIVER_INVALID", 400, "אישור שההסבר ניתן");
+  const list = (Array.isArray(parties) ? parties : [])
+    .map((p) => {
+      const key = PARTY_BY_KEY[p?.key] ? p.key : "other";
+      return { key, label: clean(p?.label, 60) || PARTY_BY_KEY[key].label, name: clean(p?.name, 120), phone: clean(p?.phone, 40), note: clean(p?.note, 200) };
+    })
+    .filter((p) => p.name || p.phone);
+  for (const def of WAIVER_PARTIES.filter((p) => p.required)) {
+    const row = list.find((p) => p.key === def.key);
+    if (!row?.name) throw AppError.of("WAIVER_INVALID", 400, def.label);
+    if (def.phone && !row.phone) throw AppError.of("WAIVER_INVALID", 400, `טלפון של ${def.label}`);
+  }
+  const w = { firstName: clean(witness?.firstName, 60), lastName: clean(witness?.lastName, 60), role: clean(witness?.role, 60) };
+  if (!w.firstName) throw AppError.of("WAIVER_INVALID", 400, "שם העד/ה לחתימה");
+  const studentSig = parseSignature(signatures?.student);
+  const witnessSig = parseSignature(signatures?.witness);
+  if (!studentSig) throw AppError.of("WAIVER_INVALID", 400, "חתימת המשתתף/ת");
+  if (!witnessSig) throw AppError.of("WAIVER_INVALID", 400, "חתימת העד/ה");
+  let g;
+  let guardianSig = null;
+  if (guardian && (guardian.firstName || guardian.lastName)) {
+    g = { firstName: clean(guardian.firstName, 60), lastName: clean(guardian.lastName, 60), relation: clean(guardian.relation, 60), phone: clean(guardian.phone, 40), address: clean(guardian.address, 200) };
+    guardianSig = parseSignature(signatures?.guardian);
+    if (!guardianSig) throw AppError.of("WAIVER_INVALID", 400, "חתימת האפוטרופוס");
+  }
+  if (!document?.data) throw AppError.of("WAIVER_INVALID", 400, "הטופס החתום");
+
+  // the signed page is the document in the file - received, signed today, a year of validity
+  const { moved } = await uploadDocument({
+    intake, key: "waiver", by, staff: true, signedAt: when,
+    fileName: clean(document.fileName, 120) || "ויתור סודיות.pdf",
+    mime: document.mime || "application/pdf",
+    data: document.data,
+    thumb: document.thumb,
+  });
+  const row = docOf(intake, "waiver");
+  row.note = "נחתם דיגיטלית";
+  const witnessName = [w.firstName, w.lastName].filter(Boolean).join(" ");
+  intake.log.push({ action: "docReceived", at: when, by, note: `${DOC_BY_KEY.waiver.label} · נחתם דיגיטלית · עד/ה: ${witnessName}${w.role ? ` (${w.role})` : ""}` });
+  await intake.save();
+
+  const waiver = await Waiver.create({
+    world: intake.world, intake: intake._id, person: intake.person,
+    signedAt: when, validUntil: row.validUntil, by, explained: true,
+    parties: list, witness: w, guardian: g,
+    signatures: { student: studentSig, witness: witnessSig, guardian: guardianSig || undefined },
+    file: row.file?.stored,
+  });
+  const lines = [
+    `נחתם דיגיטלית בנוכחות ${witnessName}${w.role ? ` (${w.role})` : ""}. בתוקף עד ${fmtDate(row.validUntil)}.`,
+    `גורמים: ${list.map((p) => `${p.label}: ${p.name || ""}${p.phone ? ` ${p.phone}` : ""}`.trim()).join(" · ")}`,
+  ];
+  if (g) lines.push(`אפוטרופוס: ${[g.firstName, g.lastName].filter(Boolean).join(" ")}${g.relation ? ` (${g.relation})` : ""}`);
+  const activity = await activities.addActivity({
+    world: intake.world, person: intake.person, kind: "waiver", at: when, by,
+    title: "ויתור סודיות נחתם", body: lines.join("\n"), skipRequired: true,
+  });
+  waiver.activity = activity._id;
+  await waiver.save();
+  return { intake, moved, waiver, activity };
+}
+
+/** The latest signed waiver of a file (without the signature bytes), or null. */
+const waiverOf = (intake) => Waiver.findOne({ world: intake.world, intake: intake._id }).sort({ signedAt: -1 });
+
 /** A student pulls back their own (not yet confirmed) upload. */
 async function removeStudentDocument({ intake, key }) {
   const d = docOf(intake, key);
@@ -923,6 +1014,8 @@ module.exports = {
   linksOf,
   resolveToken,
   uploadDocument,
+  signWaiver,
+  waiverOf,
   removeStudentDocument,
   setDocumentStatus,
   setScreening,

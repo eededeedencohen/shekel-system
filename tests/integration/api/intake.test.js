@@ -517,6 +517,63 @@ describe("the social worker's flow", () => {
     expect((await request(app).get(`/api/public/join/nope/documents/psychosocial/file`)).status).toBe(404);
   });
 
+  it("ויתור סודיות signed on the screen: the signed page becomes the document, the agreement is kept, the record tells it", async () => {
+    const Waiver = require("../../../models/Waiver");
+    const { intakeId } = (await submit({})).body.data;
+    const sig = `data:image/png;base64,${PNG_1PX}`;
+    const body = {
+      by: "ייטב",
+      explained: true,
+      parties: [
+        { key: "psychiatrist", name: "ד\"ר רזניקוב" },
+        { key: "emergency", name: "שרית", phone: "0525518354" },
+        { key: "coordinator", name: "רות", phone: "0586051502", note: "עמותת אנוש" },
+        { key: "housing", name: "" }, // an empty party is left out
+        { key: "other", label: "מרפאה", name: "מרפאת טלביה" },
+      ],
+      witness: { firstName: "ייטב", lastName: "כהן", role: "עו\"ס" },
+      signatures: { student: sig, witness: sig },
+      document: { fileName: "ויתור סודיות - דנה לוי.pdf", mime: "application/pdf", data: Buffer.from("%PDF-1.4 test").toString("base64"), thumb: sig },
+    };
+    // the required parties and the signatures are checked
+    expect((await request(app).post(`/api/intakes/${intakeId}/waiver`).send({ ...body, parties: body.parties.slice(1) })).body.code).toBe("WAIVER_INVALID");
+    expect((await request(app).post(`/api/intakes/${intakeId}/waiver`).send({ ...body, signatures: { witness: sig } })).body.code).toBe("WAIVER_INVALID");
+    expect((await request(app).post(`/api/intakes/${intakeId}/waiver`).send({ ...body, explained: false })).status).toBe(400);
+
+    const res = await request(app).post(`/api/intakes/${intakeId}/waiver`).send(body);
+    expect(res.status).toBe(201);
+    const row = res.body.data.intake.documents.find((d) => d.key === "waiver");
+    expect(row.status).toBe("received");
+    expect(row.note).toBe("נחתם דיגיטלית");
+    expect(row.file.name).toBe("ויתור סודיות - דנה לוי.pdf");
+    expect(row.file.mime).toBe("application/pdf");
+    expect(row.file.thumb).toBe(true);
+    expect(new Date(row.validUntil).getFullYear()).toBe(new Date(row.signedAt).getFullYear() + 1);
+    expect(res.body.data.intake.log.at(-1).note).toMatch(/נחתם דיגיטלית · עד\/ה: ייטב כהן \(עו"ס\)/);
+    // the agreement: parties without the empty one, the witness, no signature bytes in JSON
+    const w = res.body.data.waiver;
+    expect(w.parties.map((p) => p.key)).toEqual(["psychiatrist", "emergency", "coordinator", "other"]);
+    expect(w.parties.find((p) => p.key === "other").label).toBe("מרפאה");
+    expect(w.witness).toMatchObject({ firstName: "ייטב", role: "עו\"ס" });
+    expect(w.signatures).toEqual({ student: true, witness: true, guardian: false });
+    expect(w.file).toBe(row.file.stored);
+    expect((await Waiver.findById(w._id)).signatures.student.length).toBe(Buffer.from(PNG_1PX, "base64").length);
+    // the record row
+    const act = res.body.data.activity;
+    expect(act.kind).toBe("waiver");
+    expect(act.title).toBe("ויתור סודיות נחתם");
+    expect(act.body).toMatch(/גורמים: פסיכיאטר\/ית מלווה: ד"ר רזניקוב · איש קשר לשעת חירום: שרית 0525518354/);
+    expect(await Activity.countDocuments({ kind: "waiver" })).toBe(1);
+    // read back, and the signed page is served like any document
+    const got = await request(app).get(`/api/intakes/${intakeId}/waiver`);
+    expect(got.status).toBe(200);
+    expect(got.body.data.waiver._id).toBe(w._id);
+    const file = await request(app).get(`/api/intakes/${intakeId}/documents/waiver/file`);
+    expect(file.status).toBe(200);
+    expect(file.headers["content-type"]).toMatch(/application\/pdf/);
+    expect((await request(app).get(`/api/intakes/${intakeId}/documents/waiver/thumb`)).status).toBe(200);
+  });
+
   it("serves a stored file to staff (from the database) and lists the record by person", async () => {
     const { token, intakeId } = (await submit({})).body.data;
     await request(app).post(`/api/public/join/${token}/documents`).send({ key: "psychosocial", fileName: "ps.png", mime: "image/png", data: PNG_1PX });

@@ -49,6 +49,7 @@ const MODELS = [
   require("../models/Voucher"),
   // קליטה (אינטייק)
   require("../models/Intake"),
+  require("../models/Waiver"),
   // הספרייה
   require("../models/Book"),
   require("../models/Loan"),

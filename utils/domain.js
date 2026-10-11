@@ -169,8 +169,27 @@ const ACTIVITY_KINDS = [
   { key: "closure", label: "דוח סיום התקשרות", short: "דוח סיום" },
   { key: "leave", label: "דיווח עזיבה", short: "עזיבה" },
   { key: "incident", label: "אירוע חריג", short: "אירוע חריג" },
+  { key: "waiver", label: "ויתור סודיות", short: "ויתור סודיות" },
 ];
 const ACTIVITY_KIND_KEYS = ACTIVITY_KINDS.map((k) => k.key);
+
+/**
+ * ויתור סודיות (Eden, 2026-10-11, after the old system's form): the
+ * parties the person lets שק"ל exchange information with. The first two
+ * are required on the form; `other` rows are free.
+ */
+const WAIVER_PARTIES = [
+  { key: "psychiatrist", label: "פסיכיאטר/ית מלווה", required: true },
+  { key: "emergency", label: "איש קשר לשעת חירום", required: true, phone: true },
+  { key: "coordinator", label: "מתאם/ת טיפול", phone: true },
+  { key: "housing", label: "דיור" },
+  { key: "socialClub", label: "מועדון חברתי" },
+  { key: "employment", label: "תעסוקה" },
+  { key: "familyDoctor", label: "רופא/ת משפחה" },
+  { key: "education", label: "השכלה" },
+  { key: "other", label: "אחר" },
+];
+const WAIVER_PARTY_KEYS = WAIVER_PARTIES.map((p) => p.key);
 const ACTIVITY_FIELD_TYPES = ["text", "textarea", "select", "checkbox", "date"];
 
 /**
@@ -240,6 +259,7 @@ const DEFAULT_ACTIVITY_TEMPLATES = {
   },
   leave: { title: "דיווח עזיבה", body: "", fields: [] },
   incident: { title: "אירוע חריג", body: "", fields: [] },
+  waiver: { title: "ויתור סודיות", body: "", fields: [] },
 };
 
 /** דיווח עזיבה - the reason picked from a closed list (free text beside it). */
@@ -610,6 +630,7 @@ const ERROR_CODES = {
   INCIDENT_INVALID: "בדיווח אירוע חריג חסרים פרטים: מתי, מי דיווח, סיווג ותיאור",
   LEAVE_REASON_INVALID: "סיבת העזיבה לא מוכרת",
   DOCUMENT_INVALID: "הקובץ לא נתמך - מותר PDF, תמונה או Word עד 8MB",
+  WAIVER_INVALID: "אי אפשר לשמור את ויתור הסודיות - חסר",
   DOCUMENT_LOCKED: "המסמך כבר אושר ע\"י הצוות ואי אפשר להחליף אותו",
   SPAM_REJECTED: "הבקשה נדחתה",
   // הספרייה
@@ -669,6 +690,7 @@ const DOMAIN_META = {
   landingLinkHours: LANDING_LINK_HOURS,
   activityKinds: ACTIVITY_KINDS,
   activityFieldTypes: ACTIVITY_FIELD_TYPES,
+  waiverParties: WAIVER_PARTIES,
   leaveReasons: LEAVE_REASONS,
   incidentPrimary: INCIDENT_PRIMARY,
   attendanceStatuses: ATTENDANCE_STATUSES.map((k) => ({ key: k, label: ATTENDANCE_LABELS[k] })),
@@ -705,6 +727,8 @@ module.exports = {
   ACTIVITY_KIND_KEYS,
   ACTIVITY_FIELD_TYPES,
   DEFAULT_ACTIVITY_TEMPLATES,
+  WAIVER_PARTIES,
+  WAIVER_PARTY_KEYS,
   LEAVE_REASONS,
   LEAVE_REASON_KEYS,
   INCIDENT_PRIMARY,

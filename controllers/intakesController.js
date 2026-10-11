@@ -153,6 +153,30 @@ exports.getDocumentFile = catchAsync(async (req, res, next) => {
   res.send(file.data);
 });
 
+/**
+ * POST /api/intakes/:id/waiver - ויתור סודיות signed on the screen:
+ * { signedAt?, explained, parties[], witness{}, guardian?{}, signatures{student,witness,guardian?}: PNG data URIs,
+ *   document{ fileName, mime, data(base64), thumb? }: the rendered signed page, by }
+ * → { intake, moved, waiver, activity }
+ */
+exports.signWaiver = catchAsync(async (req, res) => {
+  const doc = await load(req);
+  const b = req.body || {};
+  const { moved, waiver, activity } = await intake.signWaiver({
+    intake: doc, by: b.by, signedAt: b.signedAt, explained: b.explained === true || b.explained === "true",
+    parties: b.parties, witness: b.witness, guardian: b.guardian, signatures: b.signatures, document: b.document,
+  });
+  res.status(201).json({ status: "success", data: { intake: await populated(doc), moved, waiver, activity } });
+});
+
+/** GET /api/intakes/:id/waiver - the latest signed waiver (no signature bytes), 404 when none. */
+exports.getWaiver = catchAsync(async (req, res, next) => {
+  const doc = await load(req);
+  const waiver = await intake.waiverOf(doc);
+  if (!waiver) return next(AppError.of("NOT_FOUND", 404, "ויתור סודיות"));
+  res.status(200).json({ status: "success", data: { waiver } });
+});
+
 /** GET /api/intakes/:id/documents/:key/thumb - the thumbnail the uploader rendered (404 when there is none). */
 exports.getDocumentThumb = catchAsync(async (req, res, next) => {
   const doc = await load(req);
