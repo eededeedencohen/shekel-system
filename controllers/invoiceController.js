@@ -14,6 +14,7 @@
  */
 
 const catchAsync = require("../utils/catchAsync");
+const { notModified } = require("../utils/sendFile");
 const invoices = require("../services/invoiceService");
 
 exports.getTeacherLessons = catchAsync(async (req, res) => {
@@ -57,7 +58,8 @@ exports.deleteInvoice = catchAsync(async (req, res) => {
 /** The stored picture, inline (a plain link the browser may open in a tab). */
 exports.getImage = catchAsync(async (req, res) => {
   const file = await invoices.imageOf({ world: req.world, invoiceId: req.params.id });
-  res.set("Cache-Control", "private, max-age=86400");
+  // revalidated every time (utils/sendFile): a replaced picture never shows its old bytes
+  if (notModified(req, res, `${file._id}-${file.updatedAt ? new Date(file.updatedAt).getTime() : 0}`)) return;
   res.type(file.mime);
   res.send(file.data);
 });

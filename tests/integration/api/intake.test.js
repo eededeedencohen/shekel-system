@@ -582,6 +582,16 @@ describe("the social worker's flow", () => {
     expect(file.headers["content-type"]).toMatch(/image\/png/);
     expect(file.body.length).toBe(Buffer.from(PNG_1PX, "base64").length);
     expect((await request(app).get(`/api/intakes/${intakeId}/documents/psychiatric/file`)).status).toBe(404);
+    // the bytes are revalidated every time: a 304 while unchanged, fresh bytes once the file is replaced
+    expect(file.headers["cache-control"]).toBe("private, no-cache");
+    const etag = file.headers.etag;
+    expect(etag).toBeTruthy();
+    expect((await request(app).get(`/api/intakes/${intakeId}/documents/psychosocial/file`).set("If-None-Match", etag)).status).toBe(304);
+    await new Promise((r) => setTimeout(r, 5)); // a later upload time
+    await request(app).post(`/api/public/join/${token}/documents`).send({ key: "psychosocial", fileName: "ps2.png", mime: "image/png", data: PNG_1PX });
+    const again = await request(app).get(`/api/intakes/${intakeId}/documents/psychosocial/file`).set("If-None-Match", etag);
+    expect(again.status).toBe(200);
+    expect(again.headers.etag).not.toBe(etag);
     const intake = await Intake.findById(intakeId);
     const byPerson = await request(app).get(`/api/intakes/person/${intake.person}`);
     expect(byPerson.status).toBe(200);

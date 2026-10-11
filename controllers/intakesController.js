@@ -17,6 +17,7 @@ const Intake = require("../models/Intake");
 const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
+const { notModified, docTag } = require("../utils/sendFile");
 const intake = require("../services/intakeService");
 
 const PERSON_POP = { path: "person", select: "firstName lastName phone email gender birthDate avatar deletedAt" };
@@ -143,13 +144,15 @@ exports.uploadDocument = catchAsync(async (req, res, next) => {
 exports.getDocumentFile = catchAsync(async (req, res, next) => {
   const doc = await load(req);
   const row = (doc.documents || []).find((d) => d.key === req.params.key);
-  const file = row ? await intake.documentFile(doc, row) : null;
+  if (!row?.file?.name) return next(AppError.of("NOT_FOUND", 404, "קובץ"));
+  // a replaced file must never show its old bytes: revalidated every time, 304 while unchanged
+  if (notModified(req, res, docTag(row))) return;
+  const file = await intake.documentFile(doc, row);
   if (!file) return next(AppError.of("NOT_FOUND", 404, "קובץ"));
   res.type(file.mime || "application/octet-stream");
   // images and PDFs open in the tab; a Word file is downloaded under its name
   const disposition = intake.INLINE_MIMES.has(file.mime) ? "inline" : "attachment";
   res.setHeader("Content-Disposition", `${disposition}; filename*=UTF-8''${encodeURIComponent(file.name || req.params.key)}`);
-  res.set("Cache-Control", "private, max-age=3600");
   res.send(file.data);
 });
 
@@ -181,10 +184,11 @@ exports.getWaiver = catchAsync(async (req, res, next) => {
 exports.getDocumentThumb = catchAsync(async (req, res, next) => {
   const doc = await load(req);
   const row = (doc.documents || []).find((d) => d.key === req.params.key);
-  const thumb = row ? await intake.documentThumb(row) : null;
+  if (!row?.file?.thumb) return next(AppError.of("NOT_FOUND", 404, "תמונה מוקטנת"));
+  if (notModified(req, res, docTag(row, "-thumb"))) return;
+  const thumb = await intake.documentThumb(row);
   if (!thumb) return next(AppError.of("NOT_FOUND", 404, "תמונה מוקטנת"));
   res.type(thumb.mime);
-  res.set("Cache-Control", "private, max-age=86400");
   res.send(thumb.data);
 });
 

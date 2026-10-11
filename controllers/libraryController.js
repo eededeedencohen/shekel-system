@@ -18,6 +18,7 @@ const Book = require("../models/Book");
 const Loan = require("../models/Loan");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
+const { notModified } = require("../utils/sendFile");
 const library = require("../services/libraryService");
 const lookup = require("../services/bookLookupService");
 
@@ -117,7 +118,8 @@ exports.getCover = catchAsync(async (req, res, next) => {
   const book = await Book.findOne({ _id: req.params.id, world: req.world });
   const bytes = book && library.coverBuffer(book);
   if (!bytes) return next(AppError.of("NOT_FOUND", 404, "כריכה"));
-  res.set("Cache-Control", "private, max-age=86400");
+  // revalidated every time (utils/sendFile): a changed cover never shows its old bytes
+  if (notModified(req, res, `${book._id}-${book.cover?.savedAt ? new Date(book.cover.savedAt).getTime() : 0}`)) return;
   res.type(book.cover.mime || "image/jpeg");
   res.send(bytes);
 });
