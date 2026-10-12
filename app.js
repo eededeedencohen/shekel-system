@@ -22,8 +22,12 @@ const AppError = require("./utils/AppError");
 const globalErrorHandler = require("./controllers/errorController");
 const { WORLDS } = require("./utils/domain");
 const share = require("./utils/sharePreview");
+const { authenticate, requireSuper } = require("./utils/auth");
 
 const app = express();
+// Render sits in front of us: req.secure / req.ip come from its headers
+// (the session cookie is marked Secure on https).
+app.set("trust proxy", 1);
 
 // Global middleware. ONE body limit for the whole API: uploads (intake
 // documents, book covers) travel as base64 in JSON - 8MB of file is ~11MB
@@ -63,6 +67,13 @@ const health = (req, res) => {
 };
 app.get("/api/health", health);
 
+// Passwords (Eden, 2026-10-12): every /api route needs a signed-in staff
+// member, except the public sign-up pages and the sign-in routes
+// themselves (utils/auth OPEN). req.account = who is signed in.
+app.use("/api", authenticate);
+app.use("/api/auth", require("./routes/authRoutes"));
+app.use("/api/accounts", require("./routes/accountRoutes"));
+
 // Feature routers - the 2026 remodel API
 app.use("/api/people", require("./routes/personRoutes"));
 app.use("/api/profiles", require("./routes/profileRoutes"));
@@ -95,7 +106,7 @@ app.use("/api/tags", require("./routes/tagRoutes"));
 app.use("/api/meta", require("./routes/metaRoutes"));
 // Read-only DB explorer (schema introspection + raw browsing) - powers the
 // in-app "בסיס הנתונים" page. Note: /schema is matched before /:collection.
-app.use("/api/db", require("./routes/dbRoutes"));
+app.use("/api/db", requireSuper, require("./routes/dbRoutes"));
 
 // ── The client, served by this same process ──────────────────────────────
 // `client-dist/` is the React build that `npm run deploy` (in client/) drops

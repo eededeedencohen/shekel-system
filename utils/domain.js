@@ -654,7 +654,34 @@ const ERROR_CODES = {
   // תגיות
   TAG_UNKNOWN: "תגית לא מוכרת",
   NOT_IN_PROGRAM: "הסטודנט/ית לא שייך/ת לתוכנית של המחזור",
+  // כניסה וניהול משתמשים
+  AUTH_REQUIRED: "צריך להיכנס למערכת",
+  AUTH_FAILED: "שם המשתמש או הסיסמה לא נכונים",
+  AUTH_LOCKED: "יותר מדי ניסיונות כניסה - אפשר לנסות שוב בעוד כמה דקות",
+  AUTH_FORBIDDEN: "הפעולה הזו שמורה לסופר-מנהל",
+  PASSWORD_WEAK: "הסיסמה צריכה לפחות 6 תווים",
+  PASSWORD_WRONG: "הסיסמה הנוכחית לא נכונה",
+  RESET_INVALID: "הקישור לאיפוס הסיסמה לא בתוקף - אפשר לבקש קישור חדש",
+  ACCOUNT_INVALID: "חסרים פרטים למשתמש: שם, שם משתמש באנגלית ותפקיד",
+  USERNAME_TAKEN: "שם המשתמש הזה כבר תפוס",
+  LAST_SUPER: "חייב להישאר לפחות סופר-מנהל פעיל אחד",
 };
+
+/**
+ * Staff accounts (Eden, 2026-10-12: "מעכשיו שיהיה סיסמאות למשתמשים"). The
+ * kind decides what the app shows (the client's PersonaContext lens); only
+ * `super` reaches the users page and the database explorer.
+ */
+const STAFF_KINDS = [
+  { key: "super", label: "סופר-מנהל" },
+  { key: "manager", label: "מנהל/ת מכללה לכל" },
+  { key: "social", label: 'עובד/ת סוציאלי/ת' },
+  { key: "hostels", label: "רכז/ת הוסטלים" },
+  { key: "culture", label: "רכז/ת תרבות לכל" },
+];
+const STAFF_KIND_KEYS = STAFF_KINDS.map((k) => k.key);
+/** How long a password-reset link stays open. */
+const RESET_LINK_HOURS = 24;
 
 /**
  * The single payload GET /api/meta/domain serves - the client renders
@@ -702,6 +729,8 @@ const DOMAIN_META = {
   library: LIBRARY,
   bookSources: BOOK_SOURCES.map((k) => ({ key: k, label: BOOK_SOURCE_LABELS[k] })),
   errorCodes: ERROR_CODES,
+  staffKinds: STAFF_KINDS,
+  resetLinkHours: RESET_LINK_HOURS,
 };
 
 module.exports = {
@@ -781,5 +810,8 @@ module.exports = {
   BOOK_SOURCE_LABELS,
   LOAN_LOG_ACTIONS,
   ERROR_CODES,
+  STAFF_KINDS,
+  STAFF_KIND_KEYS,
+  RESET_LINK_HOURS,
   DOMAIN_META,
 };
