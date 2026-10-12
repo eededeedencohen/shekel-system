@@ -53,6 +53,20 @@ describe("events - actors and lifecycle", () => {
     expect(r.history.at(-1)).toMatchObject({ action: "cancelled", reason: "גשם" });
   });
 
+  it("an event nobody registered to deletes (draft or published); one with registrations does not", async () => {
+    const staff = await makeCultureStaff();
+    const a = await makeCultureStudent();
+    const empty = await makeEvent({ by: staff._id }); // published, no one registered
+    const del = await request(app).delete(`/api/events/${empty._id}?by=${staff._id}`);
+    expect(del.status).toBe(204);
+
+    const taken = await makeEvent({ by: staff._id });
+    await reg(taken, a, staff);
+    const refused = await request(app).delete(`/api/events/${taken._id}?by=${staff._id}`);
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe("EVENT_HAS_REGISTRATIONS");
+  });
+
   it("GET /api/events returns seat/waitlist counts per event", async () => {
     const staff = await makeCultureStaff();
     const ev = await makeEvent({ by: staff._id, settings: { capacity: 1 } });
