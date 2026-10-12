@@ -53,18 +53,16 @@ describe("events - actors and lifecycle", () => {
     expect(r.history.at(-1)).toMatchObject({ action: "cancelled", reason: "גשם" });
   });
 
-  it("an event nobody registered to deletes (draft or published); one with registrations does not", async () => {
+  it("only a draft deletes; a published event (even an empty one) is cancelled instead", async () => {
     const staff = await makeCultureStaff();
-    const a = await makeCultureStudent();
-    const empty = await makeEvent({ by: staff._id }); // published, no one registered
-    const del = await request(app).delete(`/api/events/${empty._id}?by=${staff._id}`);
+    const draft = await makeEvent({ by: staff._id, status: "draft", published: null });
+    const del = await request(app).delete(`/api/events/${draft._id}?by=${staff._id}`);
     expect(del.status).toBe(204);
 
-    const taken = await makeEvent({ by: staff._id });
-    await reg(taken, a, staff);
-    const refused = await request(app).delete(`/api/events/${taken._id}?by=${staff._id}`);
+    const live = await makeEvent({ by: staff._id }); // published, nobody registered
+    const refused = await request(app).delete(`/api/events/${live._id}?by=${staff._id}`);
     expect(refused.status).toBe(409);
-    expect(refused.body.code).toBe("EVENT_HAS_REGISTRATIONS");
+    expect(refused.body.code).toBe("EVENT_NOT_DRAFT");
   });
 
   it("GET /api/events returns seat/waitlist counts per event", async () => {

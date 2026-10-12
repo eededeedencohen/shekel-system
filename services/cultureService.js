@@ -141,16 +141,16 @@ async function markEventDone({ eventId, world, by }) {
 
 /** Only an untouched draft may be deleted - anything else is history. */
 /**
- * Delete an event nobody ever registered to - a draft or a published one
- * (Eden, 2026-10-12: "מחיקה" in the calendar's right-click menu). An event
- * with registrations keeps its history (who came, the turnout numbers): it
- * is cancelled, never deleted.
+ * Delete a draft (Eden, 2026-10-12: "אי אפשר למחוק אירועים שפורסמו אלא רק
+ * לבטל"). A published event - and anything with registrations - keeps its
+ * history: it is cancelled, never deleted.
  */
 async function deleteEvent({ eventId, world, by }) {
   await assertStaff(by, world);
   const event = await requireEvent(eventId, world);
+  if (event.status !== "draft") throw AppError.of("EVENT_NOT_DRAFT", 409);
   const refs = await EventRegistration.countDocuments({ event: event._id });
-  if (refs) throw AppError.of("EVENT_HAS_REGISTRATIONS", 409);
+  if (refs) throw AppError.of("REFERENCED_BLOCKED", 409);
   await event.deleteOne();
 }
 
