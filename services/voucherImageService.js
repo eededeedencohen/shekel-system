@@ -4,8 +4,8 @@
  *
  * Eden (2026-10-13): "לחפש בוואב תמונות של המקום הרלוונטי לשובר". Without a
  * paid image-search key the app asks Wikipedia (Hebrew first, English
- * behind it): its search API hands back the page image of every matching
- * article - a chain's logo, a venue's photo - free to use and keyless. A
+ * behind it): the matching articles' infobox pictures - a chain's LOGO, a
+ * venue's building - then their page photos; keyless. A
  * link pasted by the staff is accepted too: a picture's own address, or
  * a page whose `og:image` is the picture (like the library's book lookup).
  *
@@ -38,40 +38,77 @@ async function get(url) {
 
 const isHttp = (u) => /^https?:\/\//i.test(String(u || ""));
 
-/** The article images matching a name on one Wikipedia, best match first. */
-async function searchOn(lang, q, limit) {
-  const url =
-    `${WIKI[lang]}?action=query&format=json&generator=search&gsrsearch=${encodeURIComponent(q)}` +
-    `&gsrlimit=${limit}&prop=pageimages|info&piprop=thumbnail|original&pithumbsize=640&inprop=url`;
+const enc = encodeURIComponent;
+async function getJson(url) {
   const r = await get(url);
-  if (!r.ok) return [];
-  const j = await r.json();
-  return Object.values(j?.query?.pages || {})
-    .sort((a, b) => (a.index || 0) - (b.index || 0))
-    .filter((p) => p.thumbnail?.source)
-    .map((p) => ({
-      title: p.title,
-      url: p.thumbnail.source,
-      width: p.thumbnail.width,
-      height: p.thumbnail.height,
-      page: p.fullurl || null,
-      source: lang === "he" ? "ויקיפדיה" : "Wikipedia",
-    }));
+  if (!r.ok) return null;
+  return r.json();
+}
+
+/**
+ * The picture in an article's infobox - for a chain or a venue that is its
+ * LOGO (Eden, 2026-10-13: "זה לא מחפש את הלוגו" - Wikipedia's "page image"
+ * leaves logos out on purpose, the infobox never does). Made absolute, the
+ * tracking query dropped, asked for at 480px.
+ */
+function infoboxImage(html) {
+  const box = /<table[^>]*class="[^"]*infobox[^"]*"[\s\S]*?<\/table>/i.exec(String(html || ""))?.[0];
+  if (!box) return null;
+  const img = /<img[^>]+>/i.exec(box)?.[0];
+  if (!img) return null;
+  // the biggest copy the page itself asks for (its 2x srcset) - Wikimedia
+  // serves only the sizes a page already uses, never one made up here
+  const srcset = /srcset="([^"]+)"/i.exec(img)?.[1];
+  const biggest = srcset ? srcset.split(",").map((s) => s.trim().split(/\s+/)[0]).filter(Boolean).pop() : null;
+  const src = biggest || /src="([^"]+)"/i.exec(img)?.[1];
+  if (!src) return null;
+  let url = src.replace(/&amp;/g, "&").replace(/\?.*$/, "");
+  if (url.startsWith("//")) url = "https:" + url;
+  return url;
+}
+
+/**
+ * The pictures of the articles matching a name on one Wikipedia: each
+ * article's infobox picture (its logo) and, when different, its page image
+ * (a photo). Logos first, in the order of the search.
+ */
+async function searchOn(lang, q, limit) {
+  const api = WIKI[lang];
+  const found = await getJson(`${api}?action=query&format=json&list=search&srsearch=${enc(q)}&srlimit=${limit}`);
+  const titles = (found?.query?.search || []).map((x) => x.title);
+  if (!titles.length) return [];
+  const [pages, ...parsed] = await Promise.all([
+    getJson(`${api}?action=query&format=json&prop=pageimages|info&inprop=url&piprop=thumbnail&pithumbsize=640&titles=${enc(titles.join("|"))}`).catch(() => null),
+    ...titles.map((t) => getJson(`${api}?action=parse&format=json&page=${enc(t)}&prop=text&section=0&disabletoc=1`).catch(() => null)),
+  ]);
+  const pageOf = new Map(Object.values(pages?.query?.pages || {}).map((p) => [p.title, p]));
+  const source = lang === "he" ? "ויקיפדיה" : "Wikipedia";
+  const logos = [];
+  const photos = [];
+  titles.forEach((title, i) => {
+    const page = pageOf.get(title);
+    const logo = infoboxImage(parsed[i]?.parse?.text?.["*"]);
+    // a placeholder ("no free image yet") or a flag from a list article is not the place
+    if (logo && !/no_free_image|Flag_of_/i.test(logo)) logos.push({ title, url: logo, kind: /\.jpe?g(\.|$)/i.test(logo) ? "picture" : "logo", page: page?.fullurl || null, source });
+    const photo = page?.thumbnail?.source;
+    if (photo && photo !== logo) photos.push({ title, url: photo, kind: "photo", width: page.thumbnail.width, height: page.thumbnail.height, page: page?.fullurl || null, source });
+  });
+  return [...logos, ...photos];
 }
 
 /**
  * Pictures for a place name: Hebrew Wikipedia, then English when Hebrew
  * knows fewer than three. Never throws - no network means no pictures.
  */
-async function searchImages(q, limit = 8) {
+async function searchImages(q, limit = 6) {
   const name = String(q || "").trim();
   if (name.length < 2) return [];
   try {
     const he = await searchOn("he", name, limit);
-    if (he.length >= 3) return he;
+    if (he.length >= 3) return he.slice(0, limit * 2);
     const en = await searchOn("en", name, limit).catch(() => []);
     const seen = new Set(he.map((x) => x.url));
-    return [...he, ...en.filter((x) => !seen.has(x.url))].slice(0, limit);
+    return [...he, ...en.filter((x) => !seen.has(x.url))].slice(0, limit * 2);
   } catch {
     return [];
   }
@@ -116,4 +153,4 @@ async function fetchImage(link) {
   return { mime: mime2, buffer, from: og };
 }
 
-module.exports = { searchImages, fetchImage, ogImageOf, setFetch, MAX_IMAGE_BYTES };
+module.exports = { searchImages, fetchImage, ogImageOf, infoboxImage, setFetch, MAX_IMAGE_BYTES };

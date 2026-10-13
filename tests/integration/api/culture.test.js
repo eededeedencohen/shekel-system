@@ -346,16 +346,25 @@ describe("voucher pictures", () => {
   it("a link on the web: a picture's address, or a page whose og:image is the picture; the search asks Wikipedia", async () => {
     const staff = await makeCultureStaff();
     const page = `<html><head><meta property="og:image" content="/pics/front.png" /></head></html>`;
-    const wiki = { query: { pages: { 1: { index: 2, title: "קפה גרג", fullurl: "https://he.wikipedia.org/wiki/x", thumbnail: { source: "https://upload.wikimedia.org/greg.png", width: 600, height: 400 } }, 2: { index: 1, title: "גרג" } } } };
+    const json = (o) => new Response(JSON.stringify(o), { status: 200, headers: { "content-type": "application/json" } });
+    const found = { query: { search: [{ title: "קפה גרג" }, { title: "גרג" }] } };
+    const pages = { query: { pages: { 1: { title: "קפה גרג", fullurl: "https://he.wikipedia.org/wiki/x", thumbnail: { source: "https://upload.wikimedia.org/greg-front.jpg", width: 600, height: 400 } }, 2: { title: "גרג" } } } };
+    const article = { parse: { text: { "*": `<div><table class="infobox"><tr><td><img src="//thumb.wikimedia.org/wikipedia/he/thumb/6/63/greg.png/250px-greg.png?utm_source=x" /></td></tr></table></div>` } } };
     images.setFetch(async (url) => {
-      if (url.startsWith("https://he.wikipedia.org/w/api.php")) return new Response(JSON.stringify(wiki), { status: 200, headers: { "content-type": "application/json" } });
+      if (url.includes("list=search")) return json(found);
+      if (url.includes("prop=pageimages")) return json(pages);
+      if (url.includes("action=parse")) return json(url.includes(encodeURIComponent("קפה גרג")) ? article : { parse: { text: { "*": "<p>no box</p>" } } });
       if (url === "https://example.test/cafe") return new Response(page, { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
       if (url === "https://example.test/pics/front.png" || url === "https://upload.wikimedia.org/greg.png") return new Response(pngBytes, { status: 200, headers: { "content-type": "image/png" } });
       return new Response("no", { status: 404 });
     });
-    const found = await request(app).get("/api/vouchers/image-search?q=קפה גרג");
-    expect(found.status).toBe(200);
-    expect(found.body.data.images).toEqual([expect.objectContaining({ title: "קפה גרג", url: "https://upload.wikimedia.org/greg.png", source: "ויקיפדיה" })]);
+    const res = await request(app).get("/api/vouchers/image-search?q=קפה גרג");
+    expect(res.status).toBe(200);
+    // the logo (the infobox picture, made absolute, untracked) first, the photo after it
+    expect(res.body.data.images).toEqual([
+      expect.objectContaining({ title: "קפה גרג", kind: "logo", url: "https://thumb.wikimedia.org/wikipedia/he/thumb/6/63/greg.png/250px-greg.png", source: "ויקיפדיה" }),
+      expect.objectContaining({ title: "קפה גרג", kind: "photo", url: "https://upload.wikimedia.org/greg-front.jpg" }),
+    ]);
 
     const fromPage = await request(app).post("/api/vouchers").send({ by: staff._id, name: "קפה גרג", number: "L-1", imageUrl: "https://example.test/cafe" });
     expect(fromPage.status).toBe(201);
