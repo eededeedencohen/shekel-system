@@ -8,6 +8,7 @@ const Voucher = require("../models/Voucher");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 const culture = require("../services/cultureService");
+const voucherImages = require("../services/voucherImageService");
 const { notModified } = require("../utils/sendFile");
 
 const POP = [
@@ -70,6 +71,21 @@ exports.revokeGrant = catchAsync(async (req, res) => {
 exports.searchImages = catchAsync(async (req, res) => {
   const images = await culture.searchVoucherImages(req.query.q);
   res.status(200).json({ status: "success", results: images.length, data: { images } });
+});
+
+/**
+ * GET /api/vouchers/image-fetch?url= - the bytes of a picture on the web
+ * (a picture's own address, or a page whose og:image is one), so the
+ * browser can square it before saving (Eden, 2026-10-13: every picture is
+ * 1:1; most sites refuse a cross-origin fetch from the browser itself).
+ */
+exports.fetchImage = catchAsync(async (req, res, next) => {
+  const url = String(req.query.url || "");
+  if (!/^https?:\/\//i.test(url)) return next(AppError.of("VOUCHER_IMAGE_FETCH", 422));
+  const got = await voucherImages.fetchImage(url).catch(() => null);
+  if (!got) return next(AppError.of("VOUCHER_IMAGE_FETCH", 422));
+  res.set("Cache-Control", "private, max-age=600");
+  res.type(got.mime).send(got.buffer);
 });
 
 /** GET /api/vouchers/:id/image[?thumb=1] - the picture of the place (a plain link: the world rides on ?world=) */

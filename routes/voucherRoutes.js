@@ -10,6 +10,7 @@ const c = require("../controllers/voucherController");
 
 router.route("/").get(c.getVouchers).post(c.createVoucher);
 router.get("/image-search", c.searchImages); // before /:id
+router.get("/image-fetch", c.fetchImage); // the bytes of a picture on the web, for the browser to square
 router.route("/:id/image").get(c.getImage).patch(c.setImage);
 router.route("/:id").get(c.getVoucherById).put(c.updateVoucher).delete(c.deleteVoucher);
 router.post("/:id/grant", c.grantVoucher);

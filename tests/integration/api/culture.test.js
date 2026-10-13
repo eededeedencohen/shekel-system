@@ -374,5 +374,16 @@ describe("voucher pictures", () => {
     const dead = await request(app).post("/api/vouchers").send({ by: staff._id, name: "קפה גרג", number: "L-3", imageUrl: "https://example.test/nothing" });
     expect(dead.body.code).toBe("VOUCHER_IMAGE_FETCH");
     expect(await StoredFile.countDocuments()).toBe(2);
+
+    // the browser squares every picture itself, so it asks the server for the bytes of a web picture
+    const bytes = await request(app).get("/api/vouchers/image-fetch").query({ url: "https://upload.wikimedia.org/greg.png" });
+    expect(bytes.status).toBe(200);
+    expect(bytes.headers["content-type"]).toMatch(/image\/png/);
+    expect(Buffer.compare(bytes.body, pngBytes)).toBe(0);
+    const viaPage = await request(app).get("/api/vouchers/image-fetch").query({ url: "https://example.test/cafe" });
+    expect(viaPage.status).toBe(200);
+    expect(viaPage.headers["content-type"]).toMatch(/image\/png/);
+    expect((await request(app).get("/api/vouchers/image-fetch").query({ url: "https://example.test/nothing" })).body.code).toBe("VOUCHER_IMAGE_FETCH");
+    expect((await request(app).get("/api/vouchers/image-fetch").query({ url: "ftp://x" })).status).toBe(422);
   });
 });
