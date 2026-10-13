@@ -9,20 +9,43 @@ const { Profile } = require("../models/profiles");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 
+/** The writable fields of the body, trimmed; `contact` as a whole object. */
+function pickDetails(body) {
+  const out = {};
+  for (const k of Hostel.EDITABLE) {
+    if (!(k in body)) continue;
+    if (k === "contact") {
+      const c = body.contact || {};
+      out.contact = { name: c.name || "", role: c.role || "", phone: c.phone || "" };
+    } else out[k] = body[k];
+  }
+  return out;
+}
+
 exports.getHostels = catchAsync(async (req, res) => {
   const hostels = await Hostel.find({ world: req.world }).sort({ name: 1 });
   res.status(200).json({ status: "success", results: hostels.length, data: { hostels } });
 });
 
+exports.getHostel = catchAsync(async (req, res, next) => {
+  const hostel = await Hostel.findOne({ _id: req.params.id, world: req.world });
+  if (!hostel) return next(AppError.of("NOT_FOUND", 404, "הוסטל"));
+  res.status(200).json({ status: "success", data: { hostel } });
+});
+
 exports.createHostel = catchAsync(async (req, res) => {
-  const hostel = await Hostel.create({ name: req.body.name, world: req.world });
+  const hostel = await Hostel.create({ ...pickDetails(req.body), name: req.body.name, world: req.world });
   res.status(201).json({ status: "success", data: { hostel } });
 });
 
 exports.updateHostel = catchAsync(async (req, res, next) => {
   const hostel = await Hostel.findOne({ _id: req.params.id, world: req.world });
   if (!hostel) return next(AppError.of("NOT_FOUND", 404, "הוסטל"));
-  for (const k of ["name", "active"]) if (k in req.body) hostel[k] = req.body[k];
+  const patch = pickDetails(req.body);
+  if ("name" in patch && !String(patch.name || "").trim()) {
+    return next(AppError.of("MISSING_FIELDS", 400, "שם הוסטל"));
+  }
+  for (const [k, v] of Object.entries(patch)) hostel[k] = v;
   await hostel.save();
   res.status(200).json({ status: "success", data: { hostel } });
 });

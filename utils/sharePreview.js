@@ -133,8 +133,10 @@ async function enrich(preview, world = "real") {
       }
     }
     if (params.hostel) {
-      const h = await Hostel.findOne({ name: params.hostel, world }).lean();
-      if (h) return { ...preview, title: `הוסטל ${h.name} · מכללה לכל` };
+      // the page is addressed by id now; the old links carried the name
+      const byId = /^[0-9a-f]{24}$/i.test(params.hostel);
+      const h = await Hostel.findOne({ ...(byId ? { _id: params.hostel } : { name: params.hostel }), world }).lean();
+      if (h) return { ...preview, title: `הוסטל ${h.name} · שק״ל`, description: "סקירה, לוח שעות וקורסים והסטודנטים של ההוסטל." };
     }
     if (params.book) {
       const b = await Book.findOne({ _id: params.book, world, deletedAt: null }).lean();
