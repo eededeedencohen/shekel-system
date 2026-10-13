@@ -23,6 +23,8 @@
 const Event = require("../models/Event");
 const EventRegistration = require("../models/EventRegistration");
 const Voucher = require("../models/Voucher");
+const StoredFile = require("../models/StoredFile");
+const images = require("./voucherImageService");
 const { Person } = require("../models/Person");
 const { Profile } = require("../models/profiles");
 const AppError = require("../utils/AppError");
@@ -366,18 +368,108 @@ async function requireVoucher(voucherId, world) {
   return v;
 }
 
+/* ── the picture of the place (Eden, 2026-10-13) ──
+ * One stored file per PLACE, shared by its vouchers. A voucher's image is
+ * chosen one of three ways: bytes uploaded from the form (`imageData`, a
+ * data URL, + an optional `imageThumb`), a link on the web (`imageUrl` -
+ * a picture, or a page with og:image; voucherImageService), or the image
+ * another voucher already has (`imageFrom` = that voucher's id - no new
+ * upload, the same file). The file goes when its last voucher goes.
+ */
+
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_THUMB_BYTES = 256 * 1024;
+const IMAGE_MIMES = new Set(["image/jpeg", "image/pjpeg", "image/png", "image/x-png", "image/webp", "image/gif", "image/avif", "image/bmp"]);
+const normMime = (m) => (m === "image/pjpeg" ? "image/jpeg" : m === "image/x-png" ? "image/png" : m);
+
+/** "data:image/…;base64,…" → { mime, buffer } - or the typed error. */
+function parseImageData(dataUrl, max = MAX_IMAGE_BYTES) {
+  const m = /^data:([\w/+.-]+);base64,([A-Za-z0-9+/=\s]+)$/.exec(String(dataUrl || "").trim());
+  if (!m) throw AppError.of("VOUCHER_IMAGE_INVALID", 400);
+  const mime = m[1].toLowerCase();
+  if (!IMAGE_MIMES.has(mime)) throw AppError.of("VOUCHER_IMAGE_INVALID", 400);
+  const buffer = Buffer.from(m[2].replace(/\s+/g, ""), "base64");
+  if (!buffer.length || buffer.length > max) throw AppError.of("VOUCHER_IMAGE_INVALID", 400);
+  return { mime: normMime(mime), buffer };
+}
+
+/** The stored file id the body asks for (or undefined = no change / none). */
+async function resolveVoucherImage(world, data = {}) {
+  if (data.imageFrom) {
+    const other = await Voucher.findOne({ _id: data.imageFrom, world }).select("image").lean();
+    if (!other || !other.image) throw AppError.of("NOT_FOUND", 404, "תמונת השובר");
+    return other.image;
+  }
+  if (data.imageData) {
+    const { mime, buffer } = parseImageData(data.imageData);
+    const thumb = data.imageThumb ? parseImageData(data.imageThumb, MAX_THUMB_BYTES).buffer : undefined;
+    const file = await StoredFile.create({ world, name: data.imageName || "תמונת השובר", mime, size: buffer.length, data: buffer, thumb });
+    return file._id;
+  }
+  if (data.imageUrl) {
+    const got = await images.fetchImage(String(data.imageUrl).trim());
+    if (!got) throw AppError.of("VOUCHER_IMAGE_FETCH", 400);
+    if (!IMAGE_MIMES.has(got.mime) || got.buffer.length > MAX_IMAGE_BYTES) throw AppError.of("VOUCHER_IMAGE_INVALID", 400);
+    const file = await StoredFile.create({ world, name: data.imageName || got.from, mime: normMime(got.mime), size: got.buffer.length, data: got.buffer });
+    return file._id;
+  }
+  return undefined;
+}
+
+/** Drop a stored file once no voucher points at it any more. */
+async function releaseVoucherImage(fileId, world) {
+  if (!fileId) return;
+  const still = await Voucher.countDocuments({ world, image: fileId });
+  if (!still) await StoredFile.deleteOne({ _id: fileId });
+}
+
 async function createVoucher({ world, by, data }) {
   await assertStaff(by, world);
   const fields = pickVoucher(data);
   if (fields.balance == null && fields.initialValue != null) fields.balance = fields.initialValue;
   if (fields.initialValue == null && fields.balance != null) fields.initialValue = fields.balance;
+  const image = await resolveVoucherImage(world, data);
   try {
-    return await Voucher.create({ ...fields, world });
+    return await Voucher.create({ ...fields, world, ...(image && { image }) });
   } catch (e) {
+    // a fresh upload that found no voucher to belong to
+    if (image && !data.imageFrom) await StoredFile.deleteOne({ _id: image }).catch(() => {});
     if (e.code === 11000) throw AppError.of("VOUCHER_NUMBER_TAKEN", 409, fields.number);
     throw e;
   }
 }
+
+/** Set / replace / remove the picture of an existing voucher (`remove: true`). */
+async function setVoucherImage({ voucherId, world, by, data = {} }) {
+  await assertStaff(by, world);
+  const v = await requireVoucher(voucherId, world);
+  const before = v.image;
+  if (data.remove) {
+    if (!before) return v;
+    v.image = null;
+  } else {
+    const image = await resolveVoucherImage(world, data);
+    if (!image) throw AppError.of("MISSING_FIELDS", 400, "imageData | imageUrl | imageFrom");
+    if (String(image) === String(before)) return v;
+    v.image = image;
+  }
+  await v.save();
+  await releaseVoucherImage(before, world);
+  return v;
+}
+
+/** The bytes of a voucher's picture: the small JPEG when asked for and there is one, else the file. */
+async function voucherImageOf(voucherId, world, wantThumb) {
+  const v = await Voucher.findOne({ _id: voucherId, world }).select("image").lean();
+  if (!v || !v.image) return null;
+  const file = await StoredFile.findById(v.image).select(wantThumb ? "mime thumb data updatedAt" : "mime data updatedAt");
+  if (!file) return null;
+  const thumb = wantThumb && file.thumb && file.thumb.length ? file.thumb : null;
+  return { mime: thumb ? "image/jpeg" : file.mime, data: thumb || file.data, tag: `${file._id}-${new Date(file.updatedAt).getTime()}${thumb ? "-t" : ""}` };
+}
+
+/** Pictures on the web for a place name (voucherImageService). */
+const searchVoucherImages = (q) => images.searchImages(q);
 
 async function updateVoucher({ voucherId, world, by, data }) {
   await assertStaff(by, world);
@@ -425,7 +517,9 @@ async function deleteVoucher({ voucherId, world, by }) {
   await assertStaff(by, world);
   const v = await requireVoucher(voucherId, world);
   if (v.grant) throw AppError.of("REFERENCED_BLOCKED", 409);
+  const image = v.image;
   await v.deleteOne();
+  await releaseVoucherImage(image, world);
 }
 
 module.exports = {
@@ -437,4 +531,5 @@ module.exports = {
   register, cancelRegistration, reportAttendance, promoteNext, renumberWaitlist, registeredCount,
   // vouchers
   createVoucher, updateVoucher, grantVoucher, redeemVoucher, revokeGrant, deleteVoucher,
+  setVoucherImage, voucherImageOf, searchVoucherImages,
 };

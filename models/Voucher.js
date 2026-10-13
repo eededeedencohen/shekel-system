@@ -43,6 +43,14 @@ const voucherSchema = new mongoose.Schema(
     initialValue: { type: Number, min: 0 },
     expiresAt: { type: Date },
     notes: { type: String, trim: true },
+    /**
+     * The picture of the place (a logo, a storefront) - a stored file,
+     * SHARED by every voucher of the same place: a new voucher for a place
+     * that already has one points at the same file instead of a new upload
+     * (Eden, 2026-10-13). cultureService removes the file only when the
+     * last voucher pointing at it goes.
+     */
+    image: { type: mongoose.Schema.Types.ObjectId, ref: "StoredFile", default: null },
     grant: { type: grantSchema, default: null },
   },
   { timestamps: true }

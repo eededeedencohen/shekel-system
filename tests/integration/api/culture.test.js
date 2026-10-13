@@ -287,3 +287,83 @@ describe("world isolation", () => {
     expect(res.body.code).toBe("WORLD_MISMATCH");
   });
 });
+
+describe("voucher pictures", () => {
+  const images = require("../../../services/voucherImageService");
+  const StoredFile = require("../../../models/StoredFile");
+  // a 1×1 PNG
+  const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+  const pngBytes = Buffer.from(PNG.split(",")[1], "base64");
+  afterEach(() => images.setFetch(null));
+
+  it("an upload is stored once per place: the next voucher of the place reuses it, the file goes with the last voucher", async () => {
+    const staff = await makeCultureStaff();
+    const first = await request(app).post("/api/vouchers").send({ by: staff._id, name: "סינמה סיטי", number: "P-1", imageData: PNG, imageThumb: PNG, imageName: "logo.png" });
+    expect(first.status).toBe(201);
+    const fileId = first.body.data.voucher.image;
+    expect(fileId).toBeTruthy();
+    expect(await StoredFile.countDocuments()).toBe(1);
+
+    // the picture is served, small or full, with an ETag
+    const thumb = await request(app).get(`/api/vouchers/${first.body.data.voucher._id}/image?thumb=1`);
+    expect(thumb.status).toBe(200);
+    expect(thumb.headers["content-type"]).toMatch(/image\/jpeg/);
+    const full = await request(app).get(`/api/vouchers/${first.body.data.voucher._id}/image`);
+    expect(full.headers["content-type"]).toMatch(/image\/png/);
+    expect(Buffer.compare(full.body, pngBytes)).toBe(0);
+    expect((await request(app).get(`/api/vouchers/${first.body.data.voucher._id}/image`).set("If-None-Match", full.headers.etag)).status).toBe(304);
+
+    // the second voucher of the place: the same file, no new upload
+    const second = await request(app).post("/api/vouchers").send({ by: staff._id, name: "סינמה סיטי", number: "P-2", imageFrom: first.body.data.voucher._id });
+    expect(second.status).toBe(201);
+    expect(second.body.data.voucher.image).toBe(fileId);
+    expect(await StoredFile.countDocuments()).toBe(1);
+
+    // deleting one keeps the shared file; deleting the last removes it
+    expect((await request(app).delete(`/api/vouchers/${first.body.data.voucher._id}?by=${staff._id}`)).status).toBe(204);
+    expect(await StoredFile.countDocuments()).toBe(1);
+    expect((await request(app).delete(`/api/vouchers/${second.body.data.voucher._id}?by=${staff._id}`)).status).toBe(204);
+    expect(await StoredFile.countDocuments()).toBe(0);
+  });
+
+  it("set, replace and remove the picture of an existing voucher; a bad upload is refused", async () => {
+    const staff = await makeCultureStaff();
+    const v = await makeVoucher();
+    let res = await request(app).patch(`/api/vouchers/${v._id}/image`).send({ by: staff._id, imageData: PNG });
+    expect(res.status).toBe(200);
+    const firstFile = res.body.data.voucher.image;
+    res = await request(app).patch(`/api/vouchers/${v._id}/image`).send({ by: staff._id, imageData: PNG });
+    expect(res.body.data.voucher.image).not.toBe(firstFile);
+    expect(await StoredFile.countDocuments()).toBe(1); // the replaced file is gone
+    res = await request(app).patch(`/api/vouchers/${v._id}/image`).send({ by: staff._id, imageData: "data:text/plain;base64,aGk=" });
+    expect(res.body.code).toBe("VOUCHER_IMAGE_INVALID");
+    res = await request(app).patch(`/api/vouchers/${v._id}/image`).send({ by: staff._id, remove: true });
+    expect(res.body.data.voucher.image).toBeNull();
+    expect(await StoredFile.countDocuments()).toBe(0);
+    expect((await request(app).get(`/api/vouchers/${v._id}/image`)).status).toBe(404);
+  });
+
+  it("a link on the web: a picture's address, or a page whose og:image is the picture; the search asks Wikipedia", async () => {
+    const staff = await makeCultureStaff();
+    const page = `<html><head><meta property="og:image" content="/pics/front.png" /></head></html>`;
+    const wiki = { query: { pages: { 1: { index: 2, title: "קפה גרג", fullurl: "https://he.wikipedia.org/wiki/x", thumbnail: { source: "https://upload.wikimedia.org/greg.png", width: 600, height: 400 } }, 2: { index: 1, title: "גרג" } } } };
+    images.setFetch(async (url) => {
+      if (url.startsWith("https://he.wikipedia.org/w/api.php")) return new Response(JSON.stringify(wiki), { status: 200, headers: { "content-type": "application/json" } });
+      if (url === "https://example.test/cafe") return new Response(page, { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
+      if (url === "https://example.test/pics/front.png" || url === "https://upload.wikimedia.org/greg.png") return new Response(pngBytes, { status: 200, headers: { "content-type": "image/png" } });
+      return new Response("no", { status: 404 });
+    });
+    const found = await request(app).get("/api/vouchers/image-search?q=קפה גרג");
+    expect(found.status).toBe(200);
+    expect(found.body.data.images).toEqual([expect.objectContaining({ title: "קפה גרג", url: "https://upload.wikimedia.org/greg.png", source: "ויקיפדיה" })]);
+
+    const fromPage = await request(app).post("/api/vouchers").send({ by: staff._id, name: "קפה גרג", number: "L-1", imageUrl: "https://example.test/cafe" });
+    expect(fromPage.status).toBe(201);
+    expect(fromPage.body.data.voucher.image).toBeTruthy();
+    const fromPicture = await request(app).post("/api/vouchers").send({ by: staff._id, name: "קפה גרג", number: "L-2", imageUrl: "https://upload.wikimedia.org/greg.png" });
+    expect(fromPicture.status).toBe(201);
+    const dead = await request(app).post("/api/vouchers").send({ by: staff._id, name: "קפה גרג", number: "L-3", imageUrl: "https://example.test/nothing" });
+    expect(dead.body.code).toBe("VOUCHER_IMAGE_FETCH");
+    expect(await StoredFile.countDocuments()).toBe(2);
+  });
+});

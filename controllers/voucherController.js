@@ -8,6 +8,7 @@ const Voucher = require("../models/Voucher");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 const culture = require("../services/cultureService");
+const { notModified } = require("../utils/sendFile");
 
 const POP = [
   { path: "grant.student", select: "firstName lastName avatar" },
@@ -31,7 +32,7 @@ exports.getVoucherById = catchAsync(async (req, res, next) => {
   res.status(200).json({ status: "success", data: { voucher } });
 });
 
-/** POST /api/vouchers - body { by*, name*, number*, balance|initialValue, expiresAt?, notes? } */
+/** POST /api/vouchers - body { by*, name*, number*, balance|initialValue, expiresAt?, notes?, + the picture: imageData(+imageThumb, imageName) | imageUrl | imageFrom } */
 exports.createVoucher = catchAsync(async (req, res, next) => {
   if (!req.body.name || !req.body.number) return next(AppError.of("MISSING_FIELDS", 400, "name, number"));
   const voucher = await culture.createVoucher({ world: req.world, by: req.body.by, data: req.body });
@@ -63,6 +64,26 @@ exports.redeemVoucher = catchAsync(async (req, res) => {
 exports.revokeGrant = catchAsync(async (req, res) => {
   const voucher = await culture.revokeGrant({ voucherId: req.params.id, world: req.world, by: req.body.by });
   res.status(200).json({ status: "success", data: { voucher } });
+});
+
+/** GET /api/vouchers/image-search?q= - pictures on the web for a place name (Wikipedia) */
+exports.searchImages = catchAsync(async (req, res) => {
+  const images = await culture.searchVoucherImages(req.query.q);
+  res.status(200).json({ status: "success", results: images.length, data: { images } });
+});
+
+/** GET /api/vouchers/:id/image[?thumb=1] - the picture of the place (a plain link: the world rides on ?world=) */
+exports.getImage = catchAsync(async (req, res, next) => {
+  const got = await culture.voucherImageOf(req.params.id, req.world, req.query.thumb === "1");
+  if (!got) return next(AppError.of("NOT_FOUND", 404, "תמונת השובר"));
+  if (notModified(req, res, got.tag)) return;
+  res.type(got.mime).send(got.data);
+});
+
+/** PATCH /api/vouchers/:id/image - body { by*, imageData(+imageThumb, imageName) | imageUrl | imageFrom | remove: true } */
+exports.setImage = catchAsync(async (req, res) => {
+  const voucher = await culture.setVoucherImage({ voucherId: req.params.id, world: req.world, by: req.body.by, data: req.body });
+  res.status(200).json({ status: "success", data: { voucher: await voucher.populate(POP) } });
 });
 
 /** DELETE /api/vouchers/:id?by= - never-granted vouchers only */

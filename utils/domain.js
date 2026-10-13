@@ -652,6 +652,8 @@ const ERROR_CODES = {
   INVOICE_NOT_A_TEACHER: "חשבונית אפשר להעלות רק למורה פעיל",
   INVOICE_LESSON_NOT_TEACHERS: "אחד השיעורים שסומנו לא של המורה הזה",
   INVOICE_LESSON_BILLED: "אחד השיעורים כבר רשום בחשבונית אחרת",
+  VOUCHER_IMAGE_INVALID: "תמונת השובר לא נתמכת - מותר JPG / PNG / WebP / GIF / AVIF עד 8MB",
+  VOUCHER_IMAGE_FETCH: "לא נמצאה תמונה בקישור הזה - אפשר להדביק כתובת של תמונה, או של דף שיש בו תמונה",
   // תגיות
   TAG_UNKNOWN: "תגית לא מוכרת",
   NOT_IN_PROGRAM: "הסטודנט/ית לא שייך/ת לתוכנית של המחזור",

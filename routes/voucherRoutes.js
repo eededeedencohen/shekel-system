@@ -9,6 +9,8 @@ const router = express.Router();
 const c = require("../controllers/voucherController");
 
 router.route("/").get(c.getVouchers).post(c.createVoucher);
+router.get("/image-search", c.searchImages); // before /:id
+router.route("/:id/image").get(c.getImage).patch(c.setImage);
 router.route("/:id").get(c.getVoucherById).put(c.updateVoucher).delete(c.deleteVoucher);
 router.post("/:id/grant", c.grantVoucher);
 router.post("/:id/redeem", c.redeemVoucher);
