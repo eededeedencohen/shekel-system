@@ -35,7 +35,7 @@ d("share previews on the served page", () => {
     expect(og(culture.text, "description")).not.toBe(og(join.text, "description"));
 
     const home = await request(app).get("/");
-    expect(og(home.text, "title")).toBe("שק״ל · מכללה לכל");
+    expect(og(home.text, "title")).toBe("שק״ל · מחלקת תרבות ופנאי");
     const picture = await request(app).get("/og/logo.png");
     expect(picture.status).toBe(200);
     expect(picture.headers["content-type"]).toMatch(/image\/png/);
@@ -62,7 +62,7 @@ d("share previews on the served page", () => {
   it("a student page never names the person; an unknown id falls back to the section", async () => {
     const s = await makeStudent({ firstName: "נועה", lastName: "פרטית" });
     const page = await request(app).get(`/students/${s._id}`);
-    expect(og(page.text, "title")).toBe("סטודנטים · מכללה לכל");
+    expect(og(page.text, "title")).toBe("סטודנטים · שק״ל");
     expect(page.text).not.toContain("נועה פרטית");
     const missing = await request(app).get("/culture/events/6aa128921cc122dde93a3577");
     expect(og(missing.text, "title")).toBe("תרבות לכל · שק״ל");

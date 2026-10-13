@@ -128,8 +128,8 @@ if (fs.existsSync(INDEX_HTML)) {
       maxAge: "1y",
       immutable: true,
       setHeaders(res, filePath) {
-        // The page, the service worker and the manifest must always be fresh.
-        if (/\.(html|webmanifest)$/.test(filePath) || filePath.endsWith("sw.js")) {
+        // The page, the service worker, the manifest and the build stamp must always be fresh.
+        if (/\.(html|webmanifest)$/.test(filePath) || filePath.endsWith("sw.js") || filePath.endsWith("version.json")) {
           res.setHeader("Cache-Control", "no-cache");
         }
       },
