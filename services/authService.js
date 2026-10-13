@@ -92,6 +92,17 @@ async function accountForToken(token) {
   return account;
 }
 
+/** A borrowed lens (utils/auth actorOf): the account by id, briefly cached like a session. */
+async function accountById(id) {
+  if (!/^[0-9a-f]{24}$/i.test(String(id))) return null;
+  const key = "id:" + id;
+  const hit = cache.get(key);
+  if (hit && hit.until > Date.now()) return hit.account;
+  const account = await StaffAccount.findById(id).lean();
+  cache.set(key, { account, until: Date.now() + CACHE_MS });
+  return account;
+}
+
 async function endSession(token) {
   if (!token) return;
   const h = hashToken(token);
@@ -287,6 +298,7 @@ module.exports = {
   ensureSeedAccounts,
   publicAccount,
   accountForToken,
+  accountById,
   endSession,
   login,
   changePassword,

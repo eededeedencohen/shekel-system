@@ -69,6 +69,25 @@ describe("auth", () => {
     expect(list.body.data.accounts.map((a) => a.username)).toEqual(["eden", "hagai", "noa", "yetav", "tamar", "shiran"]);
   });
 
+  test("viewing as someone: the super admin has that person's permissions; nobody else can borrow", async () => {
+    const { cookie: eden } = await signIn("eden");
+    const accounts = (await request(app).get("/api/accounts").set("Cookie", eden)).body.data.accounts;
+    const shiran = accounts.find((a) => a.username === "shiran");
+    const edenRow = accounts.find((a) => a.username === "eden");
+    // eden viewing as שירן: the users page and the database are closed to him
+    expect((await request(app).get("/api/accounts").set("Cookie", eden).set("X-Acting-As", shiran._id)).status).toBe(403);
+    expect((await request(app).get("/api/db/schema").set("Cookie", eden).set("X-Acting-As", shiran._id)).status).toBe(403);
+    // the rest of the API still answers him as her
+    expect((await request(app).get("/api/people").set("Cookie", eden).set("X-Acting-As", shiran._id)).status).toBe(200);
+    // viewing as himself, or a stale / unknown id: himself
+    expect((await request(app).get("/api/accounts").set("Cookie", eden).set("X-Acting-As", edenRow._id)).status).toBe(200);
+    expect((await request(app).get("/api/accounts").set("Cookie", eden).set("X-Acting-As", "000000000000000000000000")).status).toBe(200);
+    expect((await request(app).get("/api/accounts").set("Cookie", eden).set("X-Acting-As", "nonsense")).status).toBe(200);
+    // a non-super account cannot borrow the super admin
+    const { cookie: yetav } = await signIn("yetav");
+    expect((await request(app).get("/api/accounts").set("Cookie", yetav).set("X-Acting-As", edenRow._id)).status).toBe(403);
+  });
+
   test("create, edit, the last super admin stays", async () => {
     const { cookie } = await signIn("eden");
     const made = await request(app).post("/api/accounts").set("Cookie", cookie).send({ username: "Dana", name: "דנה", kind: "manager", phone: "0501234567" });

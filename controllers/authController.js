@@ -66,5 +66,5 @@ exports.updateAccount = catchAsync(async (req, res) => {
 });
 
 exports.createResetLink = catchAsync(async (req, res) => {
-  ok(res, await auth.createResetLink(req.params.id, req.body?.token, req.account?.name), 201);
+  ok(res, await auth.createResetLink(req.params.id, req.body?.token, req.actor?.name), 201);
 });
