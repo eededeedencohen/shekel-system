@@ -65,7 +65,18 @@ const personSchema = new mongoose.Schema(
      * THE weekly-availability home for every person - the same TimeRange
      * subschema, on the same path, whatever the profiles say.
      */
-    availability: [timeRangeSchema()],
+    availability: [
+      timeRangeSchema({
+        /**
+         * Who the window is for (Eden, 2026-10-14): a window the teacher
+         * marked (or the teachers' app synced) is nobody's - any program may
+         * use it; a window a program's staff marked after a phone call is
+         * that program's alone - the other program sees it as "freed for
+         * X" and may neither use nor change it.
+         */
+        program: { type: String, enum: ["college", "hostels", null], default: null },
+      }),
+    ],
     /** Future login - already has a home; never selected by default. */
     auth: {
       passwordHash: { type: String, select: false },

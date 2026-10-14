@@ -160,10 +160,59 @@ exports.deletePerson = catchAsync(async (req, res, next) => {
  * (Teacher subjects moved to PATCH /api/profiles/:id - compat keeps
  * accepting them here while exactly one Teacher profile exists.)
  */
+const PROGRAM_HE = { college: "מכללה לכל", hostels: "הוסטלים" };
+const PROGRAMS = Object.keys(PROGRAM_HE);
+/** The program a persona marks for - and the one it may not touch. */
+const PROGRAM_OF_KIND = { hostels: "hostels", manager: "college" };
+const OTHER = { college: "hostels", hostels: "college" };
+const toMin = (t) => {
+  const [h, m] = String(t || "0:0").split(":").map(Number);
+  return h * 60 + (m || 0);
+};
+const windowKey = (w) => `${w.day}|${w.start}|${w.end}`;
+
+/**
+ * The rules of program-marked windows (Eden, 2026-10-14): a window of one
+ * program may not overlap a window of the other, and a persona of one
+ * program may not add, move or drop the other program's windows.
+ */
+function checkAvailability(incoming, existing, actor) {
+  for (let i = 0; i < incoming.length; i++) {
+    for (let j = i + 1; j < incoming.length; j++) {
+      const a = incoming[i];
+      const b = incoming[j];
+      if (!a.program || !b.program || a.program === b.program || a.day !== b.day) continue;
+      if (toMin(a.start) < toMin(b.end) && toMin(b.start) < toMin(a.end)) {
+        return AppError.of("AVAILABILITY_TAKEN", 409, `המורה פינה/תה את הזמן ל${PROGRAM_HE[a.program]} ול${PROGRAM_HE[b.program]} בו זמנית`);
+      }
+    }
+  }
+  const mine = PROGRAM_OF_KIND[actor?.kind];
+  if (!mine) return null;
+  const locked = OTHER[mine];
+  const before = existing.filter((w) => w.program === locked).map(windowKey).sort();
+  const after = incoming.filter((w) => w.program === locked).map(windowKey).sort();
+  if (before.length !== after.length || before.some((k, i) => k !== after[i])) {
+    return AppError.of("AVAILABILITY_LOCKED", 403, `המורה פינה/תה את הזמן הזה ל${PROGRAM_HE[locked]}`);
+  }
+  return null;
+}
+
 exports.updateAvailability = catchAsync(async (req, res, next) => {
   const person = await Person.findOne({ _id: req.params.id, world: req.world });
   if (!person) return next(AppError.of("NOT_FOUND", 404, "אדם"));
-  if (Array.isArray(req.body.availability)) person.availability = req.body.availability;
+  if (Array.isArray(req.body.availability)) {
+    const incoming = req.body.availability.map((w) => ({
+      day: w.day,
+      start: w.start,
+      end: w.end,
+      program: PROGRAMS.includes(w.program) ? w.program : null,
+    }));
+    const existing = (person.availability || []).map((w) => ({ day: w.day, start: w.start, end: w.end, program: w.program || null }));
+    const err = checkAvailability(incoming, existing, req.actor);
+    if (err) return next(err);
+    person.availability = incoming;
+  }
   await person.save();
 
   const profiles = await profilesOf(person._id);
