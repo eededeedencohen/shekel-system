@@ -151,6 +151,70 @@ const UPLOAD_LINK_MINUTES = [
 /** The personal link the landing page hands out lives this long after a submission. */
 const LANDING_LINK_HOURS = 24;
 
+/* ───────────────────────── ספקים (פתיחת תיק ספק) ───────────────────────── */
+
+/**
+ * Opening a supplier (Eden, 2026-10-14, the paper form "פתיחת תיק ספק -
+ * עמותת שק״ל"): the coordinator makes a link, the supplier fills the
+ * form and uploads the certificates on their phone, the coordinator checks
+ * every item (תקין / לא תקין), generates the summary and sends the mail.
+ */
+const SUPPLIER_GENDERS = [
+  { key: "female", label: "אישה" },
+  { key: "male", label: "גבר" },
+  { key: "other", label: "אחר" },
+];
+const SUPPLIER_GENDER_KEYS = SUPPLIER_GENDERS.map((g) => g.key);
+/** How long the supplier's link stays open (days) - the coordinator picks. */
+const SUPPLIER_LINK_DAYS = [
+  { key: 3, label: "3 ימים" },
+  { key: 7, label: "שבוע" },
+  { key: 14, label: "שבועיים" },
+  { key: 30, label: "חודש" },
+];
+/** The certificates the paper form asks for; the fourth only "במידת הצורך". */
+const SUPPLIER_FILES = [
+  { key: "books", label: "אישור ניהול ספרים", required: true },
+  { key: "withholding", label: "אישור ניכוי מס במקור", required: true },
+  { key: "bankProof", label: "צילום צ'ק או אישור בנק על החשבון", required: true },
+  { key: "exempt", label: "אישור עוסק פטור", required: false, hint: "במידת הצורך" },
+];
+const SUPPLIER_FILE_KEYS = SUPPLIER_FILES.map((f) => f.key);
+/** The form's fields; `required` = the asterisk on the paper. */
+const SUPPLIER_FIELDS = [
+  { key: "companyName", label: "שם חברה / מוסד" },
+  { key: "businessId", label: "מספר עוסק מורשה", required: true },
+  { key: "address", label: "כתובת" },
+  { key: "officePhone", label: "טלפון משרד" },
+  { key: "contactName", label: "שם איש קשר" },
+  { key: "contactPhone", label: "טלפון סלולרי איש קשר", required: true },
+  { key: "contactEmail", label: "מייל איש קשר", required: true },
+  { key: "accountOwners", label: "שם בעלי החשבון" },
+  { key: "bank", label: "בנק", required: true },
+  { key: "branch", label: "סניף", required: true },
+  { key: "accountNumber", label: "מספר חשבון", required: true },
+];
+const SUPPLIER_FIELD_KEYS = SUPPLIER_FIELDS.map((f) => f.key);
+/** Fixed for every supplier - the form shows it, nobody edits it. */
+const SUPPLIER_PAYMENT_TERMS = "שוטף + 60";
+/**
+ * Where a supplier stands (computed from the facts, never set by hand):
+ *   link      the link exists, the form was not sent yet
+ *   filling   the form or files are still missing, or something was marked לא תקין
+ *   review    everything is in - the coordinator checks
+ *   approved  everything תקין - waiting for the mail ("הועלו קבצים")
+ *   done      the mail was sent
+ */
+const SUPPLIER_STATUSES = ["link", "filling", "review", "approved", "done"];
+const SUPPLIER_STATUS_LABELS = {
+  link: "נשלח קישור",
+  filling: "ממלא/ת",
+  review: "לבדיקה",
+  approved: "הכול תקין · ממתין למייל",
+  done: "נשלח מייל",
+};
+const SUPPLIER_REVIEW_STATES = ["pending", "ok", "bad"];
+
 /* ───────────────────────── פעילויות (the person's record) ───────────────────────── */
 
 /**
@@ -660,6 +724,24 @@ const ERROR_CODES = {
   // זמינות מורה שסומנה לתוכנית (Eden, 2026-10-14)
   AVAILABILITY_TAKEN: "הזמן הזה כבר שמור לתוכנית אחרת",
   AVAILABILITY_LOCKED: "חלון שסומן לתוכנית אחרת אי אפשר לשנות",
+  // ספקים (פתיחת תיק ספק)
+  NOT_SUPPLIER_STAFF: "עמוד הספקים שמור לרכזת ההוסטלים",
+  SUPPLIER_INVALID: "לספק חסרים פרטים: שם פרטי, שם משפחה, מין וטלפון",
+  SUPPLIER_LINK_INVALID: "הקישור אינו תקף",
+  SUPPLIER_LINK_EXPIRED: "הקישור פג - בקשו מהרכזת קישור חדש",
+  SUPPLIER_LINK_DAYS_INVALID: "משך הקישור חייב להיות 3 ימים, שבוע, שבועיים או חודש",
+  SUPPLIER_FORM_INVALID: "בטופס חסרים שדות חובה או שיש בו ערך לא תקין",
+  SUPPLIER_FORM_LOCKED: "הטופס כבר אושר ואי אפשר לשנות אותו",
+  SUPPLIER_FILE_UNKNOWN: "סוג קובץ לא מוכר",
+  SUPPLIER_FILE_LOCKED: "הקובץ כבר אושר ואי אפשר להחליף אותו",
+  SUPPLIER_FILE_REQUIRED: "את הקובץ הזה חובה להעלות - אי אפשר לסמן שלא רלוונטי",
+  SUPPLIER_REVIEW_INVALID: "בדיקה חייבת להיות תקין או לא תקין",
+  SUPPLIER_REVIEW_NOTE: "כשמשהו לא תקין חובה לכתוב מה לא תקין",
+  SUPPLIER_REVIEW_FIELDS: "כשהטופס לא תקין חובה לסמן אילו שדות",
+  SUPPLIER_NOTHING_TO_REVIEW: "הספק עוד לא מילא את זה",
+  SUPPLIER_NOT_APPROVED: "המייל נשלח רק אחרי שהכול תקין",
+  SUPPLIER_EMAIL_STEPS: "לפני \"נשלח מייל\" צריך לחולל את ה-PDF ולהעתיק את הכותרת ואת התוכן",
+  SUPPLIER_DONE: "הספק כבר נקלט - המייל נשלח",
   // כניסה וניהול משתמשים
   AUTH_REQUIRED: "צריך להיכנס למערכת",
   AUTH_FAILED: "שם המשתמש או הסיסמה לא נכונים",
@@ -737,6 +819,14 @@ const DOMAIN_META = {
   errorCodes: ERROR_CODES,
   staffKinds: STAFF_KINDS,
   resetLinkHours: RESET_LINK_HOURS,
+  suppliers: {
+    genders: SUPPLIER_GENDERS,
+    linkDays: SUPPLIER_LINK_DAYS,
+    files: SUPPLIER_FILES,
+    fields: SUPPLIER_FIELDS,
+    paymentTerms: SUPPLIER_PAYMENT_TERMS,
+    statuses: SUPPLIER_STATUSES.map((k) => ({ key: k, label: SUPPLIER_STATUS_LABELS[k] })),
+  },
 };
 
 module.exports = {
@@ -758,6 +848,17 @@ module.exports = {
   SCREENING_INTEREST_KEYS,
   UPLOAD_LINK_MINUTES,
   LANDING_LINK_HOURS,
+  SUPPLIER_GENDERS,
+  SUPPLIER_GENDER_KEYS,
+  SUPPLIER_LINK_DAYS,
+  SUPPLIER_FILES,
+  SUPPLIER_FILE_KEYS,
+  SUPPLIER_FIELDS,
+  SUPPLIER_FIELD_KEYS,
+  SUPPLIER_PAYMENT_TERMS,
+  SUPPLIER_STATUSES,
+  SUPPLIER_STATUS_LABELS,
+  SUPPLIER_REVIEW_STATES,
   ACTIVITY_KINDS,
   ACTIVITY_KIND_KEYS,
   ACTIVITY_FIELD_TYPES,

@@ -38,6 +38,8 @@ const STATIC = {
   home: { title: `${SITE} · מחלקת תרבות ופנאי`, description: "מערכת הניהול של מכללה לכל ותרבות לכל: מערכת שבועית, קליטה ושיבוץ, נוכחות, הספרייה ואירועי תרבות." },
   join: { title: "הצטרפות לשק״ל", description: "כמה שאלות קצרות ואנחנו מתחילים - מכללה לכל ותרבות לכל בירושלים. ממלאים לבד, עם ההורים או עם מתאם/ת הטיפול." },
   joinDocs: { title: "המסמכים שלי · שק״ל", description: "העלאת המסמכים לתיק הקליטה - מהטלפון, בכל זמן. רואים מה כבר התקבל ומה חסר." },
+  supplier: { title: "פתיחת תיק ספק · שק״ל", description: "טופס קצר והאישורים - מהטלפון, בלי סיסמה. רואים מה כבר התקבל ומה נשאר." },
+  suppliers: { title: "ספקים · שק״ל", description: "פתיחת תיק ספק: הקישור, הטופס, האישורים והמייל - צעד אחרי צעד." },
   schedule: { title: "מערכת שבועית · מכללה לכל", description: "כל המפגשים של השבוע - לפי יום, מורה, קטגוריה והוסטל." },
   gantt: { title: "ציר זמן · מכללה לכל", description: "הקורסים על פני השנה - מתי כל מחזור מתחיל ומסתיים." },
   rooms: { title: "זמינות חדרים · מכללה לכל", description: "מי בכל חדר, מתי, ואיפה יש מקום פנוי." },
@@ -77,6 +79,8 @@ function previewFor(pathname, query = {}) {
   let m;
   if (p === "/join") return pick("join");
   if (p.startsWith("/join/docs/")) return pick("joinDocs");
+  if (p.startsWith("/supplier/")) return pick("supplier");
+  if (p === "/suppliers" || p.startsWith("/suppliers/")) return pick("suppliers");
   if (p === "/") return pick("home");
   if (p === "/schedule") return pick("schedule");
   if (p === "/gantt") return pick("gantt");

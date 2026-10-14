@@ -91,6 +91,9 @@ app.use("/api/vouchers", require("./routes/voucherRoutes"));
 // page that feeds them (no login; see controllers/publicController).
 app.use("/api/intakes", require("./routes/intakeRoutes"));
 app.use("/api/public", require("./routes/publicRoutes"));
+// פתיחת תיק ספק (Eden, 2026-10-14) - the hostels coordinator's suppliers;
+// the supplier's own side is under /api/public/supplier/:token.
+app.use("/api/suppliers", require("./routes/supplierRoutes"));
 // לשונית פעילויות + אירועים חריגים (the social worker's round, 2026-10-07):
 // a person's record with editable templates, and incident reports.
 app.use("/api/activities", require("./routes/activityRoutes"));
