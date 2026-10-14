@@ -210,15 +210,29 @@ async function resolveToken({ world, token }) {
   return s;
 }
 
-/** The supplier opened the page - noted once as the first time, always as the last. */
+/**
+ * The supplier opened the page - noted once as the first time, always as
+ * the last. Best effort: the page must render even when the database
+ * refuses writes (the Atlas quota, 2026-10-14), so a failed note is logged
+ * and the view goes out as it was.
+ */
 async function noteOpened(s) {
   const now = new Date();
-  if (!s.link.openedAt) {
+  const first = !s.link.openedAt;
+  if (first) {
     s.link.openedAt = now;
     s.updates.push({ at: now, kind: "opened", text: "פתח/ה את הקישור" });
   }
   s.link.lastOpenedAt = now;
-  await s.save();
+  try {
+    await s.save();
+  } catch (err) {
+    console.error("supplier: the opening was not noted -", err.message);
+    if (first) {
+      s.link.openedAt = undefined;
+      s.updates.pop();
+    }
+  }
   return s;
 }
 

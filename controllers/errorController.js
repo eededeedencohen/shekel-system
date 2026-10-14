@@ -65,6 +65,9 @@ module.exports = (err, req, res, next) => {
   // body-parser: a body over the JSON limit (an upload too big) or unparsable
   else if (err.type === "entity.too.large") mapped = Object.assign(new AppError("הקובץ גדול מדי - עד 8MB לקובץ", 413), { code: "PAYLOAD_TOO_LARGE" });
   else if (err.type === "entity.parse.failed") mapped = Object.assign(new AppError("גוף הבקשה לא תקין", 400), { code: "BAD_JSON" });
+  // Atlas: the cluster is over its storage quota and refuses every write
+  // (2026-10-14, 513 of 512 MB) - say so in Hebrew instead of "Something went wrong"
+  else if (err.codeName === "AtlasError" && err.code === 8000 && /space quota/i.test(err.message || "")) mapped = AppError.of("DB_FULL", 507);
 
   // Operational, trusted error: surface to client (code = stable English
   // key from domain.ERROR_CODES when the thrower used AppError.of()).
