@@ -10,8 +10,11 @@
 const express = require("express");
 const router = express.Router();
 const c = require("../controllers/supplierController");
+const { requireSuper } = require("../utils/auth");
 
 router.use(c.requireSupplierStaff);
+// the super admin's corrections (Eden, 2026-10-15): statuses edited, things deleted
+router.post("/:id/admin", requireSuper, c.admin);
 router.route("/").get(c.list).post(c.create);
 router.route("/:id").get(c.getOne).patch(c.update).delete(c.remove);
 router.post("/:id/link", c.renewLink);

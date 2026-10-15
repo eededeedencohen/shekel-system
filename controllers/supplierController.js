@@ -64,6 +64,9 @@ exports.emailStep = catchAsync(async (req, res) => {
   answer(res, await suppliers.emailStep(await load(req), { step, to, by: by(req) }));
 });
 
+/** The super admin's corrections (the route is behind requireSuper). */
+exports.admin = catchAsync(async (req, res) => answer(res, await suppliers.adminAction(await load(req), { ...(req.body || {}), by: by(req) })));
+
 exports.remove = catchAsync(async (req, res) => {
   await suppliers.remove(await load(req));
   res.status(204).json({ status: "success", data: null });

@@ -226,6 +226,45 @@ describe("/api/suppliers + /api/public/supplier/:token", () => {
     expect((await request(app).get(pub(token))).body.data.view.done).toBe(true);
   });
 
+  it("the super admin edits statuses and deletes things; the coordinator may not", async () => {
+    const { id, token } = await readySupplier();
+    const admin = (body, cookie = eden) => request(app).post(`/api/suppliers/${id}/admin`).set("Cookie", cookie).send(body);
+    expect((await admin({ action: "reviewSet", target: "form", state: "ok" }, tamar)).status).toBe(403);
+    expect((await admin({ action: "nope" })).body.code).toBe("SUPPLIER_ADMIN_ACTION");
+    // statuses: every item ok → approved; one back to pending → review
+    for (const target of ["form", "books", "withholding", "bankProof", "exempt"]) expect((await admin({ action: "reviewSet", target, state: "ok" })).status).toBe(200);
+    let s = (await request(app).get(`/api/suppliers/${id}`).set("Cookie", tamar)).body.data.supplier;
+    expect(s.status).toBe("approved");
+    s = (await admin({ action: "reviewSet", target: "books", state: "pending" })).body.data.supplier;
+    expect(s.status).toBe("review");
+    expect(s.fileRows.find((r) => r.key === "books").review.state).toBe("pending");
+    // the mail: sent forced without the three steps → done; sent undone → back
+    s = (await admin({ action: "reviewSet", target: "books", state: "ok" })).body.data.supplier;
+    s = (await admin({ action: "emailSet", step: "sent", on: true })).body.data.supplier;
+    expect(s.status).toBe("done");
+    expect(s.email.sentBy).toBe("עדן כהן");
+    s = (await admin({ action: "emailSet", step: "sent", on: false })).body.data.supplier;
+    expect(s.status).toBe("approved");
+    expect(s.email.sentAt).toBeFalsy();
+    s = (await admin({ action: "emailSet", step: "pdf", on: true })).body.data.supplier;
+    expect(s.email.pdfAt).toBeTruthy();
+    // delete a file, wave the fourth off, reset the form, clear the feed, close the link
+    s = (await admin({ action: "fileRemove", key: "bankProof" })).body.data.supplier;
+    expect(s.fileRows.find((r) => r.key === "bankProof").fileName).toBeNull();
+    expect(s.status).toBe("filling");
+    expect(await StoredFile.countDocuments({ world: "real" })).toBe(2);
+    s = (await admin({ action: "waive", key: "exempt", value: false })).body.data.supplier;
+    expect(s.fileRows.find((r) => r.key === "exempt").notApplicable).toBe(false);
+    s = (await admin({ action: "formReset" })).body.data.supplier;
+    expect(s.formSubmittedAt).toBeFalsy();
+    expect(s.status).toBe("link");
+    s = (await admin({ action: "updatesClear" })).body.data.supplier;
+    expect(s.updates).toHaveLength(0);
+    s = (await admin({ action: "linkClose" })).body.data.supplier;
+    expect(s.linkLive).toBe(false);
+    expect((await request(app).get(pub(token))).status).toBe(410);
+  });
+
   it("deleting a supplier takes its stored files with it; the worlds stay apart", async () => {
     const { id } = await readySupplier();
     expect(await StoredFile.countDocuments({ world: "real" })).toBe(3);

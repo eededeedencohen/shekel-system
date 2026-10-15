@@ -192,6 +192,86 @@ async function emailStep(s, { step, to, by }) {
   return settle(s);
 }
 
+/**
+ * The super admin's corrections (Eden, 2026-10-15: "לסופר מנהל תן אפשרויות
+ * למחוק דברים… או אפילו לערוך סטטוסים"). Every action rewrites one fact
+ * and the status follows from the facts as always:
+ *   reviewSet    { target, state, note? }   pending / ok / bad on the form or a file
+ *   fileRemove   { key }                    the stored file goes (the row opens again)
+ *   waive        { key, value }             "לא רלוונטי" on / off (the optional file)
+ *   formReset                               the form is as if never sent
+ *   emailSet     { step, on }               pdf / subject / body / sent - set now or unset
+ *                                           (sent on = the file closes even without the
+ *                                           three steps; sent off = it reopens)
+ *   updatesClear                            the supplier's feed is emptied
+ *   linkClose                               the link locks now
+ */
+async function adminAction(s, { action, target, key, state, note, value, step, on, by }) {
+  const now = new Date();
+  switch (action) {
+    case "reviewSet": {
+      if (!["pending", "ok", "bad"].includes(state)) throw AppError.of("SUPPLIER_REVIEW_INVALID", 400);
+      const text = clean(note, 600);
+      const review = state === "pending" ? { state: "pending", fields: [] } : { state, note: text, fields: [], at: now, by };
+      if (target === "form") s.formReview = { ...review, fields: state === "bad" ? (Array.isArray(value) ? value.filter((k) => SUPPLIER_FIELD_KEYS.includes(k)) : []) : [] };
+      else {
+        const row = rowOf(s, target);
+        if (!row) throw AppError.of("SUPPLIER_FILE_UNKNOWN", 400, String(target));
+        row.review = review;
+      }
+      return settle(s);
+    }
+    case "fileRemove": {
+      const row = rowOf(s, key);
+      if (!row) throw AppError.of("SUPPLIER_FILE_UNKNOWN", 400, String(key));
+      if (row.file?.stored) await StoredFile.deleteOne({ _id: row.file.stored });
+      row.file = {};
+      row.notApplicable = false;
+      row.review = { state: "pending", fields: [] };
+      return settle(s);
+    }
+    case "waive": {
+      const def = FILE_BY_KEY[key];
+      if (!def) throw AppError.of("SUPPLIER_FILE_UNKNOWN", 400, String(key));
+      const row = rowOf(s, key);
+      const onIt = value !== false;
+      if (onIt && row.file?.stored) {
+        await StoredFile.deleteOne({ _id: row.file.stored });
+        row.file = {};
+      }
+      row.notApplicable = onIt;
+      row.review = { state: "pending", fields: [] };
+      return settle(s);
+    }
+    case "formReset":
+      s.form = { paymentTerms: SUPPLIER_PAYMENT_TERMS };
+      s.formSubmittedAt = null;
+      s.formUpdatedAt = null;
+      s.formReview = { state: "pending", fields: [] };
+      return settle(s);
+    case "emailSet": {
+      const field = { pdf: "pdfAt", subject: "subjectAt", body: "bodyAt", sent: "sentAt" }[step];
+      if (!field) throw AppError.of("INVALID_STATUS", 400, String(step));
+      if (on) {
+        s.email[field] = now;
+        if (step === "sent") s.email.sentBy = by;
+      } else {
+        s.email[field] = null;
+        if (step === "sent") s.email.sentBy = null;
+      }
+      return settle(s);
+    }
+    case "updatesClear":
+      s.updates = [];
+      return settle(s);
+    case "linkClose":
+      if (s.link) s.link.expiresAt = now;
+      return settle(s);
+    default:
+      throw AppError.of("SUPPLIER_ADMIN_ACTION", 400, String(action));
+  }
+}
+
 /** The supplier and every stored file of theirs. */
 async function remove(s) {
   const ids = (s.files || []).map((r) => r.file?.stored).filter(Boolean);
@@ -322,7 +402,7 @@ async function removeFile(s, key) {
   if (!row) throw AppError.of("SUPPLIER_FILE_UNKNOWN", 400, String(key));
   if (row.review?.state === "ok") throw AppError.of("SUPPLIER_FILE_LOCKED", 400);
   if (row.file?.stored) await StoredFile.deleteOne({ _id: row.file.stored });
-  row.file = undefined;
+  row.file = {};
   row.notApplicable = false;
   row.review = { state: "pending", fields: [] };
   return settle(s);
@@ -338,7 +418,7 @@ async function setNotApplicable(s, key, value) {
   const on = value !== false;
   if (on && row.file?.stored) {
     await StoredFile.deleteOne({ _id: row.file.stored });
-    row.file = undefined;
+    row.file = {};
   }
   const wasBad = row.review?.state === "bad";
   row.notApplicable = on;
@@ -431,6 +511,7 @@ module.exports = {
   review,
   markSeen,
   emailStep,
+  adminAction,
   remove,
   resolveToken,
   noteOpened,
