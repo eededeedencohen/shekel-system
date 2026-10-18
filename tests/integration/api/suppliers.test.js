@@ -248,6 +248,16 @@ describe("/api/suppliers + /api/public/supplier/:token", () => {
     expect(s.email.sentAt).toBeFalsy();
     s = (await admin({ action: "emailSet", step: "pdf", on: true })).body.data.supplier;
     expect(s.email.pdfAt).toBeTruthy();
+    // everything the coordinator pressed, undone in one go: verdicts pending, mail steps off; the supplier's work stays
+    expect((await admin({ action: "reviewSet", target: "form", state: "bad", note: "x", value: ["businessId"] })).status).toBe(200);
+    s = (await admin({ action: "coordinatorReset" })).body.data.supplier;
+    expect(s.formReview.state).toBe("pending");
+    expect(s.fileRows.every((r) => r.review.state === "pending")).toBe(true);
+    expect(s.email.pdfAt).toBeFalsy();
+    expect(s.email.sentAt).toBeFalsy();
+    expect(s.status).toBe("review");
+    expect(s.counts.done).toBe(4);
+    expect(s.formSubmittedAt).toBeTruthy();
     // delete a file, wave the fourth off, reset the form, clear the feed, close the link
     s = (await admin({ action: "fileRemove", key: "bankProof" })).body.data.supplier;
     expect(s.fileRows.find((r) => r.key === "bankProof").fileName).toBeNull();

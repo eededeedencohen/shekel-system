@@ -205,6 +205,8 @@ async function emailStep(s, { step, to, by }) {
  *                                           three steps; sent off = it reopens)
  *   updatesClear                            the supplier's feed is emptied
  *   linkClose                               the link locks now
+ *   coordinatorReset                        every verdict back to pending and the mail
+ *                                           steps off - as if the coordinator never pressed
  */
 async function adminAction(s, { action, target, key, state, note, value, step, on, by }) {
   const now = new Date();
@@ -263,6 +265,13 @@ async function adminAction(s, { action, target, key, state, note, value, step, o
     }
     case "updatesClear":
       s.updates = [];
+      return settle(s);
+    // everything the coordinator pressed, undone in one go (Eden, 2026-10-18): every תקין /
+    // לא תקין back to pending, the four mail steps off - what the supplier sent stays
+    case "coordinatorReset":
+      s.formReview = { state: "pending", fields: [] };
+      for (const row of s.files || []) row.review = { state: "pending", fields: [] };
+      s.email = { pdfAt: null, subjectAt: null, bodyAt: null, sentAt: null, sentBy: null, to: { name: "", gender: "" } };
       return settle(s);
     case "linkClose":
       if (s.link) s.link.expiresAt = now;
