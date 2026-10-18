@@ -10,6 +10,10 @@ const tags = require("../services/tagService");
 const mongoose = require("mongoose");
 const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
+const lens = require("../services/lensService");
+
+// the person must be in the acting persona's lens (services/lensService)
+router.param("id", lens.guardPerson);
 
 /** GET /api/tags → { groups: [{key,label}], tags: [{key,label,group,active}] } */
 router.get(
@@ -25,6 +29,7 @@ router.post(
   "/people/:id",
   catchAsync(async (req, res) => {
     const person = await requirePerson(req.params.id, req.world);
+    lens.assertProgramTag(req, req.body.key); // a program tag of the persona's own program only
     await tags.give({ world: req.world, personId: person._id, key: req.body.key, by: req.body.by, note: req.body.note });
     res.status(200).json({ status: "success", data: await answer(req.world, person._id) });
   })
@@ -35,6 +40,7 @@ router.delete(
   "/people/:id/:key",
   catchAsync(async (req, res) => {
     const person = await requirePerson(req.params.id, req.world);
+    lens.assertProgramTag(req, req.params.key);
     await tags.take({ world: req.world, personId: person._id, key: req.params.key, by: req.body?.by, note: req.body?.note });
     res.status(200).json({ status: "success", data: await answer(req.world, person._id) });
   })

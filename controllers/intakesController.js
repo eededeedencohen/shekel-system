@@ -19,6 +19,7 @@ const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 const { notModified, docTag } = require("../utils/sendFile");
 const intake = require("../services/intakeService");
+const lens = require("../services/lensService");
 
 const PERSON_POP = { path: "person", select: "firstName lastName phone email gender birthDate avatar deletedAt" };
 const SUBJECT_POP = { path: "landing.preferences.subjects", select: "name category" };
@@ -32,6 +33,7 @@ const populated = (doc) => Intake.findById(doc._id).populate([PERSON_POP, SUBJEC
 const personOf = async (req, id) => {
   const person = await Person.findOne({ _id: id, world: req.world, deletedAt: null });
   if (!person) throw AppError.of("NOT_FOUND", 404, "אדם");
+  await lens.assertPerson(req, person._id); // the acting persona's own people (lensService)
   return person;
 };
 
@@ -40,6 +42,7 @@ exports.getIntakes = catchAsync(async (req, res) => {
   const filter = { world: req.world };
   if (req.query.status) filter.status = { $in: req.query.status.split(",") };
   if (req.query.person) filter.person = req.query.person;
+  await lens.narrowByPerson(req, filter, "person"); // the files of the lens's people only
   const intakes = await Intake.find(filter).populate([PERSON_POP, SUBJECT_POP]).sort({ updatedAt: -1 });
   res.status(200).json({ status: "success", results: intakes.length, data: { intakes } });
 });

@@ -29,9 +29,15 @@ const {
   getLinks,
   updateIntake,
 } = require("../controllers/intakesController");
+const Intake = require("../models/Intake");
+const lens = require("../services/lensService");
 
 // staff uploads carry base64 files too
 // (staff uploads are base64 in JSON - the body limit is the global one in app.js)
+
+// a file is reachable only when its person is in the acting persona's lens (services/lensService)
+router.param("id", lens.guardByPerson(Intake));
+router.param("personId", lens.guardPerson);
 
 // Static paths before /:id
 router.post("/open", openIntake);

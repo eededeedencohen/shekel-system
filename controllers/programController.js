@@ -16,6 +16,7 @@ const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 const { transfer, closeProfile, leaveProgram, reopenProfile, programTimeline } = require("../services/programService");
 const { profilesOf, flattenPerson } = require("../services/profileService");
+const lens = require("../services/lensService");
 
 async function respondWithPerson(res, personId, extra = {}) {
   const person = await Person.findById(personId);
@@ -26,6 +27,7 @@ async function respondWithPerson(res, personId, extra = {}) {
 exports.transferProgram = catchAsync(async (req, res, next) => {
   const { from, to, by, note, stage, at } = req.body;
   if (!from || !to) return next(AppError.of("MISSING_FIELDS", 400, "from, to"));
+  lens.assertProfileKind(req, to); // the destination must be a program the persona has (lensService)
   const { effects } = await transfer({ personId: req.params.id, world: req.world, from, to, by, note, stage, at });
   await respondWithPerson(res, req.params.id, { effects });
 });

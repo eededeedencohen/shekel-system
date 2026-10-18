@@ -17,6 +17,7 @@ const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
 const { INCIDENT_PRIMARY, INCIDENT_PRIMARY_KEYS } = require("../utils/domain");
 const activities = require("./activityService");
+const { personCond } = require("./lensService");
 
 const clean = (s, max = 4000) => (s == null ? undefined : String(s).trim().slice(0, max) || undefined);
 const primaryLabel = (k) => INCIDENT_PRIMARY.find((p) => p.key === k)?.label || k;
@@ -108,10 +109,11 @@ async function updateIncident({ world, id, patch = {}, by }) {
   return incident;
 }
 
-/** Newest first (of one person, or of the world). */
-function listIncidents({ world, person }) {
+/** Newest first (of one person, or of the world; `persons` = the lens's people - a Set of ids - or null for everyone). */
+function listIncidents({ world, person, persons = null }) {
   const filter = { world };
   if (person) filter.person = person;
+  if (persons) filter.person = personCond(persons, filter.person);
   return Incident.find(filter).sort({ at: -1 });
 }
 

@@ -12,6 +12,7 @@ const { enroll, updateStatus } = require("../services/enrollmentService");
 const { attachStudentData } = require("../services/profileService");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
+const lens = require("../services/lensService");
 
 // pipeline/matching/residence live on the student PROFILE now - populate
 // identity, then merge the profile fields in (attachStudentData).
@@ -23,6 +24,7 @@ exports.getEnrollments = catchAsync(async (req, res) => {
   if (req.query.cycle) filter.cycle = req.query.cycle;
   if (req.query.student) filter.student = req.query.student;
   if (req.query.status) filter.status = { $in: req.query.status.split(",") };
+  await lens.narrowByCycle(req, filter); // the seats of the lens's cycles only
   const docs = await Enrollment.find(filter).populate(STUDENT_POP).sort({ createdAt: 1 });
   const enrollments = await attachStudentData(docs.map((e) => e.toObject()));
   res.status(200).json({ status: "success", results: enrollments.length, data: { enrollments } });
@@ -34,6 +36,9 @@ exports.getEnrollments = catchAsync(async (req, res) => {
  *         slotId?, note?, createdBy?, joinedAt? }
  */
 exports.createEnrollment = catchAsync(async (req, res) => {
+  // the cycle and the student must both be the acting persona's (lensService)
+  await lens.assertCycle(req, req.body.cycle);
+  await lens.assertPerson(req, req.body.student);
   const enrollment = await enroll({
     cycleId: req.body.cycle,
     studentId: req.body.student,

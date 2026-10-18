@@ -18,6 +18,11 @@ const {
   updateMatching,
 } = require("../controllers/profileController");
 const { closeProfile, leaveProgram, reopenProfile } = require("../controllers/programController");
+const { Profile } = require("../models/profiles");
+const lens = require("../services/lensService");
+
+// a profile is reachable only when its person is in the acting persona's lens (services/lensService)
+router.param("id", lens.guardByPerson(Profile));
 
 router.get("/", getProfiles);
 router.route("/:id").get(getProfileById).patch(updateProfile).delete(deactivateProfile);

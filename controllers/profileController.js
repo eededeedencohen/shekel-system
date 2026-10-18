@@ -22,6 +22,7 @@ const {
   flattenPerson,
 } = require("../services/profileService");
 const { closeProfile, reopenProfile } = require("../services/programService");
+const lens = require("../services/lensService");
 
 /** GET /api/people/:id/profiles?includeInactive= */
 exports.getPersonProfiles = catchAsync(async (req, res, next) => {
@@ -39,6 +40,7 @@ exports.createPersonProfile = catchAsync(async (req, res, next) => {
   if (!person) return next(AppError.of("NOT_FOUND", 404, "אדם"));
   if (person.deletedAt) return next(AppError.of("PERSON_DELETED", 400));
   if (!req.body.kind) return next(AppError.of("MISSING_FIELDS", 400, "kind"));
+  lens.assertProfileKind(req, req.body.kind); // the persona's own program only
   const profile = await createProfile(person, req.body.kind, req.body, {
     opened: { by: req.body.by, note: req.body.note },
     ...(STUDENT_KINDS.includes(req.body.kind) && {
@@ -54,6 +56,7 @@ exports.getProfiles = catchAsync(async (req, res) => {
   filter.active = req.query.active === "false" ? false : true;
   if (req.query.kind) filter.kind = { $in: req.query.kind.split(",") };
   if (req.query.person) filter.person = req.query.person;
+  await lens.narrowByPerson(req, filter, "person"); // the lens's people only
   const profiles = await Profile.find(filter)
     .populate({ path: "person", select: "firstName lastName email phone deletedAt" })
     .sort({ createdAt: 1 });

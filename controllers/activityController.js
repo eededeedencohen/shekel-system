@@ -16,14 +16,18 @@
 
 const catchAsync = require("../utils/catchAsync");
 const activities = require("../services/activityService");
+const lens = require("../services/lensService");
 
 exports.getActivities = catchAsync(async (req, res) => {
-  const rows = await activities.listActivities({ world: req.world, person: req.query.person, kind: req.query.kind });
+  // the rows of the acting persona's people only (lensService)
+  const persons = await lens.scopeOf(req).people();
+  const rows = await activities.listActivities({ world: req.world, person: req.query.person, kind: req.query.kind, persons });
   res.status(200).json({ status: "success", results: rows.length, data: { activities: rows } });
 });
 
 exports.createActivity = catchAsync(async (req, res) => {
   const b = req.body || {};
+  await lens.assertPerson(req, b.person); // on one of the persona's own people
   const activity = await activities.addActivity({
     world: req.world,
     person: b.person,

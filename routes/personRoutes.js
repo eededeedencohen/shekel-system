@@ -27,6 +27,11 @@ const {
 } = require("../controllers/profileController");
 const { createIntakeLead } = require("../controllers/intakeController");
 const { transferProgram, getProgramTimeline } = require("../controllers/programController");
+const lens = require("../services/lensService");
+
+// Every person-addressed path: the person must be in the acting persona's
+// lens (services/lensService, Eden 2026-10-18) - 403 OUT_OF_SCOPE otherwise.
+router.param("id", lens.guardPerson);
 
 // Static paths before /:id
 router.post("/intake", createIntakeLead);

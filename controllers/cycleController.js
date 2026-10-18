@@ -15,6 +15,7 @@ const Lesson = require("../models/Lesson");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 const { attachCycleTags } = require("../services/tagService");
+const lens = require("../services/lensService");
 
 const POPULATE = [
   { path: "subject", select: "name category active" },
@@ -44,6 +45,8 @@ exports.getCycles = catchAsync(async (req, res) => {
   if (req.query.hostel) filter.hostel = req.query.hostel;
   else if (req.query.track === "hostel") filter.hostel = { $ne: null };
   else if (req.query.track === "college") filter.hostel = null;
+  // the acting persona's side only: hostel cycles for the hostels coordinator, college ones for a manager (lensService)
+  lens.narrowCycles(req, filter);
 
   const cycles = await attachCycleTags(req.world, await Cycle.find(filter).populate(POPULATE));
   res.status(200).json({ status: "success", results: cycles.length, data: { cycles } });
@@ -58,6 +61,7 @@ exports.getCycleById = catchAsync(async (req, res, next) => {
 
 /** POST /api/cycles */
 exports.createCycle = catchAsync(async (req, res, next) => {
+  lens.assertCycleBody(req, req.body, { create: true }); // a hostel cycle from the hostels lens, a college one from the college's
   // Worlds never mix: the subject must belong to the request's world.
   if (req.body.subject) {
     const subject = await Subject.findById(req.body.subject).select("world");
@@ -73,6 +77,7 @@ exports.createCycle = catchAsync(async (req, res, next) => {
 exports.updateCycle = catchAsync(async (req, res, next) => {
   const cycle = await Cycle.findOne({ _id: req.params.id, world: req.world });
   if (!cycle) return next(AppError.of("NOT_FOUND", 404, "מחזור"));
+  lens.assertCycleBody(req, req.body); // it may not be moved to the other side
   Object.assign(cycle, pickBody(req.body));
   await cycle.save();
   await cycle.populate(POPULATE);

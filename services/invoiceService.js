@@ -53,13 +53,17 @@ const teacherOfLesson = (lesson, cycleById) => String(lesson.teacher || cycleByI
  * name. Each carries `invoice` (the id, or null) so a picker can grey out
  * the billed ones. Newest first.
  */
-async function lessonsOfTeacher({ world, teacherId, limit = 400 }) {
+async function lessonsOfTeacher({ world, teacherId, limit = 400, cycleIds = null }) {
   if (!isId(teacherId)) throw AppError.of("NOT_FOUND", 404, "מורה");
+  // `cycleIds` (a Set, from the lens) keeps the lessons on the persona's side only
+  const inLens = (ids) => (cycleIds ? ids.filter((id) => cycleIds.has(String(id))) : ids);
   const cycles = await Cycle.find({ world, teacher: teacherId }).select("_id").lean();
+  const own = inLens(cycles.map((c) => c._id));
+  const substituted = cycleIds ? { teacher: teacherId, cycle: { $in: [...cycleIds].map((id) => new mongoose.Types.ObjectId(id)) } } : { teacher: teacherId };
   const lessons = await Lesson.find({
     world,
     source: "live",
-    $or: [{ teacher: teacherId }, { cycle: { $in: cycles.map((c) => c._id) }, teacher: null }],
+    $or: [substituted, { cycle: { $in: own }, teacher: null }],
   })
     .select("_id cycle date teacher")
     .sort({ date: -1 })
@@ -70,15 +74,29 @@ async function lessonsOfTeacher({ world, teacherId, limit = 400 }) {
   return lessons.map((l) => ({ _id: l._id, cycle: l.cycle, date: l.date, invoice: invoiceByLesson.get(String(l._id)) || null }));
 }
 
-/** The lessons that may go on an invoice of this teacher: exist, in the world, taught by them. */
-async function assertLessonsOfTeacher({ world, teacherId, lessonIds }) {
+/** The lessons that may go on an invoice of this teacher: exist, in the world, taught by them - and, under a lens, on its side. */
+async function assertLessonsOfTeacher({ world, teacherId, lessonIds, cycleIds = null }) {
   const ids = uniq(lessonIds).filter(isId);
   if (!ids.length) throw AppError.of("INVOICE_NO_LESSONS", 400);
   const lessons = await Lesson.find({ _id: { $in: ids }, world, source: "live" }).select("_id cycle teacher").lean();
   if (lessons.length !== ids.length) throw AppError.of("NOT_FOUND", 404, "שיעור");
   const cycleById = new Map((await Cycle.find({ _id: { $in: lessons.map((l) => l.cycle) } }).select("_id teacher").lean()).map((c) => [String(c._id), c]));
   if (lessons.some((l) => teacherOfLesson(l, cycleById) !== String(teacherId))) throw AppError.of("INVOICE_LESSON_NOT_TEACHERS", 400);
+  if (cycleIds && lessons.some((l) => !cycleIds.has(String(l.cycle)))) throw AppError.of("OUT_OF_SCOPE", 403);
   return ids;
+}
+
+/**
+ * Is this (shaped) invoice the lens's to see? `people` / `cycleIds` are the
+ * lens's sets (null = everyone / every cycle): the teacher must be in the
+ * lens and at least one billed lesson on its side - a hostels coordinator
+ * never sees an invoice of college lessons alone, nor a manager one of
+ * hostel lessons alone.
+ */
+function visibleTo(invoice, people, cycleIds) {
+  if (people && !people.has(String(invoice.teacher))) return false;
+  if (cycleIds && !(invoice.lessons || []).some((l) => cycleIds.has(String(l.cycle)))) return false;
+  return true;
 }
 
 async function assertTeacher({ world, teacherId }) {
@@ -118,11 +136,13 @@ async function shape(world, invoices) {
   }));
 }
 
-async function listInvoices({ world, teacherId }) {
+async function listInvoices({ world, teacherId, people = null, cycleIds = null }) {
   const filter = { world };
   if (teacherId) filter.teacher = isId(teacherId) ? teacherId : null;
+  if (people) filter.teacher = teacherId ? (people.has(String(teacherId)) ? filter.teacher : null) : { $in: [...people].map((id) => new mongoose.Types.ObjectId(id)) };
   const invoices = await Invoice.find(filter).sort({ uploadedAt: -1 }).lean();
-  return shape(world, invoices);
+  const shaped = await shape(world, invoices);
+  return cycleIds ? shaped.filter((i) => visibleTo(i, null, cycleIds)) : shaped;
 }
 
 async function loadInvoice(world, invoiceId) {
@@ -150,9 +170,9 @@ const billedTwice = (e) => (e && e.code === 11000 ? AppError.of("INVOICE_LESSON_
 /**
  * A new invoice: { teacherId, lessonIds, imageData (data URL), imageName, by, note }.
  */
-async function createInvoice({ world, teacherId, lessonIds, imageData, imageName, by, note }) {
+async function createInvoice({ world, teacherId, lessonIds, imageData, imageName, by, note, cycleIds = null }) {
   await assertTeacher({ world, teacherId });
-  const ids = await assertLessonsOfTeacher({ world, teacherId, lessonIds });
+  const ids = await assertLessonsOfTeacher({ world, teacherId, lessonIds, cycleIds });
   const image = parseImage(imageData);
   const invoiceId = await withTxn(async (session) => {
     const opts = session ? { session } : {};
@@ -179,10 +199,10 @@ async function createInvoice({ world, teacherId, lessonIds, imageData, imageName
 }
 
 /** Replace the lessons of an invoice (still at least one) and/or its note. */
-async function updateInvoice({ world, invoiceId, lessonIds, note }) {
+async function updateInvoice({ world, invoiceId, lessonIds, note, cycleIds = null }) {
   const invoice = await loadInvoice(world, invoiceId);
   if (lessonIds !== undefined) {
-    const ids = await assertLessonsOfTeacher({ world, teacherId: invoice.teacher, lessonIds });
+    const ids = await assertLessonsOfTeacher({ world, teacherId: invoice.teacher, lessonIds, cycleIds });
     await withTxn(async (session) => {
       const opts = session ? { session } : {};
       const current = (await InvoiceLesson.find({ invoice: invoice._id }).select("lesson").session(session || null)).map((r) => String(r.lesson));
@@ -221,6 +241,7 @@ module.exports = {
   lessonsOfTeacher,
   listInvoices,
   getInvoice,
+  visibleTo,
   imageOf,
   createInvoice,
   updateInvoice,

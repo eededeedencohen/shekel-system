@@ -29,6 +29,7 @@ const {
   flattenPerson,
 } = require("../services/profileService");
 const { attachPersonTags } = require("../services/tagService");
+const lens = require("../services/lensService");
 
 /** role query/body value → profile kinds (compat). */
 const KINDS_BY_ROLE = {
@@ -81,6 +82,10 @@ exports.getPeople = catchAsync(async (req, res) => {
     }
     filter._id = { $in: await Profile.distinct("person", pf) };
   }
+  // the acting persona's people only (services/lensService): the hostels
+  // coordinator gets her hostels people and the teachers, a college manager
+  // the college's, the culture coordinator hers - never another program's
+  await lens.narrowPeople(req, filter);
 
   const people = await Person.find(filter).sort({ firstName: 1, lastName: 1 });
   const map = await profilesByPerson(people);
@@ -108,6 +113,12 @@ exports.getPersonById = catchAsync(async (req, res, next) => {
  * COMPAT: { role, ...flat } builds the matching profile from the flat body.
  */
 exports.createPerson = catchAsync(async (req, res, next) => {
+  // a new belonging must be of the persona's own program (lensService)
+  if (req.body.profile?.kind) lens.assertProfileKind(req, req.body.profile.kind);
+  else if (req.body.role) {
+    if (!KINDS_BY_ROLE[req.body.role]) return next(AppError.of("INVALID_KIND", 400, req.body.role));
+    lens.assertProfileKind(req, KINDS_BY_ROLE[req.body.role][0]);
+  }
   const person = await Person.create({ ...pickIdentity(req.body), world: req.world });
 
   let profile = null;
@@ -115,7 +126,6 @@ exports.createPerson = catchAsync(async (req, res, next) => {
     profile = await createProfile(person, req.body.profile.kind, req.body.profile);
   } else if (req.body.role) {
     const kinds = KINDS_BY_ROLE[req.body.role];
-    if (!kinds) return next(AppError.of("INVALID_KIND", 400, req.body.role));
     res.set("X-Deprecated", "role-api");
     profile = await createProfile(person, kinds[0], splitBody(req.body).profile);
   }
@@ -229,7 +239,9 @@ exports.updateAvailability = catchAsync(async (req, res, next) => {
 
 /** GET /api/people/:id/enrollments - the person's memberships (as student). */
 exports.getPersonEnrollments = catchAsync(async (req, res) => {
-  const enrollments = await Enrollment.find({ student: req.params.id, world: req.world })
+  // the memberships on the lens's side only (a hostels coordinator sees the hostel seats, a manager the college's)
+  const filter = await lens.narrowByCycle(req, { student: req.params.id, world: req.world });
+  const enrollments = await Enrollment.find(filter)
     .populate({
       path: "cycle",
       select: "subject teacher status startDate endDate schedule hostel venue matching.capacity",

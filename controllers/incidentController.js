@@ -11,14 +11,18 @@
 
 const catchAsync = require("../utils/catchAsync");
 const incidents = require("../services/incidentService");
+const lens = require("../services/lensService");
 
 exports.getIncidents = catchAsync(async (req, res) => {
-  const rows = await incidents.listIncidents({ world: req.world, person: req.query.person });
+  // the reports on the acting persona's people only (lensService)
+  const persons = await lens.scopeOf(req).people();
+  const rows = await incidents.listIncidents({ world: req.world, person: req.query.person, persons });
   res.status(200).json({ status: "success", results: rows.length, data: { incidents: rows } });
 });
 
 exports.createIncident = catchAsync(async (req, res) => {
   const b = req.body || {};
+  await lens.assertPerson(req, b.person); // on one of the persona's own people
   const { incident, activity } = await incidents.reportIncident({
     world: req.world,
     person: b.person,

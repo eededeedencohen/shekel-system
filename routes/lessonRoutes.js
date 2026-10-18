@@ -16,6 +16,11 @@ const {
   deleteAttendanceRecord,
   deleteLesson,
 } = require("../controllers/lessonController");
+const Lesson = require("../models/Lesson");
+const lens = require("../services/lensService");
+
+// a lesson is reachable only when its cycle is on the acting persona's side (services/lensService)
+router.param("id", lens.guardByCycle(Lesson));
 
 router.put("/attendance", upsertAttendance);
 router.route("/").get(getLessons);

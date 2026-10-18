@@ -24,6 +24,7 @@ const Activity = require("../models/Activity");
 const ActivityTemplate = require("../models/ActivityTemplate");
 const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
+const { personCond } = require("./lensService");
 const {
   ACTIVITY_KINDS,
   ACTIVITY_KIND_KEYS,
@@ -193,10 +194,11 @@ async function removeActivity({ world, id }) {
   return row;
 }
 
-/** The rows, newest first (of one person, or of the world). */
-function listActivities({ world, person, kind, limit = 2000 }) {
+/** The rows, newest first (of one person, or of the world; `persons` = the lens's people - a Set of ids - or null for everyone). */
+function listActivities({ world, person, kind, persons = null, limit = 2000 }) {
   const filter = { world };
   if (person) filter.person = person;
+  if (persons) filter.person = personCond(persons, filter.person);
   if (kind) filter.kind = kind;
   return Activity.find(filter).sort({ at: -1, createdAt: -1 }).limit(limit);
 }

@@ -16,6 +16,11 @@ const {
   saveTemplate,
   resetTemplate,
 } = require("../controllers/activityController");
+const Activity = require("../models/Activity");
+const lens = require("../services/lensService");
+
+// a row is reachable only when its person is in the acting persona's lens (services/lensService)
+router.param("id", lens.guardByPerson(Activity));
 
 // Static paths before /:id
 router.get("/templates", getTemplates);

@@ -18,12 +18,15 @@ const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 const { STUDENT_KINDS } = require("../utils/domain");
 const { createProfile, profilesOf, flattenPerson } = require("../services/profileService");
+const lens = require("../services/lensService");
 
 exports.createIntakeLead = catchAsync(async (req, res, next) => {
   const { firstName, lastName, department, phone, email, birthDate, gender, residenceLabel, notes, movedBy } = req.body;
   if (!firstName || !lastName) return next(AppError.of("MISSING_FIELDS", 400, "שם פרטי ושם משפחה"));
   const kind = department || "StudentCollege";
   if (!STUDENT_KINDS.includes(kind)) return next(AppError.of("INVALID_KIND", 400, kind));
+  // a lead enters the acting persona's own program (lensService)
+  lens.assertProfileKind(req, kind);
 
   // Find-or-create the human: phone/email are the practical intake keys.
   const or = [];

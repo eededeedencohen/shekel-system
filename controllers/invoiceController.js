@@ -16,14 +16,24 @@
 const catchAsync = require("../utils/catchAsync");
 const { notModified } = require("../utils/sendFile");
 const invoices = require("../services/invoiceService");
+const lens = require("../services/lensService");
+
+/** The lens's sets for the invoice reads: the people (teachers) and the cycles whose lessons are the persona's. */
+const scopeSets = async (req) => {
+  const scope = lens.scopeOf(req);
+  return { people: await scope.people(), cycleIds: await scope.cycleSet() };
+};
 
 exports.getTeacherLessons = catchAsync(async (req, res) => {
-  const lessons = await invoices.lessonsOfTeacher({ world: req.world, teacherId: req.query.teacher });
+  await lens.assertPerson(req, req.query.teacher);
+  const { cycleIds } = await scopeSets(req);
+  const lessons = await invoices.lessonsOfTeacher({ world: req.world, teacherId: req.query.teacher, cycleIds });
   res.status(200).json({ status: "success", results: lessons.length, data: { lessons } });
 });
 
 exports.getInvoices = catchAsync(async (req, res) => {
-  const list = await invoices.listInvoices({ world: req.world, teacherId: req.query.teacher });
+  const { people, cycleIds } = await scopeSets(req);
+  const list = await invoices.listInvoices({ world: req.world, teacherId: req.query.teacher, people, cycleIds });
   res.status(200).json({ status: "success", results: list.length, data: { invoices: list } });
 });
 
@@ -33,6 +43,8 @@ exports.getInvoice = catchAsync(async (req, res) => {
 });
 
 exports.createInvoice = catchAsync(async (req, res) => {
+  await lens.assertPerson(req, req.body.teacher);
+  const { cycleIds } = await scopeSets(req);
   const invoice = await invoices.createInvoice({
     world: req.world,
     teacherId: req.body.teacher,
@@ -41,12 +53,14 @@ exports.createInvoice = catchAsync(async (req, res) => {
     imageName: req.body.imageName,
     by: req.body.by,
     note: req.body.note,
+    cycleIds,
   });
   res.status(201).json({ status: "success", data: { invoice } });
 });
 
 exports.updateInvoice = catchAsync(async (req, res) => {
-  const invoice = await invoices.updateInvoice({ world: req.world, invoiceId: req.params.id, lessonIds: req.body.lessons, note: req.body.note });
+  const { cycleIds } = await scopeSets(req);
+  const invoice = await invoices.updateInvoice({ world: req.world, invoiceId: req.params.id, lessonIds: req.body.lessons, note: req.body.note, cycleIds });
   res.status(200).json({ status: "success", data: { invoice } });
 });
 

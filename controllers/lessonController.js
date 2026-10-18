@@ -13,6 +13,7 @@ const Lesson = require("../models/Lesson");
 const Cycle = require("../models/Cycle");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
+const lens = require("../services/lensService");
 
 const POPULATE = [
   { path: "teacher", select: "firstName lastName" },
@@ -56,6 +57,8 @@ exports.getLessons = catchAsync(async (req, res, next) => {
     if (!f || !t) return next(AppError.of("INVALID_DATE", 400));
     filter.date = { $gte: f, $lte: t };
   }
+  // the lens's cycles only: a cycle asked for is checked, a window / a student's history is narrowed (lensService)
+  await lens.narrowByCycle(req, filter);
 
   let q = Lesson.find(filter).populate(POPULATE);
   q = student ? q.sort({ date: -1 }) : q.sort({ date: 1 });
@@ -89,6 +92,7 @@ exports.upsertAttendance = catchAsync(async (req, res, next) => {
   const cyc = await Cycle.findById(cycle).select("world");
   if (!cyc) return next(AppError.of("NOT_FOUND", 404, "מחזור"));
   if (cyc.world !== req.world) return next(AppError.of("WORLD_MISMATCH", 400));
+  await lens.assertCycle(req, cycle); // the grid of the lens's own cycle
 
   const update = { $set: { attendance: records }, $setOnInsert: { world: cyc.world } };
   if (teacher !== undefined) update.$set.teacher = teacher;
