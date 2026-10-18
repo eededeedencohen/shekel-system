@@ -22,7 +22,7 @@ const AppError = require("./utils/AppError");
 const globalErrorHandler = require("./controllers/errorController");
 const { WORLDS } = require("./utils/domain");
 const share = require("./utils/sharePreview");
-const { authenticate, requireSuper } = require("./utils/auth");
+const { authenticate, requireSuper, requireFamily } = require("./utils/auth");
 
 const app = express();
 // Render sits in front of us: req.secure / req.ip come from its headers
@@ -74,19 +74,21 @@ app.use("/api", authenticate);
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/accounts", require("./routes/accountRoutes"));
 
-// Feature routers - the 2026 remodel API
+// Feature routers - the 2026 remodel API. A family's router is open only to
+// the kinds that own it (utils/auth requireFamily, Eden 2026-10-18): the
+// ACTING persona loads and reads its own data, nothing of another program's.
 app.use("/api/people", require("./routes/personRoutes"));
 app.use("/api/profiles", require("./routes/profileRoutes"));
-app.use("/api/subjects", require("./routes/subjectRoutes"));
-app.use("/api/cycles", require("./routes/cycleRoutes"));
-app.use("/api/enrollments", require("./routes/enrollmentRoutes"));
-app.use("/api/lessons", require("./routes/lessonRoutes"));
-app.use("/api/rooms", require("./routes/roomRoutes"));
-app.use("/api/hostels", require("./routes/hostelRoutes"));
+app.use("/api/subjects", requireFamily("college"), require("./routes/subjectRoutes"));
+app.use("/api/cycles", requireFamily("college"), require("./routes/cycleRoutes"));
+app.use("/api/enrollments", requireFamily("college"), require("./routes/enrollmentRoutes"));
+app.use("/api/lessons", requireFamily("college"), require("./routes/lessonRoutes"));
+app.use("/api/rooms", requireFamily("college"), require("./routes/roomRoutes"));
+app.use("/api/hostels", requireFamily("hostels"), require("./routes/hostelRoutes"));
 // תרבות לכל - events, registrations (seats + waitlist + attendance), vouchers
-app.use("/api/events", require("./routes/eventRoutes"));
-app.use("/api/event-registrations", require("./routes/registrationRoutes"));
-app.use("/api/vouchers", require("./routes/voucherRoutes"));
+app.use("/api/events", requireFamily("culture"), require("./routes/eventRoutes"));
+app.use("/api/event-registrations", requireFamily("culture"), require("./routes/registrationRoutes"));
+app.use("/api/vouchers", requireFamily("culture"), require("./routes/voucherRoutes"));
 // קליטה (אינטייק) - the social worker's records, and the public sign-up
 // page that feeds them (no login; see controllers/publicController).
 app.use("/api/intakes", require("./routes/intakeRoutes"));
@@ -100,10 +102,10 @@ app.use("/api/activities", require("./routes/activityRoutes"));
 app.use("/api/incidents", require("./routes/incidentRoutes"));
 // הספרייה - books (scanned in, details from booknet / Google Books) and
 // their loans: one copy per book, return days skip Fri/Shabbat.
-app.use("/api/library", require("./routes/libraryRoutes"));
+app.use("/api/library", requireFamily("library"), require("./routes/libraryRoutes"));
 // חשבוניות של מורים - a picture + the lessons written on it (three small
 // tables: files, invoices, invoiceLessons; the first of the 2026-10 remodel).
-app.use("/api/invoices", require("./routes/invoiceRoutes"));
+app.use("/api/invoices", requireFamily("invoices"), require("./routes/invoiceRoutes"));
 // תגיות - what a person or a cycle belongs to (roles, programs)
 app.use("/api/tags", require("./routes/tagRoutes"));
 app.use("/api/meta", require("./routes/metaRoutes"));

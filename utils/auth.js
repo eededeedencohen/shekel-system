@@ -90,4 +90,37 @@ function requireSuper(req, res, next) {
   return next(AppError.of("AUTH_FORBIDDEN", 403));
 }
 
-module.exports = { COOKIE, tokenOf, setSessionCookie, clearSessionCookie, authenticate, requireSuper };
+/**
+ * Which staff kinds each data family belongs to (Eden, 2026-10-18: "ייטענו
+ * לקונטקסט אך ורק הנתונים הרלוונטים לצפייה… גם מטעמי אבטחה והרשאות"). The
+ * client loads a persona's slices by the same lines (DataContext slicesFor)
+ * and the server refuses the rest - so viewing as someone IS being them
+ * here too. People, intakes, the record (activities, incidents) and the
+ * domain meta are everyone's and stay open.
+ *   college    cycles, enrollments, subjects, rooms, lessons - everyone but תרבות לכל
+ *   culture    events, registrations, vouchers - שירן, the social worker, the super admin
+ *   hostels    the hostels list - the hostels coordinator, the social worker, the super admin
+ *   library    books and loans - the super admin alone for now (Eden, 2026-10-14)
+ *   invoices   the teachers' invoices - whoever has the teachers page
+ *   suppliers  פתיחת תיק ספק - the hostels coordinator (controllers/supplierController keeps its own gate)
+ */
+const FAMILIES = {
+  college: ["super", "manager", "social", "hostels"],
+  culture: ["super", "social", "culture"],
+  hostels: ["super", "social", "hostels"],
+  library: ["super"],
+  invoices: ["super", "manager", "hostels"],
+  suppliers: ["super", "hostels"],
+};
+
+/** A router is this family's: the ACTING persona must be one of its kinds, else 403 OUT_OF_SCOPE. */
+function requireFamily(name) {
+  const kinds = FAMILIES[name];
+  if (!kinds) throw new Error(`requireFamily: unknown family "${name}"`);
+  return (req, res, next) => {
+    if (req.actor && kinds.includes(req.actor.kind)) return next();
+    return next(AppError.of("OUT_OF_SCOPE", 403));
+  };
+}
+
+module.exports = { COOKIE, tokenOf, setSessionCookie, clearSessionCookie, authenticate, requireSuper, requireFamily, FAMILIES };
