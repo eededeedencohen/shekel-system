@@ -225,6 +225,8 @@ const SUPPLIER_REVIEW_STATES = ["pending", "ok", "bad"];
  */
 const HOSTEL_KINDS = [
   { key: "hostel", label: "הוסטל" },
+  /** Her table (2026-10-19): "מצפה רעות הוסטל וקהילה תומכת" - a house people live in that also holds a supportive community; a hostel for the Ministry. */
+  { key: "both", label: "הוסטל וקהילה" },
   { key: "community", label: "קהילה" },
 ];
 const HOSTEL_KIND_KEYS = HOSTEL_KINDS.map((k) => k.key);

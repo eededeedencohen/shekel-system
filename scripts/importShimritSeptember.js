@@ -188,7 +188,7 @@ async function main() {
     let doc = hostelByName.get(h.name);
     const fields = { kind: h.kind, address: h.address, city: h.city || D.city, notes: h.notes, approvals: h.approvals ?? undefined, since: h.since ? new Date(h.since) : undefined };
     if (!doc) {
-      log("hostels", `+ ${h.kind === "community" ? "קהילה" : "הוסטל"} חדש: ${h.name}`);
+      log("hostels", `+ ${h.kind === "community" ? "קהילה" : h.kind === "both" ? "הוסטל וקהילה" : "הוסטל"} חדש: ${h.name}`);
       if (DRY) doc = { _id: new mongoose.Types.ObjectId(), name: h.name, kind: h.kind, contacts: h.contacts, isNew: true };
       else doc = created("hostels", await Hostel.create({ world: WORLD, name: h.name, contacts: h.contacts, ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined)) }));
       hostelByName.set(h.name, doc);

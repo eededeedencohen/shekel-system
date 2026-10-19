@@ -686,7 +686,7 @@ async function ministryRows({ world, month }) {
         return { _id: c._id, name: c.subject?.name || "קורס", teacher: c.teacher ? personName(c.teacher) : null, lessons: mine.length, avg };
       })
       .sort((a, b) => a.name.localeCompare(b.name, "he"));
-    rows.push({ hostel: { _id: h._id, name: h.name }, since: h.since || null, sinceLabel: sinceLabel(h.since), approvals: h.approvals ?? null, courses });
+    rows.push({ hostel: { _id: h._id, name: h.name, kind: h.kind || "hostel", title: hostelTitle(h) }, since: h.since || null, sinceLabel: sinceLabel(h.since), approvals: h.approvals ?? null, courses });
   }
   return { month, monthLabel: monthLabel(month), rows };
 }

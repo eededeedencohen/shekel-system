@@ -241,10 +241,16 @@ describe("the Ministry of Health's month", () => {
     await Lesson.create({ cycle: cycle._id, date: new Date(Date.UTC(y, m - 1, 7)), attendance: residents.map((s, i) => ({ student: s._id, status: i === 0 ? "Missing" : "Present", reason: i === 0 ? "er" : null })) });
     await Lesson.create({ cycle: cycle._id, date: new Date(Date.UTC(y, m - 1, 14)), attendance: residents.map((s) => ({ student: s._id, status: "Present" })) });
     await Hostel.create({ name: "לא פעיל", active: false });
+    // a house that is a hostel AND holds a supportive community (her "מצפה רעות הוסטל וקהילה תומכת") is a hostel for the Ministry
+    const mixed = await makeHostel({ name: "מצפה רעות", kind: "both", approvals: 12 });
+    const c3 = await makeCycle({ hostel: mixed._id, startDate: new Date("2026-01-01"), endDate: new Date("2027-07-31"), schedule: [{ day: 0, start: "16:00", end: "17:00" }] });
+    await tags.setCycleProgram({ world: "real", cycleId: c3._id, key: "hostels" });
+    expect((await request(app).put(`/api/hostels/${mixed._id}`).send({ kind: "wizard" })).body.code).toBe("HOSTEL_KIND_INVALID");
     const res = await request(app).get(`/api/hostel-reports/ministry?month=${month}`);
     expect(res.status).toBe(200);
     const rows = res.body.data.rows;
-    expect(rows.map((r) => r.hostel.name)).toEqual(["השיירות"]); // the קהילה and the inactive house are out
+    expect(rows.map((r) => r.hostel.name)).toEqual(["השיירות", "מצפה רעות"]); // the קהילה and the inactive house are out
+    expect(rows[1].hostel).toMatchObject({ kind: "both", title: "הוסטל מצפה רעות" });
     expect(rows[0]).toMatchObject({ approvals: 15, sinceLabel: "מעל 4 שנים" });
     expect(rows[0].courses).toHaveLength(1);
     expect(rows[0].courses[0]).toMatchObject({ name: "כלבנות", teacher: "תומר דורון", lessons: 2, avg: 3 }); // (2 + 3) / 2 = 2.5 → 3
