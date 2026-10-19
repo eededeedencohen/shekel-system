@@ -11,6 +11,7 @@ const request = require("supertest");
 const app = require("../../../app");
 const Hostel = require("../../../models/Hostel");
 const HostelReport = require("../../../models/HostelReport");
+const Cycle = require("../../../models/Cycle");
 const Lesson = require("../../../models/Lesson");
 const Enrollment = require("../../../models/Enrollment");
 const { Person } = require("../../../models/Person");
@@ -177,6 +178,42 @@ describe("the hostel's attendance draft", () => {
     expect(renewed.body.data.report.linkLive).toBe(true);
     expect((await request(app).delete(`/api/hostel-reports/${opened._id}`)).status).toBe(204);
     expect(await HostelReport.countDocuments()).toBe(0);
+  });
+
+  it("the draft follows the house's courses: a course added or a time moved after the month was opened shows up on the next read; a marked session stays", async () => {
+    const { hostel, cycle, teacher, residents } = await houseMonth();
+    const month = lastMonth();
+    const opened = (await request(app).post("/api/hostel-reports").send({ month, hostel: hostel._id })).body.data.reports[0];
+    const url = `/api/public/hostel-reports/${opened.token}`;
+    const mondays = opened.sessions.length;
+    expect(opened.sessions.every((s) => new Date(s.date).getUTCDay() === 1)).toBe(true);
+    const first = opened.sessions[0];
+    await request(app).put(`${url}/sessions/${first._id}`).send({ state: "held", marks: [{ person: residents[0]._id, status: "present" }] });
+
+    // after the opening: a second course on Thursdays, and the first course moves to Tuesdays (as her table did to יוגה at אופק)
+    const extra = await makeCycle({ teacher: teacher._id, hostel: hostel._id, startDate: new Date("2026-01-01"), endDate: new Date("2027-07-31"), schedule: [{ day: 4, start: "14:00", end: "15:00" }] });
+    await tags.setCycleProgram({ world: "real", cycleId: extra._id, key: "hostels" });
+    await Cycle.updateOne({ _id: cycle._id }, { schedule: [{ day: 2, start: "10:00", end: "11:00" }] });
+
+    const report = (await request(app).get(`/api/hostel-reports/${opened._id}`)).body.data.report;
+    const ofFirst = report.sessions.filter((s) => String(s.cycle._id) === String(cycle._id));
+    const ofExtra = report.sessions.filter((s) => String(s.cycle._id) === String(extra._id));
+    expect(ofExtra.length).toBeGreaterThanOrEqual(4);
+    expect(ofExtra.every((s) => new Date(s.date).getUTCDay() === 4)).toBe(true);
+    // the marked Monday stays with its word; the other Mondays gave way to Tuesdays
+    const kept = ofFirst.find((s) => String(s._id) === String(first._id));
+    expect(kept).toMatchObject({ state: "held", present: 1 });
+    expect(ofFirst.filter((s) => new Date(s.date).getUTCDay() === 1)).toHaveLength(1);
+    expect(ofFirst.filter((s) => new Date(s.date).getUTCDay() === 2).length).toBeGreaterThanOrEqual(4);
+    expect(ofFirst.length).toBeGreaterThanOrEqual(mondays);
+    // the house's own page reads the same two courses; the list too
+    const view = (await request(app).get(url)).body.data.view;
+    expect(view.courses).toHaveLength(2);
+    expect((await request(app).get("/api/hostel-reports")).body.data.reports[0].sessions).toHaveLength(report.sessions.length);
+    // once the house pressed סיימתי the draft is frozen
+    await request(app).post(`${url}/done`).send({});
+    await Cycle.updateOne({ _id: extra._id }, { schedule: [{ day: 5, start: "14:00", end: "15:00" }] });
+    expect((await request(app).get(`/api/hostel-reports/${opened._id}`)).body.data.report.sessions).toHaveLength(report.sessions.length);
   });
 });
 

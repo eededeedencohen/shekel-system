@@ -104,6 +104,47 @@ async function openMonth({ world, month, hostelId = null, by }) {
   return viewsOf(world, created);
 }
 
+/**
+ * The draft follows the house's courses. A course added to the house, a
+ * time moved or a course ended after the month was opened changes the
+ * planned sessions: the missing ones are added, an unmarked one that no
+ * longer stands is dropped, a session the house already spoke about stays
+ * as it is (its word is kept and the coordinator sees it). Runs on every
+ * read while the link lives and the house has not pressed סיימתי; after
+ * that the draft is frozen as it was handed in.
+ */
+async function syncSessions(r) {
+  if (r.completedAt || !r.linkLive()) return r;
+  const cycles = await cyclesOfMonth({ world: r.world, hostelId: r.hostel, month: r.month });
+  const wanted = cycles.flatMap((c) => plannedSessions(c, r.month));
+  const keyOf = (s) => `${s.cycle}|${new Date(s.date).toISOString()}|${s.start}`;
+  const have = new Map(r.sessions.map((s) => [keyOf(s), s]));
+  const want = new Map(wanted.map((s) => [keyOf(s), s]));
+  let changed = false;
+  const next = [];
+  for (const s of r.sessions) {
+    const w = want.get(keyOf(s));
+    if (!w && !s.state && !s.approvedAt) {
+      changed = true;
+      continue;
+    }
+    if (w && !s.state && !s.approvedAt && s.end !== w.end) {
+      s.end = w.end;
+      changed = true;
+    }
+    next.push(s.toObject());
+  }
+  for (const [k, w] of want) if (!have.has(k)) {
+    next.push({ ...w, state: null, marks: [] });
+    changed = true;
+  }
+  if (!changed) return r;
+  next.sort((a, b) => new Date(a.date) - new Date(b.date) || String(a.start).localeCompare(String(b.start)));
+  r.sessions = next;
+  await r.save();
+  return r;
+}
+
 /* ───────────────────────── reading ───────────────────────── */
 
 async function loadReport({ world, reportId }) {
@@ -249,13 +290,15 @@ async function viewsOf(world, reports) {
     .sort((a, b) => (a.month < b.month ? 1 : a.month > b.month ? -1 : a.hostel.name.localeCompare(b.hostel.name, "he")));
 }
 
-/** Every report of the world, newest month first, houses by name. */
+/** Every report of the world, newest month first, houses by name - each live one brought up to the house's courses. */
 async function listReports({ world }) {
-  return viewsOf(world, await HostelReport.find({ world }));
+  const reports = await HostelReport.find({ world });
+  for (const r of reports) await syncSessions(r);
+  return viewsOf(world, reports);
 }
 
 async function getReport({ world, reportId }) {
-  const [view] = await viewsOf(world, [await loadReport({ world, reportId })]);
+  const [view] = await viewsOf(world, [await syncSessions(await loadReport({ world, reportId }))]);
   return view;
 }
 
@@ -696,6 +739,7 @@ async function ministryXlsx({ world, month }) {
 module.exports = {
   reporterOf,
   openMonth,
+  syncSessions,
   listReports,
   getReport,
   loadReport,

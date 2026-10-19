@@ -447,7 +447,11 @@ async function main() {
         made++;
         log("people", `+ ${h.name}: ${firstName} ${lastName} (חדש/ה)${entry.note ? ` · ${entry.note}` : ""} → ${courseNames.join(", ") || "ללא קורס"}`);
         if (DRY) {
-          for (const k of wantCourses) listedSeats.add(`${cycleOf.get(k)._id}|new`);
+          // a new person's seats are counted here too, so the dry run's seat count is the run's
+          for (const k of wantCourses) {
+            listedSeats.add(`${cycleOf.get(k)._id}|new`);
+            log("seats", `+ ${firstName} ${lastName} → ${alias(h.courses.find((c) => `${hostel._id}|${subjectId(c.subject)}` === k)?.subject)} @${h.name}`);
+          }
           continue;
         }
         const r = await createResident({ world: WORLD, firstName, lastName, hostel: hostel._id, since: new Date(D.residenceSince), notes: entry.note ? `${entry.note} (${BY})` : `${BY}`, by: BY });

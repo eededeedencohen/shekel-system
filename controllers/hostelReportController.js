@@ -63,7 +63,7 @@ exports.ministryXlsx = catchAsync(async (req, res) => {
 const resolve = (req) => reports.resolveToken({ world: req.world, token: req.params.token });
 const publicAnswer = async (res, r) => res.status(200).json({ status: "success", data: { view: await reports.publicView(r) } });
 
-exports.publicView = catchAsync(async (req, res) => publicAnswer(res, await reports.noteOpened(await resolve(req))));
+exports.publicView = catchAsync(async (req, res) => publicAnswer(res, await reports.noteOpened(await reports.syncSessions(await resolve(req)))));
 exports.publicSession = catchAsync(async (req, res) => publicAnswer(res, await reports.setSession(await resolve(req), req.params.sid, { state: req.body?.state, marks: req.body?.marks })));
 exports.publicAddExtra = catchAsync(async (req, res) => publicAnswer(res, await reports.addExtra(await resolve(req), req.body || {})));
 exports.publicRemoveExtra = catchAsync(async (req, res) => publicAnswer(res, await reports.removeExtra(await resolve(req), req.params.xid)));
