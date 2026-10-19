@@ -25,6 +25,9 @@ const schema = new mongoose.Schema({
   residence: {
     hostel: { type: mongoose.Schema.Types.ObjectId, ref: "Hostel" },
     label: { type: String, trim: true },
+    /** When they moved in / out (שמרית, 2026-10-14: "התאריכים כן רלוונטיים"); `until` set = left the house. */
+    since: { type: Date },
+    until: { type: Date },
   },
   address: { type: String, trim: true },
   city: { type: String, trim: true },

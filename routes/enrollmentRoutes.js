@@ -11,6 +11,7 @@ const {
   createEnrollment,
   patchEnrollment,
   deleteEnrollment,
+  enrollResidents,
 } = require("../controllers/enrollmentController");
 const Enrollment = require("../models/Enrollment");
 const lens = require("../services/lensService");
@@ -18,6 +19,8 @@ const lens = require("../services/lensService");
 // a seat is reachable only when its cycle is on the acting persona's side (services/lensService)
 router.param("id", lens.guardByCycle(Enrollment));
 
+// "הוסף את כל דיירי ההוסטל" - before /:id
+router.post("/residents", enrollResidents);
 router.route("/").get(getEnrollments).post(createEnrollment);
 router.route("/:id").patch(patchEnrollment).delete(deleteEnrollment);
 

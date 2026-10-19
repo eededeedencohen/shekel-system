@@ -255,4 +255,49 @@ async function updateStatus({ enrollmentId, world, status, leftAt, joinedAt, not
   return saved;
 }
 
-module.exports = { enroll, updateStatus, occupiedCount };
+/**
+ * "הוסף את כל דיירי ההוסטל" (Eden with שמרית, 2026-10-14: in practice every
+ * resident attends every course of the house, so one press seats them all,
+ * never automatically on creation): everyone whose residence is the
+ * cycle's hostel and who has not left it takes an active seat. A resident
+ * without the הוסטלים tag gets it first (a seat needs the program's tag);
+ * someone already seated (or holding a reservation) is skipped. Returns
+ * what was done, so the page can say "7 נוספו, 2 כבר היו".
+ */
+async function enrollResidents({ cycleId, world, createdBy }) {
+  const cycle = await Cycle.findOne({ _id: cycleId, world }).select("hostel").lean();
+  if (!cycle) throw AppError.of("NOT_FOUND", 404, "מחזור");
+  if (!cycle.hostel) throw AppError.of("NOT_A_HOSTEL_CYCLE", 400);
+  const { Profile } = require("../models/profiles");
+  const now = new Date();
+  const profiles = await Profile.find({
+    world,
+    kind: "StudentCollege",
+    active: true,
+    "residence.hostel": cycle.hostel,
+    $or: [{ "residence.until": null }, { "residence.until": { $gt: now } }],
+  })
+    .select("person")
+    .lean();
+  const personIds = [...new Set(profiles.map((p) => String(p.person)))];
+  const people = await Person.find({ _id: { $in: personIds }, world, deletedAt: null }).select("_id").lean();
+  if (!people.length) throw AppError.of("NO_RESIDENTS", 400);
+  const seated = await Enrollment.find({ cycle: cycleId, student: { $in: people.map((p) => p._id) }, status: { $in: OCCUPYING_STATUSES } })
+    .select("student")
+    .lean();
+  const already = new Set(seated.map((e) => String(e.student)));
+  const created = [];
+  let tagged = 0;
+  for (const p of people) {
+    const id = String(p._id);
+    if (already.has(id)) continue;
+    if (!(await tags.holds(id, world, "hostels"))) {
+      await tags.give({ world, personId: id, key: "hostels", by: createdBy, note: "נוסף/ה עם כל דיירי ההוסטל" });
+      tagged++;
+    }
+    created.push(await enroll({ cycleId, studentId: id, world, status: "active", createdBy, note: "כל דיירי ההוסטל" }));
+  }
+  return { created, skipped: already.size, tagged, residents: people.length };
+}
+
+module.exports = { enroll, updateStatus, occupiedCount, enrollResidents };

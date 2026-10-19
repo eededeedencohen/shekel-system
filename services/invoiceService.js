@@ -131,6 +131,7 @@ async function shape(world, invoices) {
     uploadedAt: i.uploadedAt,
     uploadedBy: i.uploadedBy,
     note: i.note,
+    request: i.request || null,
     lessons: (lessonsByInvoice.get(String(i._id)) || []).sort((a, b) => new Date(a.date) - new Date(b.date)),
     createdAt: i.createdAt,
   }));
@@ -170,7 +171,7 @@ const billedTwice = (e) => (e && e.code === 11000 ? AppError.of("INVOICE_LESSON_
 /**
  * A new invoice: { teacherId, lessonIds, imageData (data URL), imageName, by, note }.
  */
-async function createInvoice({ world, teacherId, lessonIds, imageData, imageName, by, note, cycleIds = null }) {
+async function createInvoice({ world, teacherId, lessonIds, imageData, imageName, by, note, cycleIds = null, requestId = null }) {
   await assertTeacher({ world, teacherId });
   const ids = await assertLessonsOfTeacher({ world, teacherId, lessonIds, cycleIds });
   const image = parseImage(imageData);
@@ -181,7 +182,7 @@ async function createInvoice({ world, teacherId, lessonIds, imageData, imageName
     try {
       const [file] = await StoredFile.create([{ world, name: imageName || undefined, mime: image.mime, size: image.buffer.length, data: image.buffer }], opts);
       fileId = file._id;
-      const [invoice] = await Invoice.create([{ world, teacher: teacherId, file: file._id, uploadedBy: by, note: note || undefined }], opts);
+      const [invoice] = await Invoice.create([{ world, teacher: teacherId, file: file._id, uploadedBy: by, note: note || undefined, request: requestId || null }], opts);
       newId = invoice._id;
       await InvoiceLesson.insertMany(ids.map((lesson) => ({ world, invoice: invoice._id, lesson })), { ...opts, ordered: true });
       return invoice._id;
@@ -246,4 +247,5 @@ module.exports = {
   createInvoice,
   updateInvoice,
   deleteInvoice,
+  shape,
 };

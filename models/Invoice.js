@@ -24,10 +24,13 @@ const invoiceSchema = new mongoose.Schema(
     /** Persona name (no auth yet), like every other `by` in the app. */
     uploadedBy: { type: String, trim: true },
     note: { type: String, trim: true },
+    /** Set when the teacher uploaded it through a month's link (InvoiceRequest); null = the staff uploaded it. */
+    request: { type: mongoose.Schema.Types.ObjectId, ref: "InvoiceRequest", default: null },
   },
   { timestamps: true, collection: "invoices" }
 );
 
 invoiceSchema.index({ world: 1, teacher: 1, uploadedAt: -1 });
+invoiceSchema.index({ request: 1 });
 
 module.exports = mongoose.model("Invoice", invoiceSchema);

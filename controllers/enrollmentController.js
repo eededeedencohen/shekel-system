@@ -8,7 +8,7 @@
  */
 
 const Enrollment = require("../models/Enrollment");
-const { enroll, updateStatus } = require("../services/enrollmentService");
+const { enroll, updateStatus, enrollResidents } = require("../services/enrollmentService");
 const { attachStudentData } = require("../services/profileService");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
@@ -52,6 +52,23 @@ exports.createEnrollment = catchAsync(async (req, res) => {
   await enrollment.populate(STUDENT_POP);
   const [withProfile] = await attachStudentData([enrollment.toObject()]);
   res.status(201).json({ status: "success", data: { enrollment: withProfile } });
+});
+
+/**
+ * POST /api/enrollments/residents - "הוסף את כל דיירי ההוסטל": every
+ * resident of the cycle's hostel takes an active seat (enrollmentService
+ * enrollResidents). Body: { cycle, createdBy }.
+ */
+exports.enrollResidents = catchAsync(async (req, res) => {
+  await lens.assertCycle(req, req.body.cycle);
+  const result = await enrollResidents({ cycleId: req.body.cycle, world: req.world, createdBy: req.body.createdBy });
+  const docs = [];
+  for (const e of result.created) {
+    await e.populate(STUDENT_POP);
+    docs.push(e.toObject());
+  }
+  const enrollments = await attachStudentData(docs);
+  res.status(201).json({ status: "success", data: { enrollments, skipped: result.skipped, tagged: result.tagged, residents: result.residents } });
 });
 
 /**

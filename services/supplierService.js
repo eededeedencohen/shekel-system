@@ -16,8 +16,10 @@
  */
 
 const crypto = require("crypto");
+const mongoose = require("mongoose");
 const Supplier = require("../models/Supplier");
 const StoredFile = require("../models/StoredFile");
+const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
 const {
   SUPPLIER_GENDER_KEYS,
@@ -105,17 +107,27 @@ async function create({ world, body = {}, by }) {
     gender,
     phone,
     createdBy: by,
+    person: await personOf(world, body.person),
     link: { token: makeToken(), expiresAt: new Date(Date.now() + days * DAY_MS), days, createdAt: new Date(), by },
   });
   return settle(s);
 }
 
-/** The name / gender / phone - what the coordinator typed first. */
+/** The שק״ל person a file belongs to (a teacher, usually) - must exist in the world; null / "" unlinks. */
+async function personOf(world, id) {
+  if (id == null || id === "") return null;
+  const person = mongoose.isValidObjectId(id) && (await Person.findOne({ _id: id, world, deletedAt: null }).select("_id").lean());
+  if (!person) throw AppError.of("SUPPLIER_PERSON_INVALID", 400);
+  return person._id;
+}
+
+/** The name / gender / phone - what the coordinator typed first; and whose file it is. */
 async function updateDetails(s, body = {}) {
   if ("firstName" in body) s.firstName = clean(body.firstName, 60) || s.firstName;
   if ("lastName" in body) s.lastName = clean(body.lastName, 60) || s.lastName;
   if ("gender" in body && SUPPLIER_GENDER_KEYS.includes(body.gender)) s.gender = body.gender;
   if ("phone" in body && digits(body.phone).length >= 9) s.phone = clean(body.phone, 30);
+  if ("person" in body) s.person = await personOf(s.world, body.person);
   return settle(s);
 }
 

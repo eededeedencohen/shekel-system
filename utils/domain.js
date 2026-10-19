@@ -215,6 +215,64 @@ const SUPPLIER_STATUS_LABELS = {
 };
 const SUPPLIER_REVIEW_STATES = ["pending", "ok", "bad"];
 
+/* ───────────────────────── שמרית's round (2026-10-19) ───────────────────────── */
+
+/**
+ * A hostel is a house people live in; a קהילה (independent housing) is a
+ * framework people come to - reported as attendance in שקדיה, NOT to the
+ * Ministry of Health as a hostel (שמרית, 2026-10-14). The kind is a label
+ * and a filter, never a colour.
+ */
+const HOSTEL_KINDS = [
+  { key: "hostel", label: "הוסטל" },
+  { key: "community", label: "קהילה" },
+];
+const HOSTEL_KIND_KEYS = HOSTEL_KINDS.map((k) => k.key);
+/** Two to three people per hostel (שמרית): the manager, who reports the attendance, the care coordinator. */
+const HOSTEL_CONTACT_ROLES = [
+  { key: "manager", label: "מנהל/ת ההוסטל" },
+  { key: "reporter", label: "איש/אשת קשר לדיווח" },
+  { key: "coordinator", label: "מתאם/ת טיפול" },
+  { key: "other", label: "אחר" },
+];
+const HOSTEL_CONTACT_ROLE_KEYS = HOSTEL_CONTACT_ROLES.map((r) => r.key);
+/** A person's own papers (a teacher's syllabus first; "תיק" on the teacher page). */
+const PERSON_DOCUMENT_KINDS = [
+  { key: "syllabus", label: "סילבוס" },
+  { key: "other", label: "מסמך אחר" },
+];
+const PERSON_DOCUMENT_KIND_KEYS = PERSON_DOCUMENT_KINDS.map((k) => k.key);
+/**
+ * The monthly invoice round: every teacher of the program's live courses
+ * gets a temporary link for the month - marks which sessions took place,
+ * uploads the invoice, done. Hostels first (Eden, 2026-10-14: "בינתיים
+ * נצמצם את זה רק להוסטלים"); the college when its lessons are in sync.
+ */
+const INVOICE_ROUND_PROGRAMS = ["hostels", "college"];
+const INVOICE_ROUND_PROGRAM_LABELS = { hostels: "הוסטלים", college: "מכללה לכל" };
+/** How long a teacher's link stays open, days - and the renewal step. */
+const INVOICE_LINK_DAYS = 21;
+/** What the teacher says about a planned session. */
+const INVOICE_SESSION_STATES = ["taught", "notHeld"];
+/**
+ * Where a teacher's request stands (computed, never set by hand):
+ *   new      opened, the link not yet sent
+ *   sent     sent, not opened
+ *   opened   opened, nothing marked yet
+ *   partial  something marked or uploaded, not finished
+ *   done     the teacher pressed "סיימתי"
+ */
+const INVOICE_REQUEST_STATUSES = ["new", "sent", "opened", "partial", "done"];
+const INVOICE_REQUEST_STATUS_LABELS = {
+  new: "עוד לא נשלח",
+  sent: "נשלח · לא נפתח",
+  opened: "נפתח",
+  partial: "חלקי",
+  done: "הושלם",
+};
+/** A diary entry is a note on a day, or a task that is done or not (שמרית's יומן). */
+const DIARY_KINDS = ["note", "task"];
+
 /* ───────────────────────── פעילויות (the person's record) ───────────────────────── */
 
 /**
@@ -743,6 +801,28 @@ const ERROR_CODES = {
   SUPPLIER_EMAIL_STEPS: "לפני \"נשלח מייל\" צריך לחולל את ה-PDF ולהעתיק את הכותרת ואת התוכן",
   SUPPLIER_DONE: "הספק כבר נקלט - המייל נשלח",
   SUPPLIER_ADMIN_ACTION: "פעולת ניהול לא מוכרת",
+  SUPPLIER_PERSON_INVALID: "האדם שמקושר לתיק הספק לא נמצא",
+  // סבב שמרית (2026-10-19)
+  HOSTEL_KIND_INVALID: "סוג המסגרת חייב להיות הוסטל או קהילה",
+  HOSTEL_CONTACT_INVALID: "לאיש קשר חובה שם ותפקיד מוכר",
+  NOT_A_HOSTEL_CYCLE: "הקורס הזה אינו קורס של הוסטל",
+  NO_RESIDENTS: "אין דיירים רשומים בהוסטל הזה",
+  PERSON_DOCUMENT_INVALID: "הקובץ לא נתמך - מותר PDF, תמונה או Word עד 8MB",
+  PERSON_DOCUMENT_KIND: "סוג מסמך לא מוכר",
+  INVOICE_ROUND_PROGRAM: "סבב חשבוניות נפתח להוסטלים או למכללה לכל",
+  INVOICE_ROUND_MONTH: "חודש הסבב נכתב כ-YYYY-MM",
+  INVOICE_ROUND_EXISTS: "כבר נפתח סבב חשבוניות לחודש הזה",
+  INVOICE_ROUND_NO_TEACHERS: "אין מורים עם קורס פעיל בחודש הזה",
+  INVOICE_ROUND_HAS_INVOICES: "בסבב הזה כבר הועלו חשבוניות - אי אפשר למחוק אותו",
+  INVOICE_LINK_INVALID: "הקישור אינו תקף",
+  INVOICE_LINK_EXPIRED: "הקישור פג - בקשו מהרכזת קישור חדש",
+  INVOICE_LINK_DONE: "הדיווח לחודש הזה כבר נסגר",
+  INVOICE_SESSION_UNKNOWN: "המפגש הזה לא ברשימה של החודש",
+  INVOICE_SESSION_STATE: "מפגש מסומן כ\"התקיים\" או \"לא התקיים\"",
+  INVOICE_NOTHING_TAUGHT: "קודם מסמנים אילו מפגשים התקיימו",
+  INVOICE_NOT_YOURS: "החשבונית הזו לא הועלתה דרך הקישור הזה",
+  INVOICE_DONE_EMPTY: "אפשר לסיים רק אחרי שסומנו המפגשים",
+  DIARY_INVALID: "לרשומה ביומן חובה תאריך וכותרת",
   // מסד הנתונים
   DB_FULL: "מסד הנתונים מלא - אי אפשר לשמור כרגע. צריך לפנות מקום ב-Atlas או להגדיל את החבילה",
   // כניסה וניהול משתמשים
@@ -863,6 +943,19 @@ module.exports = {
   SUPPLIER_STATUSES,
   SUPPLIER_STATUS_LABELS,
   SUPPLIER_REVIEW_STATES,
+  HOSTEL_KINDS,
+  HOSTEL_KIND_KEYS,
+  HOSTEL_CONTACT_ROLES,
+  HOSTEL_CONTACT_ROLE_KEYS,
+  PERSON_DOCUMENT_KINDS,
+  PERSON_DOCUMENT_KIND_KEYS,
+  INVOICE_ROUND_PROGRAMS,
+  INVOICE_ROUND_PROGRAM_LABELS,
+  INVOICE_LINK_DAYS,
+  INVOICE_SESSION_STATES,
+  INVOICE_REQUEST_STATUSES,
+  INVOICE_REQUEST_STATUS_LABELS,
+  DIARY_KINDS,
   ACTIVITY_KINDS,
   ACTIVITY_KIND_KEYS,
   ACTIVITY_FIELD_TYPES,

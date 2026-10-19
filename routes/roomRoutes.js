@@ -12,8 +12,10 @@ const {
   createRoom,
   updateRoom,
   deleteRoom,
+  getOccupancy,
 } = require("../controllers/roomController");
 
+router.get("/occupancy", getOccupancy); // before /:id
 router.route("/").get(getRooms).post(createRoom);
 router.route("/:id").get(getRoomById).put(updateRoom).delete(deleteRoom);
 

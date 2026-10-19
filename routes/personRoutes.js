@@ -27,7 +27,12 @@ const {
 } = require("../controllers/profileController");
 const { createIntakeLead } = require("../controllers/intakeController");
 const { transferProgram, getProgramTimeline } = require("../controllers/programController");
+const documents = require("../controllers/personDocumentController");
 const lens = require("../services/lensService");
+
+// a person's own papers (a teacher's syllabus; שמרית's round, 2026-10-19) -
+// the world's list for the client's slice sits before /:id
+router.get("/documents", documents.listAll);
 
 // Every person-addressed path: the person must be in the acting persona's
 // lens (services/lensService, Eden 2026-10-18) - 403 OUT_OF_SCOPE otherwise.
@@ -41,6 +46,10 @@ router.route("/:id").get(getPersonById).put(updatePerson).delete(deletePerson);
 router.route("/:id/profiles").get(getPersonProfiles).post(createPersonProfile);
 router.patch("/:id/availability", updateAvailability);
 router.get("/:id/enrollments", getPersonEnrollments);
+router.route("/:id/documents").get(documents.listOfPerson).post(documents.add);
+router.delete("/:id/documents/:docId", documents.remove);
+router.get("/:id/documents/:docId/file", documents.file);
+router.get("/:id/documents/:docId/thumb", documents.thumb);
 // Programs (מכללה לכל ↔ תרבות לכל): the transfer + the merged story
 router.post("/:id/transfer", transferProgram);
 router.get("/:id/programs", getProgramTimeline);

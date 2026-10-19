@@ -14,6 +14,30 @@ exports.getRooms = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", results: rooms.length, data: { rooms } });
 });
 
+/**
+ * GET /api/rooms/occupancy - every weekly slot booked in a campus room by a
+ * live cycle of ANY program, without the people: the room, the day, the
+ * hours, which program, the subject. The hostels coordinator's page needs
+ * it (Eden with שמרית, 2026-10-14: "נוסיף לך עמוד של זמינות חדרים, שתדעי
+ * איזה חדרים פנויים") while her cycles slice holds the hostel courses alone.
+ */
+exports.getOccupancy = catchAsync(async (req, res) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const cycles = await Cycle.find({ world: req.world, status: { $ne: "Cancelled" }, endDate: { $gte: today } })
+    .select("subject hostel schedule")
+    .populate("subject", "name")
+    .lean();
+  const slots = [];
+  for (const c of cycles) {
+    for (const s of c.schedule || []) {
+      if (!s.room || !Number.isInteger(s.day) || !s.start || !s.end) continue;
+      slots.push({ room: s.room, day: s.day, start: s.start, end: s.end, program: c.hostel ? "hostels" : "college", label: c.subject?.name || "קורס" });
+    }
+  }
+  res.status(200).json({ status: "success", results: slots.length, data: { slots } });
+});
+
 exports.getRoomById = catchAsync(async (req, res, next) => {
   const room = await Room.findOne({ _id: req.params.id, world: req.world });
   if (!room) return next(AppError.of("NOT_FOUND", 404, "חדר"));

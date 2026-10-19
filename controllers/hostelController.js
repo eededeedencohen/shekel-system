@@ -8,8 +8,29 @@ const Cycle = require("../models/Cycle");
 const { Profile } = require("../models/profiles");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
+const { HOSTEL_KIND_KEYS, HOSTEL_CONTACT_ROLE_KEYS } = require("../utils/domain");
 
 /** The writable fields of the body, trimmed; `contact` as a whole object. */
+const clean = (v, max = 200) => String(v == null ? "" : v).trim().slice(0, max);
+
+/**
+ * The house's own people, as sent: every row needs a name and a known
+ * role (HOSTEL_CONTACT_ROLES); the rest is optional. Rows keep their ids
+ * when the client sends them back, so a diary line "about" a contact
+ * could point at it later.
+ */
+function pickContacts(list) {
+  if (!Array.isArray(list)) throw AppError.of("HOSTEL_CONTACT_INVALID", 400);
+  return list.map((c) => {
+    const name = clean(c?.name, 80);
+    const role = clean(c?.role, 20);
+    if (!name || !HOSTEL_CONTACT_ROLE_KEYS.includes(role)) throw AppError.of("HOSTEL_CONTACT_INVALID", 400);
+    const row = { name, role, phone: clean(c.phone, 30), email: clean(c.email, 120).toLowerCase(), note: clean(c.note, 300) };
+    if (c._id) row._id = c._id;
+    return row;
+  });
+}
+
 function pickDetails(body) {
   const out = {};
   for (const k of Hostel.EDITABLE) {
@@ -17,6 +38,10 @@ function pickDetails(body) {
     if (k === "contact") {
       const c = body.contact || {};
       out.contact = { name: c.name || "", role: c.role || "", phone: c.phone || "" };
+    } else if (k === "contacts") out.contacts = pickContacts(body.contacts);
+    else if (k === "kind") {
+      if (!HOSTEL_KIND_KEYS.includes(body.kind)) throw AppError.of("HOSTEL_KIND_INVALID", 400);
+      out.kind = body.kind;
     } else out[k] = body[k];
   }
   return out;

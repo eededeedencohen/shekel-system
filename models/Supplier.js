@@ -78,6 +78,8 @@ const supplierSchema = new mongoose.Schema(
     gender: { type: String, enum: SUPPLIER_GENDER_KEYS, required: true },
     phone: { type: String, required: true, trim: true },
     createdBy: { type: String, trim: true },
+    /** The שק״ל person this file belongs to, when it is one of ours - a teacher's file sits on their page (שמרית, 2026-10-14). */
+    person: { type: mongoose.Schema.Types.ObjectId, ref: "Person", default: null },
     /** The public link: the token is the only key to this row from outside. */
     link: {
       token: { type: String, required: true, trim: true },
@@ -130,6 +132,7 @@ const supplierSchema = new mongoose.Schema(
 
 supplierSchema.index({ world: 1, "link.token": 1 }, { unique: true });
 supplierSchema.index({ world: 1, status: 1, updatedAt: -1 });
+supplierSchema.index({ world: 1, person: 1 });
 
 /** Still open right now? */
 supplierSchema.methods.linkLive = function () {

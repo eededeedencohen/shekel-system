@@ -106,6 +106,11 @@ app.use("/api/library", requireFamily("library"), require("./routes/libraryRoute
 // חשבוניות של מורים - a picture + the lessons written on it (three small
 // tables: files, invoices, invoiceLessons; the first of the 2026-10 remodel).
 app.use("/api/invoices", requireFamily("invoices"), require("./routes/invoiceRoutes"));
+// the monthly invoice round (שמרית's round, 2026-10-19): a temporary link
+// per teacher per month; the teacher's side is under /api/public/invoices.
+app.use("/api/invoice-rounds", requireFamily("invoices"), require("./routes/invoiceRoundRoutes"));
+// יומן - every staff member's own notes and tasks
+app.use("/api/diary", require("./routes/diaryRoutes"));
 // תגיות - what a person or a cycle belongs to (roles, programs)
 app.use("/api/tags", require("./routes/tagRoutes"));
 app.use("/api/meta", require("./routes/metaRoutes"));
