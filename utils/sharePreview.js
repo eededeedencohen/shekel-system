@@ -29,6 +29,8 @@ const { EVENT_CATEGORIES } = require("./domain");
 const SITE = "שק״ל";
 const OG_IMAGE = "logo.png"; // served from client-dist/og/
 const DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
+/** "הוסטל ליבא" / "קהילת בית אחווה" - a house named by its kind. */
+const houseTitle = (h) => `${h.kind === "community" ? "קהילת" : "הוסטל"} ${h.name}`;
 const TZ = "Asia/Jerusalem";
 
 const COLLEGE_DESC = "מערכת הניהול של מכללה לכל: קורסים, מערכת שבועית, נוכחות, קליטה ושיבוץ.";
@@ -128,11 +130,11 @@ async function enrich(preview, world = "real") {
       }
     }
     if (params.cycle) {
-      const ci = await Cycle.findOne({ _id: params.cycle, world }).populate("subject", "name").populate("hostel", "name").lean();
+      const ci = await Cycle.findOne({ _id: params.cycle, world }).populate("subject", "name").populate("hostel", "name kind").lean();
       if (ci) {
         const name = ci.subject?.name || "קורס";
         const slots = (ci.schedule || []).map((s) => `יום ${DAY_NAMES[s.day] || ""} ${s.start}-${s.end}`.trim());
-        const bits = [slots.join(", "), ci.hostel?.name ? `הוסטל ${ci.hostel.name}` : null].filter(Boolean);
+        const bits = [slots.join(", "), ci.hostel?.name ? houseTitle(ci.hostel) : null].filter(Boolean);
         return { ...preview, title: `${name} · מכללה לכל`, description: clip(bits.length ? bits.join(" · ") : COLLEGE_DESC) };
       }
     }
@@ -140,7 +142,7 @@ async function enrich(preview, world = "real") {
       // the page is addressed by id now; the old links carried the name
       const byId = /^[0-9a-f]{24}$/i.test(params.hostel);
       const h = await Hostel.findOne({ ...(byId ? { _id: params.hostel } : { name: params.hostel }), world }).lean();
-      if (h) return { ...preview, title: `הוסטל ${h.name} · שק״ל`, description: "סקירה, לוח שעות וקורסים והסטודנטים של ההוסטל." };
+      if (h) return { ...preview, title: `${houseTitle(h)} · שק״ל`, description: `סקירה, לוח שעות וקורסים והסטודנטים של ${h.kind === "community" ? "הקהילה" : "ההוסטל"}.` };
     }
     if (params.book) {
       const b = await Book.findOne({ _id: params.book, world, deletedAt: null }).lean();

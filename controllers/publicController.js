@@ -39,9 +39,10 @@ const intake = require("../services/intakeService");
 exports.joinOptions = catchAsync(async (req, res) => {
   const [subjects, hostels] = await Promise.all([
     Subject.find({ world: req.world, active: { $ne: false } }).select("name category").sort({ name: 1 }).lean(),
-    Hostel.find({ world: req.world, active: { $ne: false } }).select("name").sort({ name: 1 }).lean(),
+    Hostel.find({ world: req.world, active: { $ne: false } }).select("name kind").sort({ name: 1 }).lean(),
   ]);
-  const hostelNames = hostels.length ? hostels.map((h) => h.name) : HOSTELS;
+  // "הוסטל ליבא" / "קהילת בית אחווה" - a house named by its kind
+  const hostelNames = hostels.length ? hostels.map((h) => `${h.kind === "community" ? "קהילת" : "הוסטל"} ${h.name}`) : HOSTELS.map((h) => `הוסטל ${h}`);
   res.status(200).json({
     status: "success",
     data: {
@@ -55,7 +56,7 @@ exports.joinOptions = catchAsync(async (req, res) => {
         documents: INTAKE_DOCUMENTS.filter((d) => d.upload),
         filledBy: INTAKE_FILLED_BY,
         dayParts: DAY_PARTS,
-        residences: ["בבית עם המשפחה", "דירה עצמאית בקהילה", "דיור מוגן", ...hostelNames.map((h) => `הוסטל ${h}`), "אחר"],
+        residences: ["בבית עם המשפחה", "דירה עצמאית בקהילה", "דיור מוגן", ...hostelNames, "אחר"],
         maxFileBytes: intake.MAX_FILE_BYTES,
       },
     },
