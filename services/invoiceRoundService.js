@@ -32,7 +32,8 @@ const Cycle = require("../models/Cycle");
 const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
 const invoices = require("./invoiceService");
-const { INVOICE_ROUND_PROGRAMS, INVOICE_ROUND_PROGRAM_LABELS, INVOICE_LINK_DAYS, INVOICE_SESSION_STATES, INVOICE_REQUEST_STATUS_LABELS } = require("../utils/domain");
+const { Profile } = require("../models/profiles");
+const { INVOICE_ROUND_PROGRAMS, INVOICE_ROUND_PROGRAM_LABELS, INVOICE_LINK_DAYS, INVOICE_SESSION_STATES, INVOICE_REQUEST_STATUS_LABELS, INVOICE_DUE_DAY } = require("../utils/domain");
 
 const DAY_MS = 24 * 3600 * 1000;
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -56,6 +57,13 @@ function dayKey(d) {
 
 /** The UTC-midnight date of a "YYYY-MM-DD" key - how Lesson.date is stored. */
 const utcOf = (key) => new Date(`${key}T00:00:00.000Z`);
+
+/** The day the invoices must be in (שמרית: the 29th), as a UTC-midnight date of the month. */
+function dueOf(month) {
+  const [y, m] = month.split("-").map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return new Date(Date.UTC(y, m - 1, Math.min(INVOICE_DUE_DAY, last)));
+}
 
 /** Every day of the month as keys, first to last. */
 function daysOfMonth(month) {
@@ -232,14 +240,15 @@ function countsOf(sessions) {
   return c;
 }
 
-function requestView(r, facts, teacher) {
+function requestView(r, facts, teacher, rate = null) {
   const invs = facts.invoicesByRequest.get(String(r._id)) || [];
   const sessions = r.sessions.map((s) => sessionView(s, facts));
   const status = statusOf(r, invs.length);
   return {
     _id: r._id,
     round: r.round,
-    teacher: teacher ? { _id: teacher._id, firstName: teacher.firstName, lastName: teacher.lastName, gender: teacher.gender || null, phone: teacher.phone || null } : { _id: r.teacher },
+    // `rate` = ₪ per session in the hostels (the Teacher profile) - the page checks the invoice's sum against taught × rate
+    teacher: teacher ? { _id: teacher._id, firstName: teacher.firstName, lastName: teacher.lastName, gender: teacher.gender || null, phone: teacher.phone || null, rate } : { _id: r.teacher, rate },
     token: r.token,
     expiresAt: r.expiresAt,
     linkLive: r.expiresAt.getTime() > Date.now(),
@@ -261,10 +270,15 @@ function requestView(r, facts, teacher) {
 async function roundView(round) {
   const requests = await InvoiceRequest.find({ round: round._id }).lean();
   const facts = await factsOf(round.world, requests);
-  const teachers = await Person.find({ _id: { $in: requests.map((r) => r.teacher) } }).select("firstName lastName gender phone").lean();
+  const teacherIds = requests.map((r) => r.teacher);
+  const [teachers, profiles] = await Promise.all([
+    Person.find({ _id: { $in: teacherIds } }).select("firstName lastName gender phone").lean(),
+    Profile.find({ person: { $in: teacherIds }, kind: "Teacher" }).select("person hostelRate").lean(),
+  ]);
   const teacherById = new Map(teachers.map((t) => [String(t._id), t]));
+  const rateOf = new Map(profiles.map((p) => [String(p.person), p.hostelRate ?? null]));
   const rows = requests
-    .map((r) => requestView(r, facts, teacherById.get(String(r.teacher))))
+    .map((r) => requestView(r, facts, teacherById.get(String(r.teacher)), round.program === "hostels" ? rateOf.get(String(r.teacher)) ?? null : null))
     .sort((a, b) => `${a.teacher.firstName} ${a.teacher.lastName}`.localeCompare(`${b.teacher.firstName} ${b.teacher.lastName}`, "he"));
   const counts = { teachers: rows.length, new: 0, sent: 0, opened: 0, partial: 0, done: 0, invoices: 0, mismatches: 0 };
   for (const r of rows) {
@@ -277,6 +291,7 @@ async function roundView(round) {
     world: round.world,
     month: round.month,
     monthLabel: monthLabel(round.month),
+    dueAt: dueOf(round.month),
     program: round.program,
     programLabel: INVOICE_ROUND_PROGRAM_LABELS[round.program],
     openedAt: round.openedAt,
@@ -401,6 +416,7 @@ async function publicView(r) {
     teacher: { firstName: teacher?.firstName || "", gender: teacher?.gender || null },
     month: round.month,
     monthLabel: monthLabel(round.month),
+    dueAt: dueOf(round.month),
     program: round.program,
     programLabel: INVOICE_ROUND_PROGRAM_LABELS[round.program],
     coordinator: r.sentBy || round.openedBy || null,

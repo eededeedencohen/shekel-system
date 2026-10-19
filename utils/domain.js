@@ -272,6 +272,44 @@ const INVOICE_REQUEST_STATUS_LABELS = {
 };
 /** A diary entry is a note on a day, or a task that is done or not (שמרית's יומן). */
 const DIARY_KINDS = ["note", "task"];
+/** The day of the month by which the teachers' invoices must be in (שמרית, 2026-10-19: "ב-29 לחודש החשבוניות צריכות להיות אצלי כבר"). */
+const INVOICE_DUE_DAY = 29;
+
+/**
+ * Why someone missed a session (שמרית, 2026-10-14 and her answer of
+ * 2026-10-19: her fear is a false report to the Ministry of Health, so an
+ * absence from a hostel course carries its reason). "עזב/ה את ההוסטל" is
+ * NOT a reason - it is the resident's dates (residence.until).
+ */
+const ABSENCE_REASONS = [
+  { key: "hospital", label: "אשפוז" },
+  { key: "er", label: "מיון" },
+  { key: "vacation", label: "חופשה" },
+  { key: "refused", label: "סירב/ה" },
+  { key: "unexplained", label: "נעדר/ת ללא הסבר" },
+  { key: "incident", label: "אירוע חריג" },
+  { key: "other", label: "אחר" },
+];
+const ABSENCE_REASON_KEYS = ABSENCE_REASONS.map((r) => r.key);
+/**
+ * The hostel's own attendance draft (phase 3 of שמרית's round): a month's
+ * link to the house's contact, who marks every session - held or not, who
+ * came, why someone did not, a resident the list lacks, one who left. A
+ * DRAFT: nothing reaches the attendance until the coordinator approves.
+ */
+const HOSTEL_REPORT_LINK_DAYS = 14; // after the month's last day (and never less than this from the opening)
+const HOSTEL_REPORT_SESSION_STATES = ["held", "notHeld"];
+const HOSTEL_REPORT_MARKS = ["present", "absent"];
+/** Where a hostel's month stands (computed): new → sent → opened → partial → done (submitted) → approved (every marked session approved). */
+const HOSTEL_REPORT_STATUSES = ["new", "sent", "opened", "partial", "done", "approved"];
+const HOSTEL_REPORT_STATUS_LABELS = {
+  new: "עוד לא נשלח",
+  sent: "נשלח · לא נפתח",
+  opened: "נפתח",
+  partial: "חלקי",
+  done: "הוגש",
+  approved: "אושר",
+};
 
 /* ───────────────────────── פעילויות (the person's record) ───────────────────────── */
 
@@ -823,6 +861,26 @@ const ERROR_CODES = {
   INVOICE_NOT_YOURS: "החשבונית הזו לא הועלתה דרך הקישור הזה",
   INVOICE_DONE_EMPTY: "אפשר לסיים רק אחרי שסומנו המפגשים",
   DIARY_INVALID: "לרשומה ביומן חובה תאריך וכותרת",
+  ATTENDANCE_REASON_INVALID: "סיבת היעדרות לא מוכרת",
+  // סקיצת הנוכחות מההוסטלים (שלב 3 של סבב שמרית)
+  HOSTEL_REPORT_MONTH: "חודש הדיווח נכתב כ-YYYY-MM",
+  HOSTEL_REPORT_EXISTS: "כבר נפתח דיווח להוסטל הזה לחודש הזה",
+  HOSTEL_REPORT_NO_COURSES: "אין קורס פעיל בהוסטלים בחודש הזה",
+  HOSTEL_REPORT_LINK_INVALID: "הקישור אינו תקף",
+  HOSTEL_REPORT_LINK_EXPIRED: "הקישור פג - בקשו מהרכזת קישור חדש",
+  HOSTEL_REPORT_DONE: "הדיווח לחודש הזה כבר הוגש",
+  HOSTEL_REPORT_SESSION_UNKNOWN: "המפגש הזה לא ברשימה של החודש",
+  HOSTEL_REPORT_SESSION_FUTURE: "המפגש עוד לא התקיים - מסמנים אותו ביום שלו",
+  HOSTEL_REPORT_SESSION_STATE: "מפגש מסומן כ\"התקיים\" או \"לא התקיים\"",
+  HOSTEL_REPORT_MARK_INVALID: "סימון נוכחות לא תקין",
+  HOSTEL_REPORT_NOT_IN_LIST: "האדם הזה לא ברשימת הקורס",
+  HOSTEL_REPORT_REASON_REQUIRED: "על מי שלא הגיע/ה חובה לסמן סיבה",
+  HOSTEL_REPORT_APPROVED: "המפגש הזה כבר אושר",
+  HOSTEL_REPORT_NOT_MARKED: "המפגש עוד לא סומן בהוסטל",
+  HOSTEL_REPORT_HAS_APPROVED: "בדיווח הזה כבר אושרו מפגשים - אי אפשר למחוק אותו",
+  HOSTEL_REPORT_EXTRA_NAME: "למי שלא ברשימה חובה שם",
+  HOSTEL_REPORT_RESOLVED: "הפריט הזה כבר טופל",
+  HOSTEL_REPORT_PERSON: "לא נמצא אדם כזה",
   // מסד הנתונים
   DB_FULL: "מסד הנתונים מלא - אי אפשר לשמור כרגע. צריך לפנות מקום ב-Atlas או להגדיל את החבילה",
   // כניסה וניהול משתמשים
@@ -956,6 +1014,14 @@ module.exports = {
   INVOICE_REQUEST_STATUSES,
   INVOICE_REQUEST_STATUS_LABELS,
   DIARY_KINDS,
+  INVOICE_DUE_DAY,
+  ABSENCE_REASONS,
+  ABSENCE_REASON_KEYS,
+  HOSTEL_REPORT_LINK_DAYS,
+  HOSTEL_REPORT_SESSION_STATES,
+  HOSTEL_REPORT_MARKS,
+  HOSTEL_REPORT_STATUSES,
+  HOSTEL_REPORT_STATUS_LABELS,
   ACTIVITY_KINDS,
   ACTIVITY_KIND_KEYS,
   ACTIVITY_FIELD_TYPES,

@@ -219,6 +219,7 @@ function flattenPerson(person, profiles) {
     const t = teacher.toObject ? teacher.toObject() : teacher;
     p.role = "Teacher";
     if (t.subjects !== undefined) p.subjects = t.subjects;
+    if (t.hostelRate != null) p.hostelRate = t.hostelRate;
   } else if (active.length) {
     p.role = active.some((x) => x.kind === "Admin") ? "Admin" : active[0].kind;
   }

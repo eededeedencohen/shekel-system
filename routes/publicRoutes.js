@@ -13,6 +13,7 @@ const router = express.Router();
 const { joinOptions, join, viewByToken, uploadByToken, removeByToken, fileByToken, thumbByToken } = require("../controllers/publicController");
 const supplier = require("../controllers/supplierController");
 const invoiceLink = require("../controllers/invoiceRoundController");
+const hostelReport = require("../controllers/hostelReportController");
 
 router.get("/join/options", joinOptions);
 router.post("/join", join);
@@ -40,5 +41,16 @@ router.post("/invoices/:token/invoices", invoiceLink.publicInvoice);
 router.delete("/invoices/:token/invoices/:iid", invoiceLink.publicRemoveInvoice);
 router.get("/invoices/:token/invoices/:iid/image", invoiceLink.publicImage);
 router.post("/invoices/:token/done", invoiceLink.publicDone);
+
+// the house's month behind the hostel contact's link (phase 3 of שמרית's
+// round): who came to each session and why not, someone not on the list,
+// someone who left - a draft the coordinator approves
+router.get("/hostel-reports/:token", hostelReport.publicView);
+router.put("/hostel-reports/:token/sessions/:sid", hostelReport.publicSession);
+router.post("/hostel-reports/:token/extras", hostelReport.publicAddExtra);
+router.delete("/hostel-reports/:token/extras/:xid", hostelReport.publicRemoveExtra);
+router.post("/hostel-reports/:token/left", hostelReport.publicAddLeft);
+router.delete("/hostel-reports/:token/left/:lid", hostelReport.publicRemoveLeft);
+router.post("/hostel-reports/:token/done", hostelReport.publicDone);
 
 module.exports = router;

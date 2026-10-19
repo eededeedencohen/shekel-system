@@ -42,6 +42,13 @@ function pickDetails(body) {
     else if (k === "kind") {
       if (!HOSTEL_KIND_KEYS.includes(body.kind)) throw AppError.of("HOSTEL_KIND_INVALID", 400);
       out.kind = body.kind;
+    } else if (k === "approvals") {
+      // the Ministry's number: a whole number, or nothing
+      const n = body.approvals === "" || body.approvals == null ? null : Number(body.approvals);
+      out.approvals = Number.isInteger(n) && n >= 0 ? n : null;
+    } else if (k === "since") {
+      const d = body.since ? new Date(body.since) : null;
+      out.since = d && !Number.isNaN(d.getTime()) ? d : null;
     } else out[k] = body[k];
   }
   return out;

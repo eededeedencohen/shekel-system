@@ -13,6 +13,10 @@
  *     last six weeks of lessons with attendance
  *   · the invoice round of last month: אביה marked her sessions, uploaded
  *     an invoice picture and finished; עומר opened his link and stopped
+ *   · last month's attendance drafts from the houses (phase 3): דני of
+ *     הוסטל טסט marked three sessions with absence reasons, named someone
+ *     not on the list and someone who left, and finished; שמרית approved
+ *     one session. קהילת טסט ב got its link and did not open it
  *   · papers: אביה's syllabus (a PDF), עומר's certificate (a picture)
  *   · אביה's supplier file, linked to her, with the form filled
  *   · שמרית's diary (and Eden's): overdue tasks, today's, a note ahead
@@ -40,6 +44,7 @@ const Invoice = require("../models/Invoice");
 const InvoiceLesson = require("../models/InvoiceLesson");
 const InvoiceRound = require("../models/InvoiceRound");
 const InvoiceRequest = require("../models/InvoiceRequest");
+const HostelReport = require("../models/HostelReport");
 const PersonDocument = require("../models/PersonDocument");
 const Supplier = require("../models/Supplier");
 const DiaryEntry = require("../models/DiaryEntry");
@@ -50,6 +55,7 @@ const StaffAccount = require("../models/StaffAccount");
 const { createPersonWithProfile } = require("../services/profileService");
 const tags = require("../services/tagService");
 const rounds = require("../services/invoiceRoundService");
+const reports = require("../services/hostelReportService");
 const documents = require("../services/personDocumentService");
 const suppliers = require("../services/supplierService");
 const { SUBJECT_CATEGORY_KEYS } = require("../utils/domain");
@@ -177,7 +183,7 @@ const dataUrl = (mime, buf) => `data:${mime};base64,${buf.toString("base64")}`;
 
 /* ───────────────────── the ledger: what an earlier run made ───────────────────── */
 
-const MODELS = { people: Person, profiles: Profile, subjects: Subject, hostels: Hostel, cycles: Cycle, enrollments: Enrollment, lessons: Lesson, invoices: Invoice, invoiceLessons: InvoiceLesson, invoiceRounds: InvoiceRound, invoiceRequests: InvoiceRequest, personDocuments: PersonDocument, suppliers: Supplier, diaryEntries: DiaryEntry, files: StoredFile, personTags: PersonTag, cycleTags: CycleTag };
+const MODELS = { people: Person, profiles: Profile, subjects: Subject, hostels: Hostel, cycles: Cycle, enrollments: Enrollment, lessons: Lesson, invoices: Invoice, invoiceLessons: InvoiceLesson, invoiceRounds: InvoiceRound, invoiceRequests: InvoiceRequest, hostelReports: HostelReport, personDocuments: PersonDocument, suppliers: Supplier, diaryEntries: DiaryEntry, files: StoredFile, personTags: PersonTag, cycleTags: CycleTag };
 
 async function removeEarlierRun() {
   if (!fs.existsSync(LEDGER)) return;
@@ -267,6 +273,9 @@ async function main() {
       city: "ירושלים",
       phone: "02-5550101",
       email: "hostel.test@example.org",
+      // the Ministry's numbers (her file): approvals and when the activity began
+      approvals: 12,
+      since: new Date(now.getFullYear() - 4, 5, 1),
       contacts: [
         { name: "יונית טסט", role: "manager", phone: "050-5550001" },
         { name: "דני טסט", role: "reporter", phone: "050-5550002", email: "dani.test@example.org" },
@@ -293,7 +302,7 @@ async function main() {
   );
 
   /* 3 ── teachers */
-  const teacher = async (firstName, gender, phone, subjectNames) => {
+  const teacher = async (firstName, gender, phone, subjectNames, hostelRate) => {
     const { person, profile } = await createPersonWithProfile("Teacher", {
       world: WORLD,
       firstName,
@@ -302,15 +311,16 @@ async function main() {
       phone,
       email: `teacher_${ids.people.length + 1}@test.local`,
       subjects: subjectNames.map((n) => subjects[n]._id),
+      hostelRate,
     });
     note("people", person);
     note("profiles", profile);
     await tags.give({ world: WORLD, personId: person._id, key: "hostels", by, note: "נוסף/ה למורי ההוסטלים" });
     return person;
   };
-  const avia = await teacher("אביה", "female", "052-5551001", ["עיצוב גרפי", "יוגה"]);
-  const omer = await teacher("עומר", "male", "052-5551002", ["מוסיקה"]);
-  const noa = await teacher("נועה", "female", "052-5551003", ["מוסיקה"]);
+  const avia = await teacher("אביה", "female", "052-5551001", ["עיצוב גרפי", "יוגה"], 250);
+  const omer = await teacher("עומר", "male", "052-5551002", ["מוסיקה"], 400);
+  const noa = await teacher("נועה", "female", "052-5551003", ["מוסיקה"], 200);
 
   /* 4 ── students: residents, one who left, the community's members */
   const student = async (firstName, gender, residence, extraTags = []) => {
@@ -393,6 +403,29 @@ async function main() {
   await rounds.noteOpened(reqOmer);
   for (const inv of await Invoice.find({ request: reqAvia._id })) note("invoices", inv);
 
+  /* 6b ── last month's attendance drafts from the houses (phase 3): דני marked, שמרית approved one */
+  const opened = await reports.openMonth({ world: WORLD, month, by });
+  for (const v of opened) note("hostelReports", v);
+  const houseReport = await HostelReport.findById(opened.find((v) => String(v.hostel._id) === String(hostel._id))._id);
+  const communityReport = await HostelReport.findById(opened.find((v) => String(v.hostel._id) === String(community._id))._id);
+  await reports.markSent({ world: WORLD, reportId: houseReport._id, by });
+  await reports.markSent({ world: WORLD, reportId: communityReport._id, by });
+  await reports.noteOpened(houseReport);
+  const designSessions = houseReport.sessions.filter((s) => String(s.cycle) === String(design._id));
+  const musicSessions = houseReport.sessions.filter((s) => String(s.cycle) === String(music._id));
+  const cohortDesign = seated[String(design._id)];
+  const cohortMusic = seated[String(music._id)];
+  const mark = (cohort, absent) => cohort.map((p, i) => (absent[i] ? { person: String(p._id), status: "absent", reason: absent[i], note: absent[i] === "hospital" ? "בהדסה עין כרם" : undefined } : { person: String(p._id), status: "present" }));
+  if (designSessions[0]) await reports.setSession(houseReport, designSessions[0]._id, { state: "held", marks: mark(cohortDesign, [null, "hospital", null, null, "refused", null]) });
+  if (designSessions[1]) await reports.setSession(houseReport, designSessions[1]._id, { state: "notHeld" });
+  if (designSessions[2]) await reports.setSession(houseReport, designSessions[2]._id, { state: "held", marks: mark(cohortDesign, [null, null, null, "vacation", null, null]) });
+  if (musicSessions[0]) await reports.setSession(houseReport, musicSessions[0]._id, { state: "held", marks: mark(cohortMusic, [null, null, "er", null, null, null, "unexplained"]) });
+  if (musicSessions[1]) await reports.setSession(houseReport, musicSessions[1]._id, { state: "held", marks: mark(cohortMusic, [null, null, null, null, null, null, null]) });
+  await reports.addExtra(houseReport, { name: "נועם טסט", cycle: String(design._id), note: "הגיע לראשונה, גר בבית מתחילת החודש" });
+  await reports.addLeft(houseReport, { person: String(residents[5]._id), date: `${month}-20`, note: "עברה לדיור עצמאי" });
+  await reports.complete(houseReport, { note: "המפגש השני של עיצוב לא התקיים - חג. בשבוע האחרון היו שני דיירים באשפוז." });
+  if (designSessions[0]) await reports.approveSession({ world: WORLD, reportId: houseReport._id, sessionId: designSessions[0]._id, by });
+
   /* 7 ── papers: a syllabus for אביה, a certificate for עומר */
   const syllabus = makePdf(["Syllabus - Graphic Design - Hostel Test", "Teacher: Avia Test  |  Year: 2026-2027  |  Thursdays 15:00-16:00", "", "1. Shapes, colour and composition", "2. Letters: a poster with one word", "3. The computer: a first layout", "4. A card for the holidays", "5. Photos and collage", "6. The year's exhibition", "", "Test data - not a real document."]);
   const doc1 = await documents.add({ world: WORLD, personId: avia._id, kind: "syllabus", label: "סילבוס תשפ״ז", fileName: "syllabus-avia.pdf", mime: "application/pdf", data: syllabus, by });
@@ -445,6 +478,7 @@ async function main() {
       `Planted in "${WORLD}":`,
       `  2 houses (הוסטל טסט, קהילת טסט ב) · 3 teachers · ${residents.length + 1 + members.length} students · 3 courses · ${ids.lessons.length} lessons`,
       `  invoice round ${month}: אביה done (${reqAvia.sessions.length} sessions, 1 invoice), עומר opened`,
+      `  hostel drafts ${month}: הוסטל טסט done (${houseReport.sessions.filter((s) => s.state).length} sessions marked, 1 approved, 1 newcomer, 1 leaver), קהילת טסט ב sent`,
       `  papers: אביה's syllabus (PDF), עומר's certificate (PNG) · אביה's supplier file (form + 1 certificate)`,
       `  diaries: ${accounts.map((a) => a.name).join(", ")} (7 lines each)`,
       `  ledger: ${LEDGER}`,

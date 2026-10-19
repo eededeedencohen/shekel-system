@@ -14,6 +14,7 @@ const Cycle = require("../models/Cycle");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 const lens = require("../services/lensService");
+const { ABSENCE_REASON_KEYS } = require("../utils/domain");
 
 const POPULATE = [
   { path: "teacher", select: "firstName lastName" },
@@ -93,8 +94,13 @@ exports.upsertAttendance = catchAsync(async (req, res, next) => {
   if (!cyc) return next(AppError.of("NOT_FOUND", 404, "מחזור"));
   if (cyc.world !== req.world) return next(AppError.of("WORLD_MISMATCH", 400));
   await lens.assertCycle(req, cycle); // the grid of the lens's own cycle
+  // an absence may carry its reason (the hostels' rule); anything else in a record is dropped here
+  const rows = records.map((r) => {
+    if (r?.reason != null && r.reason !== "" && !ABSENCE_REASON_KEYS.includes(r.reason)) throw AppError.of("ATTENDANCE_REASON_INVALID", 400);
+    return { student: r.student, status: r.status, note: r.note, reason: r.reason || null, ...(r.progressRating != null && { progressRating: r.progressRating }), ...(r.isGuest != null && { isGuest: r.isGuest }) };
+  });
 
-  const update = { $set: { attendance: records }, $setOnInsert: { world: cyc.world } };
+  const update = { $set: { attendance: rows }, $setOnInsert: { world: cyc.world } };
   if (teacher !== undefined) update.$set.teacher = teacher;
   if (room !== undefined) update.$set.room = room;
 
@@ -116,14 +122,16 @@ exports.patchAttendanceRecord = catchAsync(async (req, res, next) => {
   if (!lesson) return next(AppError.of("NOT_FOUND", 404, "שיעור"));
   if (lesson.source === "archive") return next(AppError.of("ARCHIVE_READONLY", 400));
 
-  const { status, note } = req.body;
+  const { status, note, reason } = req.body;
+  if (reason !== undefined && reason !== null && !ABSENCE_REASON_KEYS.includes(reason)) return next(AppError.of("ATTENDANCE_REASON_INVALID", 400));
   const record = lesson.attendance.find((r) => String(r.student) === req.params.studentId);
   if (record) {
     if (status !== undefined) record.status = status;
     if (note !== undefined) record.note = note;
+    if (reason !== undefined) record.reason = reason || null;
   } else {
     if (!status) return next(AppError.of("MISSING_FIELDS", 400, "status"));
-    lesson.attendance.push({ student: req.params.studentId, status, note });
+    lesson.attendance.push({ student: req.params.studentId, status, note, reason: reason || null });
   }
   await lesson.save();
   await lesson.populate(POPULATE);

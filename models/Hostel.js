@@ -54,6 +54,14 @@ const hostelSchema = new mongoose.Schema(
       phone: { type: String, trim: true },
     },
     notes: { type: String, trim: true },
+    /**
+     * The Ministry of Health's monthly report (שמרית's file, 2026-10-19):
+     * how many residents the Ministry approved for the program in this house
+     * ("מספר אישורים בהוסטל") and when the activity there began ("תחילת
+     * פעילות"). Both typed by the coordinator; a קהילה needs neither.
+     */
+    approvals: { type: Number, min: 0 },
+    since: { type: Date },
   },
   { timestamps: true }
 );
@@ -61,6 +69,6 @@ const hostelSchema = new mongoose.Schema(
 hostelSchema.index({ world: 1, name: 1 }, { unique: true });
 
 /** The fields a PUT may change (`world` never; `name` must stay non-empty). */
-hostelSchema.statics.EDITABLE = ["name", "active", "kind", "contacts", "address", "city", "phone", "email", "contact", "notes"];
+hostelSchema.statics.EDITABLE = ["name", "active", "kind", "contacts", "address", "city", "phone", "email", "contact", "notes", "approvals", "since"];
 
 module.exports = mongoose.model("Hostel", hostelSchema);

@@ -85,6 +85,9 @@ app.use("/api/enrollments", requireFamily("college"), require("./routes/enrollme
 app.use("/api/lessons", requireFamily("college"), require("./routes/lessonRoutes"));
 app.use("/api/rooms", requireFamily("college"), require("./routes/roomRoutes"));
 app.use("/api/hostels", requireFamily("hostels"), require("./routes/hostelRoutes"));
+// the houses' attendance drafts (phase 3 of שמרית's round): a temporary link
+// per hostel per month; the house's side is under /api/public/hostel-reports.
+app.use("/api/hostel-reports", requireFamily("hostels"), require("./routes/hostelReportRoutes"));
 // תרבות לכל - events, registrations (seats + waitlist + attendance), vouchers
 app.use("/api/events", requireFamily("culture"), require("./routes/eventRoutes"));
 app.use("/api/event-registrations", requireFamily("culture"), require("./routes/registrationRoutes"));

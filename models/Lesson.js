@@ -24,7 +24,7 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, ATTENDANCE_STATUSES } = require("../utils/domain");
+const { WORLDS, ATTENDANCE_STATUSES, ABSENCE_REASON_KEYS } = require("../utils/domain");
 
 /** Any date-ish value → Date at UTC midnight of its UTC day. */
 function utcMidnight(v) {
@@ -70,6 +70,8 @@ const lessonSchema = new mongoose.Schema(
           required: [true, "חובה לציין סטטוס נוכחות"],
         },
         note: { type: String, trim: true },
+        /** Why they missed it (ABSENCE_REASONS) - the hostels' rule (שמרית): an absence carries its reason. */
+        reason: { type: String, enum: { values: [...ABSENCE_REASON_KEYS, null], message: "{VALUE} אינה סיבת היעדרות מוכרת" }, default: null },
         progressRating: { type: Number, min: 1, max: 10 },
         /** Ad-hoc/guest participant (inverted from the old isOriginalGroupMember). */
         isGuest: { type: Boolean, default: false },
