@@ -89,8 +89,6 @@ const publicAnswer = async (res, r) => res.status(200).json({ status: "success",
 
 exports.publicView = catchAsync(async (req, res) => publicAnswer(res, await rounds.noteOpened(await resolve(req))));
 
-exports.publicSessions = catchAsync(async (req, res) => publicAnswer(res, await rounds.setSessions(await resolve(req), req.body?.sessions)));
-
 exports.publicInvoice = catchAsync(async (req, res) => {
   const { imageData, imageName, sessions } = req.body || {};
   if (!imageData) throw AppError.of("MISSING_FIELDS", 400, "imageData");

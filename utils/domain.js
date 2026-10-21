@@ -254,14 +254,14 @@ const INVOICE_ROUND_PROGRAMS = ["hostels", "college"];
 const INVOICE_ROUND_PROGRAM_LABELS = { hostels: "הוסטלים", college: "מכללה לכל" };
 /** How long a teacher's link stays open, days - and the renewal step. */
 const INVOICE_LINK_DAYS = 21;
-/** What the teacher says about a planned session. */
+/** Kept on InvoiceRequest.sessions for the rows written before 2026-10-21; the teacher marks nothing any more - the invoice names its sessions. */
 const INVOICE_SESSION_STATES = ["taught", "notHeld"];
 /**
  * Where a teacher's request stands (computed, never set by hand):
  *   new      opened, the link not yet sent
  *   sent     sent, not opened
- *   opened   opened, nothing marked yet
- *   partial  something marked or uploaded, not finished
+ *   opened   opened, no invoice yet
+ *   partial  an invoice came in, not finished
  *   done     the teacher pressed "סיימתי"
  */
 const INVOICE_REQUEST_STATUSES = ["new", "sent", "opened", "partial", "done"];
@@ -858,10 +858,9 @@ const ERROR_CODES = {
   INVOICE_LINK_EXPIRED: "הקישור פג - בקשו מהרכזת קישור חדש",
   INVOICE_LINK_DONE: "הדיווח לחודש הזה כבר נסגר",
   INVOICE_SESSION_UNKNOWN: "המפגש הזה לא ברשימה של החודש",
-  INVOICE_SESSION_STATE: "מפגש מסומן כ\"התקיים\" או \"לא התקיים\"",
-  INVOICE_NOTHING_TAUGHT: "קודם מסמנים אילו מפגשים התקיימו",
+  INVOICE_NO_SESSIONS: "בוחרים לפחות מפגש אחד שהחשבונית מכסה",
   INVOICE_NOT_YOURS: "החשבונית הזו לא הועלתה דרך הקישור הזה",
-  INVOICE_DONE_EMPTY: "אפשר לסיים רק אחרי שסומנו המפגשים",
+  INVOICE_DONE_EMPTY: "אפשר לסיים אחרי חשבונית אחת לפחות, או עם הערה למה אין",
   DIARY_INVALID: "לרשומה ביומן חובה תאריך וכותרת",
   ATTENDANCE_REASON_INVALID: "סיבת היעדרות לא מוכרת",
   // סקיצת הנוכחות מההוסטלים (שלב 3 של סבב שמרית)

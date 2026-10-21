@@ -34,9 +34,8 @@ router.get("/supplier/:token/files/:key/file", supplier.publicFile);
 router.get("/supplier/:token/files/:key/thumb", supplier.publicThumb);
 
 // the teacher's month behind the invoice link (שמרית's round, 2026-10-19):
-// the planned sessions to mark, the invoice to upload, "סיימתי"
+// the month's lessons, each invoice attached to the lessons it covers, "סיימתי"
 router.get("/invoices/:token", invoiceLink.publicView);
-router.put("/invoices/:token/sessions", invoiceLink.publicSessions);
 router.post("/invoices/:token/invoices", invoiceLink.publicInvoice);
 router.delete("/invoices/:token/invoices/:iid", invoiceLink.publicRemoveInvoice);
 router.get("/invoices/:token/invoices/:iid/image", invoiceLink.publicImage);

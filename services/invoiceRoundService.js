@@ -7,13 +7,16 @@
  * The coordinator opens a month for a program (hostels first): every
  * teacher of a course live in that month gets an InvoiceRequest - a token,
  * the month's planned sessions of their courses (from the weekly slots).
- * She sends each link by WhatsApp. Behind the link the teacher marks each
- * session התקיים / לא התקיים, uploads the invoice picture written on the
- * taught sessions (a Lesson row is made for a taught session that has
- * none yet - the coordinator's attendance report later lands on the same
- * row), and presses סיימתי. The coordinator's page reads where everyone
- * stands, what the teacher said against what she reported, and closes
- * the month with the mail.
+ * She sends each link by WhatsApp. Behind the link the teacher sees the
+ * month's lessons as the system knows them (planned from the schedule;
+ * with what was reported on each) and attaches each invoice picture to
+ * the lessons it covers - nothing else to mark (Eden, 2026-10-21:
+ * "המורים לא אמורים לסמן איזה שיעורים התקיימו או לא בחשבוניות... רק צריכים
+ * לשייך חשבוניות לשיעורים"). A billed session without a Lesson row gets
+ * one - the coordinator's attendance report later lands on the same row.
+ * Then סיימתי. The coordinator's page reads where everyone stands, what
+ * was billed against what she reported, and closes the month with the
+ * mail.
  *
  * The staff side answers through `roundView`; the teacher's side through
  * `publicView` - the teacher never sees the other teachers, the attendance
@@ -29,11 +32,12 @@ const Invoice = require("../models/Invoice");
 const InvoiceLesson = require("../models/InvoiceLesson");
 const Lesson = require("../models/Lesson");
 const Cycle = require("../models/Cycle");
+const HostelReport = require("../models/HostelReport");
 const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
 const invoices = require("./invoiceService");
 const { Profile } = require("../models/profiles");
-const { INVOICE_ROUND_PROGRAMS, INVOICE_ROUND_PROGRAM_LABELS, INVOICE_LINK_DAYS, INVOICE_SESSION_STATES, INVOICE_REQUEST_STATUS_LABELS, INVOICE_DUE_DAY } = require("../utils/domain");
+const { INVOICE_ROUND_PROGRAMS, INVOICE_ROUND_PROGRAM_LABELS, INVOICE_LINK_DAYS, INVOICE_REQUEST_STATUS_LABELS, INVOICE_DUE_DAY } = require("../utils/domain");
 
 const DAY_MS = 24 * 3600 * 1000;
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -171,7 +175,7 @@ async function loadRequest({ world, roundId, requestId }) {
 /** Where a request stands - from the facts, never set by hand (INVOICE_REQUEST_STATUSES). */
 function statusOf(r, invoiceCount) {
   if (r.completedAt) return "done";
-  if (invoiceCount > 0 || (r.sessions || []).some((s) => s.state)) return "partial";
+  if (invoiceCount > 0) return "partial";
   if (r.openedAt) return "opened";
   if (r.sentAt) return "sent";
   return "new";
@@ -179,18 +183,22 @@ function statusOf(r, invoiceCount) {
 
 /**
  * The facts around a list of requests: their cycles (named), their
- * invoices (shaped, by request), and for every session whether a lesson
- * exists and whether attendance was reported on it.
+ * invoices (shaped, by request), and for every session what the system
+ * knows of it - a lesson row, attendance reported on it (how many came),
+ * the house's own word from its monthly draft (held / not held), and the
+ * invoice it sits on.
  */
 async function factsOf(world, requests) {
   for (const r of requests) await attachLessons(world, r.sessions);
   const cycleIds = [...new Set(requests.flatMap((r) => r.sessions.map((s) => String(s.cycle))))];
   const lessonIds = [...new Set(requests.flatMap((r) => r.sessions.map((s) => s.lesson && String(s.lesson)).filter(Boolean)))];
-  const [cycles, lessons, invs, billed] = await Promise.all([
+  const months = [...new Set(requests.map((r) => dayKey(r.sessions[0]?.date || new Date()).slice(0, 7)))];
+  const [cycles, lessons, invs, billed, drafts] = await Promise.all([
     Cycle.find({ _id: { $in: cycleIds } }).select("subject hostel schedule").populate("subject", "name").populate("hostel", "name kind").lean(),
     Lesson.find({ _id: { $in: lessonIds } }).select("_id attendance").lean(),
     Invoice.find({ world, request: { $in: requests.map((r) => r._id) } }).sort({ uploadedAt: -1 }).lean(),
     InvoiceLesson.find({ lesson: { $in: lessonIds } }).select("lesson invoice").lean(),
+    cycleIds.length ? HostelReport.find({ world, month: { $in: months }, "sessions.cycle": { $in: cycleIds } }).select("sessions.cycle sessions.date sessions.state").lean() : [],
   ]);
   const shaped = await invoices.shape(world, invs);
   const invoicesByRequest = new Map();
@@ -199,9 +207,13 @@ async function factsOf(world, requests) {
     if (!invoicesByRequest.has(k)) invoicesByRequest.set(k, []);
     invoicesByRequest.get(k).push(i);
   }
+  const houseSaid = new Map();
+  for (const d of drafts) for (const s of d.sessions || []) if (s.state) houseSaid.set(`${s.cycle}|${new Date(s.date).toISOString()}`, s.state);
   return {
     cycleById: new Map(cycles.map((c) => [String(c._id), c])),
     reported: new Set(lessons.filter((l) => (l.attendance || []).length > 0).map((l) => String(l._id))),
+    presentByLesson: new Map(lessons.map((l) => [String(l._id), (l.attendance || []).filter((a) => a.status === "Present").length])),
+    houseSaid,
     invoicesByRequest,
     invoiceByLesson: new Map(billed.map((b) => [String(b.lesson), String(b.invoice)])),
   };
@@ -210,32 +222,39 @@ async function factsOf(world, requests) {
 const cycleView = (c) => (c ? { _id: c._id, subject: c.subject ? { _id: c.subject._id, name: c.subject.name } : null, hostel: c.hostel ? { _id: c.hostel._id, name: c.hostel.name, kind: c.hostel.kind } : null } : null);
 const cycleName = (c) => (c ? `${c.subject?.name || "קורס"}${c.hostel ? ` · ${c.hostel.kind === "community" ? "קהילת" : "הוסטל"} ${c.hostel.name}` : ""}` : "קורס");
 
+/** A session as the system knows it: reported (how many came), the house's word, the invoice it sits on. */
 function sessionView(s, facts) {
   const lesson = s.lesson ? String(s.lesson) : null;
+  const reported = !!(lesson && facts.reported.has(lesson));
   return {
     _id: s._id,
     cycle: cycleView(facts.cycleById.get(String(s.cycle))),
     date: s.date,
     start: s.start,
     end: s.end,
-    state: s.state || null,
-    markedAt: s.markedAt || null,
     lesson,
-    reported: !!(lesson && facts.reported.has(lesson)),
+    reported,
+    present: reported ? facts.presentByLesson.get(lesson) || 0 : null,
+    houseSaid: facts.houseSaid.get(`${s.cycle}|${new Date(s.date).toISOString()}`) || null,
     invoice: lesson ? facts.invoiceByLesson.get(lesson) || null : null,
   };
 }
 
+/**
+ * billed = on an invoice; reported = attendance on it; billedNotReported /
+ * reportedNotBilled = what the coordinator checks ("לבדוק" - never resolved
+ * by the machine); houseNotHeld = the house's draft said it did not take
+ * place.
+ */
 function countsOf(sessions) {
-  const c = { sessions: sessions.length, taught: 0, notHeld: 0, unmarked: 0, reported: 0, markedNotReported: 0, reportedNotMarked: 0, billed: 0 };
+  const c = { sessions: sessions.length, billed: 0, unbilled: 0, reported: 0, billedNotReported: 0, reportedNotBilled: 0, houseNotHeld: 0 };
   for (const s of sessions) {
-    if (s.state === "taught") c.taught++;
-    else if (s.state === "notHeld") c.notHeld++;
-    else c.unmarked++;
-    if (s.reported) c.reported++;
-    if (s.state === "taught" && !s.reported) c.markedNotReported++;
-    if (s.reported && s.state !== "taught") c.reportedNotMarked++;
     if (s.invoice) c.billed++;
+    else c.unbilled++;
+    if (s.reported) c.reported++;
+    if (s.invoice && !s.reported) c.billedNotReported++;
+    if (s.reported && !s.invoice) c.reportedNotBilled++;
+    if (s.houseSaid === "notHeld") c.houseNotHeld++;
   }
   return c;
 }
@@ -247,7 +266,7 @@ function requestView(r, facts, teacher, rate = null) {
   return {
     _id: r._id,
     round: r.round,
-    // `rate` = ₪ per session in the hostels (the Teacher profile) - the page checks the invoice's sum against taught × rate
+    // `rate` = ₪ per session in the hostels (the Teacher profile) - the page checks the invoice's sum against billed × rate
     teacher: teacher ? { _id: teacher._id, firstName: teacher.firstName, lastName: teacher.lastName, gender: teacher.gender || null, phone: teacher.phone || null, rate } : { _id: r.teacher, rate },
     token: r.token,
     expiresAt: r.expiresAt,
@@ -284,7 +303,7 @@ async function roundView(round) {
   for (const r of rows) {
     counts[r.status]++;
     counts.invoices += r.invoices.length;
-    counts.mismatches += r.counts.markedNotReported + r.counts.reportedNotMarked;
+    counts.mismatches += r.counts.billedNotReported + r.counts.reportedNotBilled;
   }
   return {
     _id: round._id,
@@ -404,7 +423,7 @@ async function publicView(r) {
   for (const s of sessions) {
     const k = String(s.cycle?._id || "");
     if (!groups.has(k)) groups.set(k, { cycle: s.cycle, name: cycleName(facts.cycleById.get(k)), sessions: [] });
-    groups.get(k).sessions.push({ _id: s._id, date: s.date, start: s.start, end: s.end, state: s.state, invoice: s.invoice });
+    groups.get(k).sessions.push({ _id: s._id, date: s.date, start: s.start, end: s.end, reported: s.reported, present: s.present, houseSaid: s.houseSaid, invoice: s.invoice });
   }
   const invs = (facts.invoicesByRequest.get(String(r._id)) || []).map((i) => ({
     _id: i._id,
@@ -435,38 +454,20 @@ const assertOpen = (r) => {
   if (r.completedAt) throw AppError.of("INVOICE_LINK_DONE", 400);
 };
 
-/** The teacher's word on sessions: [{ id, state }] with state taught / notHeld / null. A billed session stays taught. */
-async function setSessions(r, marks) {
-  assertOpen(r);
-  if (!Array.isArray(marks)) throw AppError.of("INVOICE_SESSION_UNKNOWN", 400);
-  const billed = new Set((await InvoiceLesson.find({ lesson: { $in: r.sessions.map((s) => s.lesson).filter(Boolean) } }).select("lesson").lean()).map((b) => String(b.lesson)));
-  const now = new Date();
-  for (const m of marks) {
-    const s = r.sessions.id(m?.id);
-    if (!s) throw AppError.of("INVOICE_SESSION_UNKNOWN", 400);
-    const state = m.state == null || m.state === "" ? null : m.state;
-    if (state !== null && !INVOICE_SESSION_STATES.includes(state)) throw AppError.of("INVOICE_SESSION_STATE", 400);
-    if (s.lesson && billed.has(String(s.lesson))) continue;
-    s.state = state;
-    s.markedAt = now;
-  }
-  await r.save();
-  return r;
-}
-
 /**
- * The invoice picture, written on the taught sessions named (or on every
- * taught session not yet billed). A taught session without a lesson row
- * gets one now - the same row the coordinator's report will fill.
+ * The invoice picture, attached to the sessions it covers - the teacher's
+ * only move. A covered session without a lesson row gets one now (the
+ * same row the coordinator's report will fill); one already on another
+ * invoice is refused.
  */
 async function addInvoice(r, { imageData, imageName, sessionIds }) {
   assertOpen(r);
-  const wanted = Array.isArray(sessionIds) && sessionIds.length ? new Set(sessionIds.map(String)) : null;
-  const taught = r.sessions.filter((s) => s.state === "taught" && (!wanted || wanted.has(String(s._id))));
-  if (wanted && taught.length !== wanted.size) throw AppError.of("INVOICE_SESSION_UNKNOWN", 400);
-  if (!taught.length) throw AppError.of("INVOICE_NOTHING_TAUGHT", 400);
-  await attachLessons(r.world, taught);
-  for (const s of taught) {
+  const wanted = Array.isArray(sessionIds) ? new Set(sessionIds.map(String)) : new Set();
+  if (!wanted.size) throw AppError.of("INVOICE_NO_SESSIONS", 400);
+  const covered = r.sessions.filter((s) => wanted.has(String(s._id)));
+  if (covered.length !== wanted.size) throw AppError.of("INVOICE_SESSION_UNKNOWN", 400);
+  await attachLessons(r.world, covered);
+  for (const s of covered) {
     if (s.lesson) continue;
     const lesson = await Lesson.findOneAndUpdate(
       { cycle: s.cycle, date: s.date, source: "live" },
@@ -478,15 +479,14 @@ async function addInvoice(r, { imageData, imageName, sessionIds }) {
   await r.save();
   const round = await InvoiceRound.findById(r.round).lean();
   const teacher = await Person.findById(r.teacher).select("firstName lastName").lean();
-  const lessonIds = taught.map((s) => String(s.lesson));
-  // only the sessions not yet on another invoice
-  const already = new Set((await InvoiceLesson.find({ lesson: { $in: lessonIds } }).select("lesson").lean()).map((b) => String(b.lesson)));
-  const fresh = lessonIds.filter((id) => !already.has(id));
-  if (!fresh.length) throw AppError.of("INVOICE_LESSON_BILLED", 400);
+  const lessonIds = covered.map((s) => String(s.lesson));
+  // a session sits on one invoice only
+  const already = await InvoiceLesson.exists({ lesson: { $in: lessonIds } });
+  if (already) throw AppError.of("INVOICE_LESSON_BILLED", 400);
   await invoices.createInvoice({
     world: r.world,
     teacherId: r.teacher,
-    lessonIds: fresh,
+    lessonIds,
     imageData,
     imageName,
     by: `${teacher?.firstName || ""} ${teacher?.lastName || ""}`.trim() || "המורה",
@@ -506,12 +506,13 @@ async function removeInvoice(r, invoiceId) {
   return r;
 }
 
-/** סיימתי - after the sessions were marked. */
+/** סיימתי - with an invoice in, or a word on why there is none. */
 async function complete(r, { note } = {}) {
   assertOpen(r);
-  if (!r.sessions.some((s) => s.state)) throw AppError.of("INVOICE_DONE_EMPTY", 400);
+  const text = note !== undefined ? clean(note, 1000) : r.note;
+  if (!text && !(await Invoice.exists({ world: r.world, request: r._id }))) throw AppError.of("INVOICE_DONE_EMPTY", 400);
   r.completedAt = new Date();
-  if (note !== undefined) r.note = clean(note, 1000);
+  if (note !== undefined) r.note = text;
   await r.save();
   return r;
 }
@@ -541,7 +542,6 @@ module.exports = {
   resolveToken,
   noteOpened,
   publicView,
-  setSessions,
   addInvoice,
   removeInvoice,
   complete,

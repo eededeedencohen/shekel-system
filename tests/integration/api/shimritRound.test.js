@@ -149,7 +149,7 @@ describe("the monthly invoice round", () => {
     // the Thursdays of October 2026: 1, 8, 15, 22, 29 - the hostel course only, never the college one
     expect(r.sessions.map((s) => s.date.slice(0, 10))).toEqual(["2026-10-01", "2026-10-08", "2026-10-15", "2026-10-22", "2026-10-29"]);
     expect(r.sessions.every((s) => String(s.cycle._id) === String(cycle._id))).toBe(true);
-    expect(r.counts).toMatchObject({ sessions: 5, unmarked: 5 });
+    expect(r.counts).toMatchObject({ sessions: 5, unbilled: 5, billed: 0 });
     expect(r.token).toMatch(/^[\w-]{12,}$/);
     expect(r.linkLive).toBe(true);
 
@@ -162,15 +162,15 @@ describe("the monthly invoice round", () => {
     expect(badMonth.body.code).toBe("INVOICE_ROUND_MONTH");
   });
 
-  it("the teacher behind the link: opens, marks sessions, uploads the invoice on them, finishes; the coordinator sees it all", async () => {
+  it("the teacher behind the link: opens, attaches the invoice to the lessons it covers, finishes; the coordinator sees it all", async () => {
     const { teacher, cycle } = await hostelMonth();
     // the coordinator already reported attendance on the 1st
     const student = await makeStudent();
     await Lesson.create({ cycle: cycle._id, date: new Date("2026-10-01T00:00:00.000Z"), attendance: [{ student: student._id, status: "Present" }] });
     const opened = (await request(app).post("/api/invoice-rounds").send({ month: "2026-10" })).body.data.round;
     const req0 = opened.requests[0];
-    expect(req0.sessions[0]).toMatchObject({ reported: true, state: null });
-    expect(req0.counts.reportedNotMarked).toBe(1);
+    expect(req0.sessions[0]).toMatchObject({ reported: true, present: 1, invoice: null });
+    expect(req0.counts).toMatchObject({ sessions: 5, billed: 0, unbilled: 5, reported: 1, reportedNotBilled: 1 });
 
     const sent = await request(app).post(`/api/invoice-rounds/${opened._id}/requests/${req0._id}/sent`).send({});
     expect(sent.body.data.round.requests[0].status).toBe("sent");
@@ -186,19 +186,18 @@ describe("the monthly invoice round", () => {
     expect((await request(app).get(`/api/invoice-rounds/${opened._id}`)).body.data.round.requests[0].status).toBe("opened");
 
     const ids = view.courses[0].sessions.map((s) => s._id);
-    const marked = await request(app).put(`${url}/sessions`).send({ sessions: [{ id: ids[0], state: "taught" }, { id: ids[1], state: "taught" }, { id: ids[2], state: "notHeld" }] });
-    expect(marked.status).toBe(200);
-    expect(marked.body.data.view.counts).toMatchObject({ taught: 2, notHeld: 1, unmarked: 2 });
-    const badState = await request(app).put(`${url}/sessions`).send({ sessions: [{ id: ids[3], state: "maybe" }] });
-    expect(badState.body.code).toBe("INVOICE_SESSION_STATE");
+    expect(view.courses[0].sessions[0]).toMatchObject({ reported: true, present: 1, invoice: null });
+    // nothing to finish with yet; the invoice must name its lessons, and only this month's
+    expect((await request(app).post(`${url}/done`).send({})).body.code).toBe("INVOICE_DONE_EMPTY");
+    expect((await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "oct.png" })).body.code).toBe("INVOICE_NO_SESSIONS");
+    expect((await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "oct.png", sessions: [ids[0], "6ad6000000000000000000aa"] })).body.code).toBe("INVOICE_SESSION_UNKNOWN");
 
-    const noTaught = await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "oct.png", sessions: [ids[2]] });
-    expect(noTaught.body.code).toBe("INVOICE_SESSION_UNKNOWN");
-    const up = await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "oct.png" });
+    const up = await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "oct.png", sessions: [ids[0], ids[1]] });
     expect(up.status).toBe(200);
     expect(up.body.data.view.invoices).toHaveLength(1);
     expect(up.body.data.view.invoices[0].lessons.map((l) => l.date.slice(0, 10))).toEqual(["2026-10-01", "2026-10-08"]);
-    // the taught session of the 8th got a lesson row; the 1st kept the reported one
+    expect(up.body.data.view.counts).toMatchObject({ billed: 2, unbilled: 3 });
+    // the session of the 8th got a lesson row; the 1st kept the reported one
     expect(await Lesson.countDocuments({ cycle: cycle._id })).toBe(2);
     const inv = await Invoice.findOne({});
     expect(String(inv.request)).toBe(String(req0._id));
@@ -206,22 +205,20 @@ describe("the monthly invoice round", () => {
     expect(inv.uploadedBy).toBe("אביה טסט");
     const image = await request(app).get(`${url}/invoices/${inv._id}/image`);
     expect(image.status).toBe(200);
-
-    // a billed session stays taught even if the teacher flips it
-    await request(app).put(`${url}/sessions`).send({ sessions: [{ id: ids[0], state: "notHeld" }] });
-    expect((await request(app).get(url)).body.data.view.counts.taught).toBe(2);
+    // a lesson sits on one invoice only
+    expect((await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "again.png", sessions: [ids[0]] })).body.code).toBe("INVOICE_LESSON_BILLED");
 
     const done = await request(app).post(`${url}/done`).send({ note: "לימדתי גם ב-3.10" });
     expect(done.body.data.view.done).toBe(true);
-    const after = await request(app).put(`${url}/sessions`).send({ sessions: [{ id: ids[3], state: "taught" }] });
+    const after = await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "late.png", sessions: [ids[2]] });
     expect(after.status).toBe(400);
     expect(after.body.code).toBe("INVOICE_LINK_DONE");
 
     const staff = (await request(app).get("/api/invoice-rounds")).body.data.rounds[0];
-    expect(staff.counts).toMatchObject({ teachers: 1, done: 1, invoices: 1 });
+    expect(staff.counts).toMatchObject({ teachers: 1, done: 1, invoices: 1, mismatches: 1 });
     const r = staff.requests[0];
     expect(r).toMatchObject({ status: "done", note: "לימדתי גם ב-3.10" });
-    expect(r.counts).toMatchObject({ taught: 2, notHeld: 1, billed: 2, markedNotReported: 1, reportedNotMarked: 0 });
+    expect(r.counts).toMatchObject({ billed: 2, unbilled: 3, reported: 1, billedNotReported: 1, reportedNotBilled: 0 });
     expect(r.invoices[0].lessons).toHaveLength(2);
 
     // the coordinator opens it back, closes the month with the mail, and may not delete a round with invoices

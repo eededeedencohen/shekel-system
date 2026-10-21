@@ -396,9 +396,9 @@ async function main() {
   await rounds.markSent({ world: WORLD, roundId: round._id, requestId: reqAvia._id, by });
   await rounds.markSent({ world: WORLD, roundId: round._id, requestId: reqOmer._id, by });
   await rounds.noteOpened(reqAvia);
-  const marks = reqAvia.sessions.map((s, i) => ({ id: String(s._id), state: i === 1 ? "notHeld" : "taught" }));
-  await rounds.setSessions(reqAvia, marks);
-  await rounds.addInvoice(reqAvia, { imageData: dataUrl("image/png", makePng({ tint: [78, 59, 120], rows: 10, label: 1 })), imageName: "חשבונית-אביה.png" });
+  // her invoice covers every session but the second (a holiday)
+  const covered = reqAvia.sessions.filter((s, i) => i !== 1).map((s) => String(s._id));
+  await rounds.addInvoice(reqAvia, { imageData: dataUrl("image/png", makePng({ tint: [78, 59, 120], rows: 10, label: 1 })), imageName: "חשבונית-אביה.png", sessionIds: covered });
   await rounds.complete(reqAvia, { note: "המפגש השני לא התקיים בגלל חג. השאר התקיימו כרגיל." });
   await rounds.noteOpened(reqOmer);
   for (const inv of await Invoice.find({ request: reqAvia._id })) note("invoices", inv);
