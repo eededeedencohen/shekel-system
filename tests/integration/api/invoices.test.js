@@ -86,10 +86,23 @@ describe("POST /api/invoices", () => {
     expect(await InvoiceLesson.countDocuments()).toBe(1);
   });
 
-  it("refuses a picture that is not an image, or no picture", async () => {
-    const { teacher, lessons } = await teacherWithLessons(1);
+  it("takes a PDF with the thumbnail the browser rendered; refuses a file that is neither image nor PDF, or no file", async () => {
+    const { teacher, lessons } = await teacherWithLessons(2);
     const body = { teacher: teacher._id, lessons: [lessons[0]._id] };
-    expect((await post({ ...body, imageData: "data:application/pdf;base64,AAAA" })).body.code).toBe("INVOICE_IMAGE_INVALID");
+    const pdf = await post({ ...body, imageData: "data:application/pdf;base64,JVBERi0xLjQKJeLjz9MKMSAwIG9iago8PD4+CmVuZG9iagp0cmFpbGVyCjw8L1Jvb3QgMSAwIFI+Pg==", imageName: "inv.pdf", thumb: IMAGE });
+    expect(pdf.status).toBe(201);
+    expect(pdf.body.data.invoice.file).toMatchObject({ name: "inv.pdf", mime: "application/pdf", thumb: true });
+    const file = await request(app).get(`/api/invoices/${pdf.body.data.invoice._id}/image`);
+    expect(file.headers["content-type"]).toMatch(/application\/pdf/);
+    const thumb = await request(app).get(`/api/invoices/${pdf.body.data.invoice._id}/image?thumb=1`);
+    expect(thumb.status).toBe(200);
+    expect(thumb.headers["content-type"]).toMatch(/image\/jpeg/); // the uploader's small JPEG
+    expect(thumb.body.length).toBe(Buffer.from(PNG_B64, "base64").length);
+    // a picture without a thumbnail answers with itself; a PDF without one is not found
+    const pic = (await post({ ...body, lessons: [lessons[1]._id], imageData: IMAGE })).body.data.invoice;
+    expect(pic.file.thumb).toBe(false);
+    expect((await request(app).get(`/api/invoices/${pic._id}/image?thumb=1`)).headers["content-type"]).toMatch(/image\/png/);
+    expect((await post({ ...body, imageData: "data:text/plain;base64,aGk=" })).body.code).toBe("INVOICE_IMAGE_INVALID");
     expect((await post({ ...body, imageData: "hello" })).body.code).toBe("INVOICE_IMAGE_INVALID");
     expect((await post(body)).status).toBe(400);
   });

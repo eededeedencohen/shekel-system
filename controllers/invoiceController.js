@@ -4,9 +4,9 @@
  *
  *   GET    /lessons?teacher=      the lessons a teacher may bill (+ which are billed)
  *   GET    /?teacher=             the invoices (of one teacher, or all)
- *   POST   /                      { teacher*, lessons*[], imageData*, imageName, by, note }
+ *   POST   /                      { teacher*, lessons*[], imageData* (image or PDF), imageName, thumb, by, note }
  *   GET    /:id                   one invoice
- *   GET    /:id/image             the picture itself
+ *   GET    /:id/image[?thumb=1]   the file itself (the small JPEG with thumb=1)
  *   PATCH  /:id                   { lessons?[], note? }
  *   DELETE /:id
  *
@@ -51,6 +51,7 @@ exports.createInvoice = catchAsync(async (req, res) => {
     lessonIds: req.body.lessons,
     imageData: req.body.imageData,
     imageName: req.body.imageName,
+    thumb: req.body.thumb,
     by: req.body.by,
     note: req.body.note,
     cycleIds,
@@ -69,9 +70,9 @@ exports.deleteInvoice = catchAsync(async (req, res) => {
   res.status(204).json({ status: "success", data: null });
 });
 
-/** The stored picture, inline (a plain link the browser may open in a tab). */
+/** The stored file (image or PDF), inline - a plain link the browser may open in a tab; `?thumb=1` the small JPEG. */
 exports.getImage = catchAsync(async (req, res) => {
-  const file = await invoices.imageOf({ world: req.world, invoiceId: req.params.id });
+  const file = await invoices.imageOf({ world: req.world, invoiceId: req.params.id, thumb: req.query.thumb === "1" });
   // revalidated every time (utils/sendFile): a replaced picture never shows its old bytes
   if (notModified(req, res, `${file._id}-${file.updatedAt ? new Date(file.updatedAt).getTime() : 0}`)) return;
   res.type(file.mime);

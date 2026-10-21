@@ -29,20 +29,33 @@ const AppError = require("../utils/AppError");
 const { withTxn } = require("../utils/withTxn");
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-const IMAGE_MIMES = new Set(["image/jpeg", "image/pjpeg", "image/png", "image/x-png", "image/webp", "image/gif", "image/avif", "image/bmp"]);
+/** What an invoice may be: a picture, or the PDF the teacher's invoicing software made (Eden, 2026-10-21: "למה רשום רק צילום ולא העלאה"). */
+const FILE_MIMES = new Set(["image/jpeg", "image/pjpeg", "image/png", "image/x-png", "image/webp", "image/gif", "image/avif", "image/bmp", "application/pdf", "application/x-pdf"]);
+const THUMB_MIMES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_THUMB_BYTES = 256 * 1024;
 
 const isId = (v) => mongoose.isValidObjectId(v);
 const uniq = (ids) => [...new Set((ids || []).map(String))];
 
-/** "data:image/…;base64,…" → { mime, buffer } - or the typed error. */
+const NORMAL_MIME = { "image/pjpeg": "image/jpeg", "image/x-png": "image/png", "application/x-pdf": "application/pdf" };
+
+/** "data:<mime>;base64,…" of an image or a PDF → { mime, buffer } - or the typed error. */
 function parseImage(dataUrl) {
   const m = /^data:([\w/+.-]+);base64,([A-Za-z0-9+/=\s]+)$/.exec(String(dataUrl || "").trim());
   if (!m) throw AppError.of("INVOICE_IMAGE_INVALID", 400);
   const mime = m[1].toLowerCase();
-  if (!IMAGE_MIMES.has(mime)) throw AppError.of("INVOICE_IMAGE_INVALID", 400);
+  if (!FILE_MIMES.has(mime)) throw AppError.of("INVOICE_IMAGE_INVALID", 400);
   const buffer = Buffer.from(m[2].replace(/\s+/g, ""), "base64");
   if (!buffer.length || buffer.length > MAX_IMAGE_BYTES) throw AppError.of("INVOICE_IMAGE_INVALID", 400);
-  return { mime: mime === "image/pjpeg" ? "image/jpeg" : mime === "image/x-png" ? "image/png" : mime, buffer };
+  return { mime: NORMAL_MIME[mime] || mime, buffer };
+}
+
+/** The small JPEG the uploader rendered of the file (a PDF's first page, a shrunk photo) - optional, ≤ 256KB, never a reason to refuse. */
+function parseThumb(dataUrl) {
+  const m = /^data:([\w/+.-]+);base64,([A-Za-z0-9+/=\s]+)$/.exec(String(dataUrl || "").trim());
+  if (!m || !THUMB_MIMES.has(m[1].toLowerCase())) return null;
+  const buffer = Buffer.from(m[2].replace(/\s+/g, ""), "base64");
+  return buffer.length && buffer.length <= MAX_THUMB_BYTES ? buffer : null;
 }
 
 /** The teacher of a lesson: the substitute written on it, else the cycle's. */
@@ -111,7 +124,8 @@ async function shape(world, invoices) {
   const ids = invoices.map((i) => i._id);
   const [rows, files] = await Promise.all([
     InvoiceLesson.find({ invoice: { $in: ids } }).select("invoice lesson").lean(),
-    StoredFile.find({ _id: { $in: invoices.map((i) => i.file) } }).select("name mime size").lean(),
+    // whether a thumbnail exists, without pulling its bytes
+    StoredFile.aggregate([{ $match: { _id: { $in: invoices.map((i) => i.file) } } }, { $project: { name: 1, mime: 1, size: 1, thumb: { $gt: [{ $binarySize: { $ifNull: ["$thumb", ""] } }, 0] } } }]),
   ]);
   const lessonDocs = await Lesson.find({ _id: { $in: rows.map((r) => r.lesson) } }).select("_id cycle date").lean();
   const lessonById = new Map(lessonDocs.map((l) => [String(l._id), l]));
@@ -157,30 +171,39 @@ async function getInvoice({ world, invoiceId }) {
   return (await shape(world, [invoice.toObject()]))[0];
 }
 
-/** The bytes of the picture (and their type). */
-async function imageOf({ world, invoiceId }) {
+/**
+ * The bytes of the file (and their type); with `thumb` the small JPEG the
+ * uploader rendered - an image without one answers with itself, a PDF
+ * without one is not found (the page shows the PDF glyph).
+ */
+async function imageOf({ world, invoiceId, thumb = false }) {
   const invoice = await loadInvoice(world, invoiceId);
   const file = await StoredFile.findOne({ _id: invoice.file, world });
-  if (!file) throw AppError.of("NOT_FOUND", 404, "תמונה");
-  return file;
+  if (!file) throw AppError.of("NOT_FOUND", 404, "קובץ החשבונית");
+  if (!thumb) return file;
+  if (file.thumb?.length) return { _id: file._id, updatedAt: file.updatedAt, mime: "image/jpeg", data: file.thumb };
+  if (file.mime.startsWith("image/")) return file;
+  throw AppError.of("NOT_FOUND", 404, "תמונה מוקטנת");
 }
 
 /** The duplicate-key error of the unique lesson index → the typed 409. */
 const billedTwice = (e) => (e && e.code === 11000 ? AppError.of("INVOICE_LESSON_BILLED", 409) : e);
 
 /**
- * A new invoice: { teacherId, lessonIds, imageData (data URL), imageName, by, note }.
+ * A new invoice: { teacherId, lessonIds, imageData (data URL of an image or
+ * a PDF), imageName, thumb (data URL of a small JPEG, optional), by, note }.
  */
-async function createInvoice({ world, teacherId, lessonIds, imageData, imageName, by, note, cycleIds = null, requestId = null }) {
+async function createInvoice({ world, teacherId, lessonIds, imageData, imageName, thumb, by, note, cycleIds = null, requestId = null }) {
   await assertTeacher({ world, teacherId });
   const ids = await assertLessonsOfTeacher({ world, teacherId, lessonIds, cycleIds });
   const image = parseImage(imageData);
+  const thumbBuf = parseThumb(thumb);
   const invoiceId = await withTxn(async (session) => {
     const opts = session ? { session } : {};
     let fileId = null;
     let newId = null;
     try {
-      const [file] = await StoredFile.create([{ world, name: imageName || undefined, mime: image.mime, size: image.buffer.length, data: image.buffer }], opts);
+      const [file] = await StoredFile.create([{ world, name: imageName || undefined, mime: image.mime, size: image.buffer.length, data: image.buffer, ...(thumbBuf && { thumb: thumbBuf }) }], opts);
       fileId = file._id;
       const [invoice] = await Invoice.create([{ world, teacher: teacherId, file: file._id, uploadedBy: by, note: note || undefined, request: requestId || null }], opts);
       newId = invoice._id;

@@ -90,9 +90,9 @@ const publicAnswer = async (res, r) => res.status(200).json({ status: "success",
 exports.publicView = catchAsync(async (req, res) => publicAnswer(res, await rounds.noteOpened(await resolve(req))));
 
 exports.publicInvoice = catchAsync(async (req, res) => {
-  const { imageData, imageName, sessions } = req.body || {};
+  const { imageData, imageName, thumb, sessions } = req.body || {};
   if (!imageData) throw AppError.of("MISSING_FIELDS", 400, "imageData");
-  publicAnswer(res, await rounds.addInvoice(await resolve(req), { imageData, imageName, sessionIds: sessions }));
+  publicAnswer(res, await rounds.addInvoice(await resolve(req), { imageData, imageName, thumb, sessionIds: sessions }));
 });
 
 exports.publicRemoveInvoice = catchAsync(async (req, res) => publicAnswer(res, await rounds.removeInvoice(await resolve(req), req.params.iid)));
@@ -100,7 +100,7 @@ exports.publicRemoveInvoice = catchAsync(async (req, res) => publicAnswer(res, a
 exports.publicDone = catchAsync(async (req, res) => publicAnswer(res, await rounds.complete(await resolve(req), { note: req.body?.note })));
 
 exports.publicImage = catchAsync(async (req, res) => {
-  const file = await rounds.imageOf(await resolve(req), req.params.iid);
+  const file = await rounds.imageOf(await resolve(req), req.params.iid, req.query.thumb === "1");
   if (notModified(req, res, `${file._id}-${file.updatedAt ? new Date(file.updatedAt).getTime() : 0}`)) return;
   res.type(file.mime);
   res.send(file.data);

@@ -428,7 +428,7 @@ async function publicView(r) {
   const invs = (facts.invoicesByRequest.get(String(r._id)) || []).map((i) => ({
     _id: i._id,
     uploadedAt: i.uploadedAt,
-    file: i.file ? { name: i.file.name, mime: i.file.mime, size: i.file.size } : null,
+    file: i.file ? { name: i.file.name, mime: i.file.mime, size: i.file.size, thumb: !!i.file.thumb } : null,
     lessons: i.lessons.map((l) => ({ _id: l._id, date: l.date, name: cycleName(facts.cycleById.get(String(l.cycle))) })),
   }));
   return {
@@ -460,7 +460,7 @@ const assertOpen = (r) => {
  * same row the coordinator's report will fill); one already on another
  * invoice is refused.
  */
-async function addInvoice(r, { imageData, imageName, sessionIds }) {
+async function addInvoice(r, { imageData, imageName, thumb, sessionIds }) {
   assertOpen(r);
   const wanted = Array.isArray(sessionIds) ? new Set(sessionIds.map(String)) : new Set();
   if (!wanted.size) throw AppError.of("INVOICE_NO_SESSIONS", 400);
@@ -489,6 +489,7 @@ async function addInvoice(r, { imageData, imageName, sessionIds }) {
     lessonIds,
     imageData,
     imageName,
+    thumb,
     by: `${teacher?.firstName || ""} ${teacher?.lastName || ""}`.trim() || "המורה",
     note: `${monthLabel(round.month)} · דרך הקישור`,
     requestId: r._id,
@@ -517,11 +518,11 @@ async function complete(r, { note } = {}) {
   return r;
 }
 
-/** The picture of an invoice that came through this link. */
-async function imageOf(r, invoiceId) {
+/** The file of an invoice that came through this link (`thumb`: its small JPEG). */
+async function imageOf(r, invoiceId, thumb = false) {
   const inv = isId(invoiceId) && (await Invoice.findOne({ _id: invoiceId, world: r.world }).select("request").lean());
   if (!inv || String(inv.request) !== String(r._id)) throw AppError.of("NOT_FOUND", 404, "חשבונית");
-  return invoices.imageOf({ world: r.world, invoiceId });
+  return invoices.imageOf({ world: r.world, invoiceId, thumb });
 }
 
 module.exports = {
