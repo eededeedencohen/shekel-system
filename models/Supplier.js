@@ -62,7 +62,7 @@ const fileRowSchema = new mongoose.Schema(
 const updateSchema = new mongoose.Schema(
   {
     at: { type: Date, default: Date.now },
-    kind: { type: String, enum: ["form", "file", "opened"], required: true },
+    kind: { type: String, enum: ["form", "file", "opened", "finish"], required: true },
     key: { type: String, trim: true },
     text: { type: String, trim: true, required: true },
     seenAt: { type: Date },
@@ -113,6 +113,8 @@ const supplierSchema = new mongoose.Schema(
     },
     formSubmittedAt: { type: Date },
     formUpdatedAt: { type: Date },
+    /** The supplier's "שליחה" once everything is in (Eden, 2026-10-23: a sent page for their peace of mind); cleared by any later change of theirs. */
+    finishedAt: { type: Date },
     formReview: { type: reviewSchema, default: () => ({ state: "pending" }) },
     files: { type: [fileRowSchema], default: () => SUPPLIER_FILE_KEYS.map((key) => ({ key })) },
     updates: { type: [updateSchema], default: [] },

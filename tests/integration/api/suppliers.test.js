@@ -171,6 +171,36 @@ describe("/api/suppliers + /api/public/supplier/:token", () => {
     expect(await StoredFile.countDocuments({ world: "real" })).toBe(2);
   });
 
+  it("the supplier's שליחה: refused until everything is in, then stamped with a line for the coordinator; a later change clears it (2026-10-23)", async () => {
+    const s = (await create(tamar)).body.data.supplier;
+    const t = s.link.token;
+    const early = await request(app).post(`${pub(t)}/finish`);
+    expect(early.status).toBe(400);
+    expect(early.body.code).toBe("SUPPLIER_NOT_COMPLETE");
+    await request(app).put(`${pub(t)}/form`).send(GOOD_FORM);
+    for (const key of ["books", "withholding", "bankProof"]) await upload(t, key);
+    const before = await request(app).get(pub(t));
+    expect(before.body.data.view.complete).toBe(false);
+    await request(app).post(`${pub(t)}/files/exempt/not-applicable`).send({ value: true });
+    const ready = await request(app).get(pub(t));
+    expect(ready.body.data.view).toMatchObject({ complete: true, finishedAt: null, status: "review" });
+    const sent = await request(app).post(`${pub(t)}/finish`);
+    expect(sent.status).toBe(200);
+    expect(sent.body.data.view.finishedAt).toBeTruthy();
+    expect(sent.body.data.view.status).toBe("review");
+    const staff = await request(app).get(`/api/suppliers/${s._id}`).set("Cookie", tamar);
+    const sv = staff.body.data.supplier;
+    expect(sv.finishedAt).toBeTruthy();
+    expect(sv.updates.at(-1)).toMatchObject({ kind: "finish", text: "סיים/ה - הטופס וכל האישורים נשלחו" });
+    // a replaced certificate takes the stamp back - the supplier sends again, with a fresh line
+    await upload(t, "books");
+    expect((await request(app).get(pub(t))).body.data.view.finishedAt).toBeNull();
+    const again = await request(app).post(`${pub(t)}/finish`);
+    expect(again.body.data.view.finishedAt).toBeTruthy();
+    const sv2 = (await request(app).get(`/api/suppliers/${s._id}`).set("Cookie", tamar)).body.data.supplier;
+    expect(sv2.updates.at(-1).text).toMatch(/מחדש/);
+  });
+
   it("the coordinator checks every item: לא תקין needs a note (and fields for the form), the supplier fixes, the card gets an unseen update", async () => {
     const { id, token } = await readySupplier();
     expect((await review(tamar, id, { target: "form", state: "bad" })).body.code).toBe("SUPPLIER_REVIEW_NOTE");

@@ -379,6 +379,7 @@ async function submitForm(s, body = {}) {
   s.form = f;
   if (first) s.formSubmittedAt = now;
   s.formUpdatedAt = now;
+  s.finishedAt = null;
   s.formReview = { state: "pending", fields: [] };
   s.updates.push({ at: now, kind: "form", text: first ? "מילא/ה את הטופס" : wasBad ? "תיקן/ה את הטופס" : "עדכן/ה את הטופס" });
   return settle(s);
@@ -403,6 +404,7 @@ async function uploadFile(s, { key, fileName, mime, data, thumb }) {
   row.file = { stored: stored._id, name, mime: kind.mime, size: buffer.length, thumb: !!thumbBuf, uploadedAt: now };
   row.notApplicable = false;
   row.review = { state: "pending", fields: [] };
+  s.finishedAt = null;
   s.updates.push({ at: now, kind: "file", key, text: `${wasBad ? "העלה/תה מחדש" : again ? "החליף/ה" : "העלה/תה"} ${def.label}` });
   return settle(s);
 }
@@ -426,6 +428,7 @@ async function removeFile(s, key) {
   row.file = {};
   row.notApplicable = false;
   row.review = { state: "pending", fields: [] };
+  s.finishedAt = null;
   return settle(s);
 }
 
@@ -444,7 +447,24 @@ async function setNotApplicable(s, key, value) {
   const wasBad = row.review?.state === "bad";
   row.notApplicable = on;
   row.review = { state: "pending", fields: [] };
+  s.finishedAt = null;
   if (on) s.updates.push({ at: new Date(), kind: "file", key, text: `${wasBad ? "סימן/ה שוב" : "סימן/ה"} ש${def.label} לא רלוונטי` });
+  return settle(s);
+}
+
+/**
+ * The supplier's "שליחה" once the form is sent and every certificate is in
+ * (Eden, 2026-10-23: even though the coordinator sees each thing as it
+ * lands, the supplier wants the moment it all went). Any later change of
+ * theirs clears it, so a fix is sent again - a fresh line for the coordinator.
+ */
+async function finish(s) {
+  if (s.email?.sentAt) throw AppError.of("SUPPLIER_DONE", 400);
+  if (!s.formSubmittedAt || !filesComplete(s)) throw AppError.of("SUPPLIER_NOT_COMPLETE", 400);
+  const again = (s.updates || []).some((u) => u.kind === "finish");
+  const now = new Date();
+  s.finishedAt = now;
+  s.updates.push({ at: now, kind: "finish", text: again ? "שלח/ה הכול מחדש - הטופס וכל האישורים בפנים" : "סיים/ה - הטופס וכל האישורים נשלחו" });
   return settle(s);
 }
 
@@ -502,6 +522,9 @@ function publicView(s) {
     counts: fileCounts(s),
     paymentTerms: SUPPLIER_PAYMENT_TERMS,
     maxFileBytes: MAX_FILE_BYTES,
+    /** The form sent and every certificate in - the "שליחה" may go. */
+    complete: !!s.formSubmittedAt && filesComplete(s),
+    finishedAt: s.finishedAt || null,
     done: !!s.email?.sentAt,
   };
 }
@@ -540,6 +563,7 @@ module.exports = {
   uploadFile,
   removeFile,
   setNotApplicable,
+  finish,
   fileOf,
   thumbOf,
   rowOf,

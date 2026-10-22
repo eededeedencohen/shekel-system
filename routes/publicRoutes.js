@@ -42,6 +42,7 @@ router.put("/supplier/:token/form", supplier.publicForm);
 router.post("/supplier/:token/files/:key", supplier.publicUpload);
 router.delete("/supplier/:token/files/:key", supplier.publicRemove);
 router.post("/supplier/:token/files/:key/not-applicable", supplier.publicNotApplicable);
+router.post("/supplier/:token/finish", supplier.publicFinish);
 router.get("/supplier/:token/files/:key/file", supplier.publicFile);
 router.get("/supplier/:token/files/:key/thumb", supplier.publicThumb);
 

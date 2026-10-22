@@ -834,6 +834,7 @@ const ERROR_CODES = {
   SUPPLIER_LINK_DAYS_INVALID: "משך הקישור חייב להיות 3 ימים, שבוע, שבועיים או חודש",
   SUPPLIER_FORM_INVALID: "בטופס חסרים שדות חובה או שיש בו ערך לא תקין",
   SUPPLIER_FORM_LOCKED: "הטופס כבר אושר ואי אפשר לשנות אותו",
+  SUPPLIER_NOT_COMPLETE: "לפני השליחה צריך למלא את הטופס ולצרף את כל האישורים",
   SUPPLIER_FILE_UNKNOWN: "סוג קובץ לא מוכר",
   SUPPLIER_FILE_LOCKED: "הקובץ כבר אושר ואי אפשר להחליף אותו",
   SUPPLIER_FILE_REQUIRED: "את הקובץ הזה חובה להעלות - אי אפשר לסמן שלא רלוונטי",

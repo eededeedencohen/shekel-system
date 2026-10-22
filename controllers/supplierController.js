@@ -121,5 +121,7 @@ exports.publicNotApplicable = catchAsync(async (req, res) => {
   publicAnswer(res, await suppliers.setNotApplicable(await resolve(req), req.params.key, value));
 });
 
+exports.publicFinish = catchAsync(async (req, res) => publicAnswer(res, await suppliers.finish(await resolve(req))));
+
 exports.publicFile = catchAsync(async (req, res) => sendFile(req, res, await resolve(req)));
 exports.publicThumb = catchAsync(async (req, res) => sendThumb(req, res, await resolve(req)));
