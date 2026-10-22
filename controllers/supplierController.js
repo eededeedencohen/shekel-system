@@ -102,7 +102,7 @@ exports.staffThumb = catchAsync(async (req, res) => sendThumb(req, res, await lo
 /* ───────────────────────── public (behind the link) ───────────────────────── */
 
 const resolve = (req) => suppliers.resolveToken({ world: req.world, token: req.params.token });
-const publicAnswer = (res, s) => res.status(200).json({ status: "success", data: { view: suppliers.publicView(s) } });
+const publicAnswer = (res, s) => res.status(200).json({ status: "success", data: { view: { ...suppliers.publicView(s), world: s.world } } });
 
 exports.publicView = catchAsync(async (req, res) => publicAnswer(res, await suppliers.noteOpened(await resolve(req))));
 

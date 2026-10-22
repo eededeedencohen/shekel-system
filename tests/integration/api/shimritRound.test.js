@@ -177,7 +177,18 @@ describe("the monthly invoice round", () => {
 
     const url = `/api/public/invoices/${req0.token}`;
     const view = (await request(app).get(url)).body.data.view;
-    expect(view).toMatchObject({ month: "2026-10", monthLabel: "אוקטובר 2026", done: false });
+    expect(view).toMatchObject({ month: "2026-10", monthLabel: "אוקטובר 2026", done: false, world: "real" });
+    // a link carries no world: the token says where it lives (utils/tokenWorld); a world named by the request still wins
+    expect((await request(app).get(url).set("X-Dataset", "test")).status).toBe(404);
+    await InvoiceRequest.collection.updateOne({ token: req0.token }, { $set: { world: "test" } }); // the raw driver: `world` is stamped, never updated through mongoose
+    const { tokenWorld } = require("../../../utils/tokenWorld");
+    const fakeReq = { params: { token: req0.token }, method: "GET", query: {}, world: "real", get: () => undefined };
+    await new Promise((resolve, reject) => tokenWorld([[InvoiceRequest, "token"]])(fakeReq, {}, (e) => (e ? reject(e) : resolve())));
+    expect(fakeReq.world).toBe("test");
+    const named = { ...fakeReq, world: "real", get: (h) => (h === "x-dataset" ? "real" : undefined) };
+    await new Promise((resolve, reject) => tokenWorld([[InvoiceRequest, "token"]])(named, {}, (e) => (e ? reject(e) : resolve())));
+    expect(named.world).toBe("real");
+    await InvoiceRequest.collection.updateOne({ token: req0.token }, { $set: { world: "real" } });
     expect(view.teacher).toMatchObject({ firstName: "אביה", gender: "female" });
     expect(view.courses).toHaveLength(1);
     expect(view.courses[0].name).toBe("עיצוב גרפי · הוסטל שיירות");

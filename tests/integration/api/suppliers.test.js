@@ -284,7 +284,11 @@ describe("/api/suppliers + /api/public/supplier/:token", () => {
 
     const t = (await request(app).post("/api/suppliers").set("Cookie", tamar).set("X-Dataset", "test").send({ firstName: "א", lastName: "ב", gender: "male", phone: "0501111111" })).body.data.supplier;
     expect((await request(app).get(`/api/suppliers/${t._id}`).set("Cookie", tamar)).status).toBe(404);
-    expect((await request(app).get(pub(t.link.token))).status).toBe(404);
+    // a link carries no world: the token says where it lives (utils/tokenWorld); a world named by the request still wins
+    const bare = await request(app).get(pub(t.link.token));
+    expect(bare.status).toBe(200);
+    expect(bare.body.data.view.world).toBe("test");
+    expect((await request(app).get(pub(t.link.token)).set("X-Dataset", "real")).status).toBe(404);
     expect((await request(app).get(pub(t.link.token)).set("X-Dataset", "test")).status).toBe(200);
   });
 });

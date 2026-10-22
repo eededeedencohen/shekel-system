@@ -82,7 +82,7 @@ exports.join = catchAsync(async (req, res) => {
 /** GET /api/public/join/:token - the documents page behind a link. */
 exports.viewByToken = catchAsync(async (req, res) => {
   const { intake: doc, person, link } = await intake.resolveToken({ world: req.world, token: req.params.token });
-  res.status(200).json({ status: "success", data: { view: intake.publicView(doc, person, link) } });
+  res.status(200).json({ status: "success", data: { view: { ...intake.publicView(doc, person, link), world: req.world } } });
 });
 
 /** POST /api/public/join/:token/documents - { key, fileName, mime, data(base64) } */
@@ -91,7 +91,7 @@ exports.uploadByToken = catchAsync(async (req, res) => {
   const { key, fileName, mime, data, thumb } = req.body || {};
   if (!key || !data) throw AppError.of("MISSING_FIELDS", 400, "key, data");
   const { intake: saved } = await intake.uploadDocument({ intake: doc, key, fileName, mime, data, thumb, staff: false, link });
-  res.status(200).json({ status: "success", data: { view: intake.publicView(saved, person, link) } });
+  res.status(200).json({ status: "success", data: { view: { ...intake.publicView(saved, person, link), world: req.world } } });
 });
 
 /** The document row a link may show (a temporary link can be narrowed to some documents). */
@@ -129,5 +129,5 @@ exports.removeByToken = catchAsync(async (req, res) => {
   const { intake: doc, person, link } = await intake.resolveToken({ world: req.world, token: req.params.token });
   const out = await intake.removeStudentDocument({ intake: doc, key: req.params.key });
   const saved = out.intake || out;
-  res.status(200).json({ status: "success", data: { view: intake.publicView(saved, person, link) } });
+  res.status(200).json({ status: "success", data: { view: { ...intake.publicView(saved, person, link), world: req.world } } });
 });

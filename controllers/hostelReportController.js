@@ -61,7 +61,7 @@ exports.ministryXlsx = catchAsync(async (req, res) => {
 /* ───────────────────────── the house, behind the link ───────────────────────── */
 
 const resolve = (req) => reports.resolveToken({ world: req.world, token: req.params.token });
-const publicAnswer = async (res, r) => res.status(200).json({ status: "success", data: { view: await reports.publicView(r) } });
+const publicAnswer = async (res, r) => res.status(200).json({ status: "success", data: { view: { ...(await reports.publicView(r)), world: r.world } } });
 
 exports.publicView = catchAsync(async (req, res) => publicAnswer(res, await reports.noteOpened(await reports.syncSessions(await resolve(req)))));
 exports.publicSession = catchAsync(async (req, res) => publicAnswer(res, await reports.setSession(await resolve(req), req.params.sid, { state: req.body?.state, marks: req.body?.marks })));

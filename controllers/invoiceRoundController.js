@@ -85,7 +85,8 @@ exports.remove = catchAsync(async (req, res) => {
 /* ───────────────────────── the teacher, behind the link ───────────────────────── */
 
 const resolve = (req) => rounds.resolveToken({ world: req.world, token: req.params.token });
-const publicAnswer = async (res, r) => res.status(200).json({ status: "success", data: { view: await rounds.publicView(r) } });
+// the view says which world the link lives in (the page shows a demo world's ribbon; the link itself carries none)
+const publicAnswer = async (res, r) => res.status(200).json({ status: "success", data: { view: { ...(await rounds.publicView(r)), world: r.world } } });
 
 exports.publicView = catchAsync(async (req, res) => publicAnswer(res, await rounds.noteOpened(await resolve(req))));
 

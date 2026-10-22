@@ -24,7 +24,24 @@ const Event = require("../models/Event");
 const Cycle = require("../models/Cycle");
 const Hostel = require("../models/Hostel");
 const Book = require("../models/Book");
+const InvoiceRequest = require("../models/InvoiceRequest");
+const HostelReport = require("../models/HostelReport");
 const { EVENT_CATEGORIES } = require("./domain");
+
+const HE_MONTHS = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
+/** "2026-10" → "אוקטובר 2026" */
+const monthLabel = (month) => {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(month || ""));
+  return m ? `${HE_MONTHS[Number(m[2]) - 1]} ${m[1]}` : "";
+};
+const PROGRAM_LABELS = { hostels: "הוסטלים", college: "מכללה לכל" };
+/** The 29th of the month (INVOICE_DUE_DAY), as "29.10". */
+const dueLabel = (month) => {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(month || ""));
+  if (!m) return "";
+  const last = new Date(Number(m[1]), Number(m[2]), 0).getDate();
+  return `${Math.min(29, last)}.${Number(m[2])}`;
+};
 
 const SITE = "שק״ל";
 const OG_IMAGE = "logo.png"; // served from client-dist/og/
@@ -42,6 +59,11 @@ const STATIC = {
   joinDocs: { title: "המסמכים שלי · שק״ל", description: "העלאת המסמכים לתיק הקליטה - מהטלפון, בכל זמן. רואים מה כבר התקבל ומה חסר." },
   supplier: { title: "פתיחת תיק ספק · שק״ל", description: "טופס קצר והאישורים - מהטלפון, בלי סיסמה. רואים מה כבר התקבל ומה נשאר." },
   suppliers: { title: "ספקים · שק״ל", description: "פתיחת תיק ספק: הקישור, הטופס, האישורים והמייל - צעד אחרי צעד." },
+  // the teacher's invoice link and the house's report link (Eden, 2026-10-21: a WhatsApp card that says what the link is)
+  invoiceLink: { title: "העלאת חשבוניות · שק״ל", description: "הקישור האישי להעלאת החשבוניות לשיעורי החודש - PDF או צילום, מהטלפון, בלי סיסמה. השיעורים כבר רשומים, רק מסמנים מה החשבונית מכסה." },
+  invoices: { title: "חשבוניות · שק״ל", description: "הסבב החודשי של המורים: קישור לכל מורה, החשבוניות, ה-PDF והמייל להנהלת חשבונות." },
+  hostelReportLink: { title: "דיווח נוכחות · שק״ל", description: "הקישור של הבית לדיווח על מפגשי החודש - מי הגיע ומי לא, מהטלפון, בלי סיסמה." },
+  hostelReports: { title: "דיווחי ההוסטלים · שק״ל", description: "דיווחי הנוכחות של הבתים, חודש אחרי חודש, והדוח למשרד הבריאות." },
   schedule: { title: "מערכת שבועית · מכללה לכל", description: "כל המפגשים של השבוע - לפי יום, מורה, קטגוריה והוסטל." },
   gantt: { title: "ציר זמן · מכללה לכל", description: "הקורסים על פני השנה - מתי כל מחזור מתחיל ומסתיים." },
   rooms: { title: "זמינות חדרים · מכללה לכל", description: "מי בכל חדר, מתי, ואיפה יש מקום פנוי." },
@@ -83,6 +105,10 @@ function previewFor(pathname, query = {}) {
   if (p.startsWith("/join/docs/")) return pick("joinDocs");
   if (p.startsWith("/supplier/")) return pick("supplier");
   if (p === "/suppliers" || p.startsWith("/suppliers/")) return pick("suppliers");
+  if (p === "/invoices") return pick("invoices");
+  if ((m = /^\/invoices\/([^/]+)$/.exec(p))) return pick("invoiceLink", { invoiceToken: safeDecode(m[1]) });
+  if (p === "/hostel-reports") return pick("hostelReports");
+  if ((m = /^\/hostel-report\/([^/]+)$/.exec(p))) return pick("hostelReportLink", { hostelReportToken: safeDecode(m[1]) });
   if (p === "/") return pick("home");
   if (p === "/schedule") return pick("schedule");
   if (p === "/gantt") return pick("gantt");
@@ -147,6 +173,21 @@ async function enrich(preview, world = "real") {
     if (params.book) {
       const b = await Book.findOne({ _id: params.book, world, deletedAt: null }).lean();
       if (b) return { ...preview, title: `${b.title} · הספרייה`, description: clip([b.author, b.summary].filter(Boolean).join(" - ") || STATIC.library.description) };
+    }
+    // a link's token says where it lives (no world in a link; utils/tokenWorld) - and nothing personal: the month and the program, never the teacher
+    if (params.invoiceToken) {
+      const r = await InvoiceRequest.findOne({ token: params.invoiceToken }).populate("round", "month program").lean();
+      if (r?.round) {
+        const month = monthLabel(r.round.month);
+        return { ...preview, title: `העלאת חשבוניות · ${month}`, description: `הקישור האישי להעלאת החשבוניות לשיעורי ${month} ב${PROGRAM_LABELS[r.round.program] || "שק״ל"} - PDF או צילום, מהטלפון, בלי סיסמה. עד ה-${dueLabel(r.round.month)}.` };
+      }
+    }
+    if (params.hostelReportToken) {
+      const h = await HostelReport.findOne({ token: params.hostelReportToken }).populate("hostel", "name kind").lean();
+      if (h) {
+        const month = monthLabel(h.month);
+        return { ...preview, title: `דיווח נוכחות · ${month}`, description: `${h.hostel ? houseTitle(h.hostel) + " · " : ""}הדיווח על מפגשי ${month} - מי הגיע ומי לא, מהטלפון, בלי סיסמה.` };
+      }
     }
   } catch {
     /* fall through to the static text */

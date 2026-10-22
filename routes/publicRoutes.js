@@ -14,6 +14,18 @@ const { joinOptions, join, viewByToken, uploadByToken, removeByToken, fileByToke
 const supplier = require("../controllers/supplierController");
 const invoiceLink = require("../controllers/invoiceRoundController");
 const hostelReport = require("../controllers/hostelReportController");
+const { tokenWorld } = require("../utils/tokenWorld");
+const UploadLink = require("../models/UploadLink");
+const Intake = require("../models/Intake");
+const Supplier = require("../models/Supplier");
+const InvoiceRequest = require("../models/InvoiceRequest");
+const HostelReport = require("../models/HostelReport");
+
+// a link carries no world: the token says where it lives (utils/tokenWorld)
+router.use("/join/:token", tokenWorld([[UploadLink, "token"], [Intake, "landing.token"]]));
+router.use("/supplier/:token", tokenWorld([[Supplier, "link.token"]]));
+router.use("/invoices/:token", tokenWorld([[InvoiceRequest, "token"]]));
+router.use("/hostel-reports/:token", tokenWorld([[HostelReport, "token"]]));
 
 router.get("/join/options", joinOptions);
 router.post("/join", join);
