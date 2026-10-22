@@ -20,6 +20,8 @@
 const mongoose = require("mongoose");
 const Invoice = require("../models/Invoice");
 const InvoiceLesson = require("../models/InvoiceLesson");
+const InvoiceRequest = require("../models/InvoiceRequest");
+const InvoiceRound = require("../models/InvoiceRound");
 const StoredFile = require("../models/StoredFile");
 const Lesson = require("../models/Lesson");
 const Cycle = require("../models/Cycle");
@@ -119,14 +121,25 @@ async function assertTeacher({ world, teacherId }) {
   if (!profile) throw AppError.of("INVOICE_NOT_A_TEACHER", 400);
 }
 
-/** The lean shape of one or many invoices (see the header). */
+/**
+ * The lean shape of one or many invoices (see the header). An invoice that
+ * came through a teacher's link also says `viaLink` and `locked` ("done"
+ * once the teacher finished, "mailed" once the month's mail went): then
+ * only the super admin changes or deletes it (decision 1 of the state
+ * machine, 2026-10-22).
+ */
 async function shape(world, invoices) {
   const ids = invoices.map((i) => i._id);
-  const [rows, files] = await Promise.all([
+  const requestIds = [...new Set(invoices.map((i) => i.request).filter(Boolean).map(String))];
+  const [rows, files, requests] = await Promise.all([
     InvoiceLesson.find({ invoice: { $in: ids } }).select("invoice lesson").lean(),
     // whether a thumbnail exists, without pulling its bytes
     StoredFile.aggregate([{ $match: { _id: { $in: invoices.map((i) => i.file) } } }, { $project: { name: 1, mime: 1, size: 1, thumb: { $gt: [{ $binarySize: { $ifNull: ["$thumb", ""] } }, 0] } } }]),
+    requestIds.length ? InvoiceRequest.find({ _id: { $in: requestIds } }).select("completedAt round").lean() : [],
   ]);
+  const roundIds = [...new Set(requests.map((r) => String(r.round)))];
+  const mailed = new Set((roundIds.length ? await InvoiceRound.find({ _id: { $in: roundIds }, "mail.sentAt": { $ne: null } }).select("_id").lean() : []).map((r) => String(r._id)));
+  const lockOf = new Map(requests.map((r) => [String(r._id), r.completedAt ? "done" : mailed.has(String(r.round)) ? "mailed" : null]));
   const lessonDocs = await Lesson.find({ _id: { $in: rows.map((r) => r.lesson) } }).select("_id cycle date").lean();
   const lessonById = new Map(lessonDocs.map((l) => [String(l._id), l]));
   const fileById = new Map(files.map((f) => [String(f._id), f]));
@@ -146,6 +159,8 @@ async function shape(world, invoices) {
     uploadedBy: i.uploadedBy,
     note: i.note,
     request: i.request || null,
+    viaLink: !!i.request,
+    locked: i.request ? lockOf.get(String(i.request)) || null : null,
     lessons: (lessonsByInvoice.get(String(i._id)) || []).sort((a, b) => new Date(a.date) - new Date(b.date)),
     createdAt: i.createdAt,
   }));

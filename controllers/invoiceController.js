@@ -14,9 +14,13 @@
  */
 
 const catchAsync = require("../utils/catchAsync");
+const AppError = require("../utils/AppError");
 const { notModified } = require("../utils/sendFile");
 const invoices = require("../services/invoiceService");
+const rounds = require("../services/invoiceRoundService");
 const lens = require("../services/lensService");
+
+const isSuper = (req) => req.actor?.kind === "super";
 
 /** The lens's sets for the invoice reads: the people (teachers) and the cycles whose lessons are the persona's. */
 const scopeSets = async (req) => {
@@ -59,14 +63,28 @@ exports.createInvoice = catchAsync(async (req, res) => {
   res.status(201).json({ status: "success", data: { invoice } });
 });
 
+// an invoice that came through a teacher's link (the state machine of 2026-10-22, decision 1): the staff may change or
+// delete it only while the teacher's month is open and the mail has not gone; its lessons are what the teacher
+// marked and only the super admin moves them (case 17). The super admin is never locked out.
+const assertUnlocked = (req, invoice, { lessons = false } = {}) => {
+  if (isSuper(req)) return;
+  if (invoice.locked) throw AppError.of("INVOICE_LOCKED", 403);
+  if (lessons && invoice.viaLink) throw AppError.of("INVOICE_LINK_LESSONS", 403);
+};
+
 exports.updateInvoice = catchAsync(async (req, res) => {
   const { cycleIds } = await scopeSets(req);
+  assertUnlocked(req, await invoices.getInvoice({ world: req.world, invoiceId: req.params.id }), { lessons: req.body.lessons !== undefined });
   const invoice = await invoices.updateInvoice({ world: req.world, invoiceId: req.params.id, lessonIds: req.body.lessons, note: req.body.note, cycleIds });
   res.status(200).json({ status: "success", data: { invoice } });
 });
 
 exports.deleteInvoice = catchAsync(async (req, res) => {
+  const current = await invoices.getInvoice({ world: req.world, invoiceId: req.params.id });
+  assertUnlocked(req, current);
   await invoices.deleteInvoice({ world: req.world, invoiceId: req.params.id });
+  // rule 4: a finished request left with nothing opens again
+  if (current.request) await rounds.settleAfterDelete({ world: req.world, requestId: current.request });
   res.status(204).json({ status: "success", data: null });
 });
 

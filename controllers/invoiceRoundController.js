@@ -82,13 +82,25 @@ exports.remove = catchAsync(async (req, res) => {
   res.status(204).json({ status: "success", data: null });
 });
 
+/** The super admin's corrections (requireSuper on the route): `{ action, … }` → `{ round, did }`. */
+exports.admin = catchAsync(async (req, res) => {
+  const round = await loadVisible(req);
+  const { round: view, did } = await rounds.adminAction(round, req.body || {}, req.actor);
+  res.status(200).json({ status: "success", data: { round: view, did } });
+});
+
 /* ───────────────────────── the teacher, behind the link ───────────────────────── */
 
-const resolve = (req) => rounds.resolveToken({ world: req.world, token: req.params.token });
+const resolve = (req, opts) => rounds.resolveToken({ world: req.world, token: req.params.token, ...opts });
 // the view says which world the link lives in (the page shows a demo world's ribbon; the link itself carries none)
 const publicAnswer = async (res, r) => res.status(200).json({ status: "success", data: { view: { ...(await rounds.publicView(r)), world: r.world } } });
 
-exports.publicView = catchAsync(async (req, res) => publicAnswer(res, await rounds.noteOpened(await resolve(req))));
+// a finished teacher may read the summary after the link expired (decision 12); a signed-in staff member checking
+// the link is not the teacher opening it, so it is not noted as opened (decision 8)
+exports.publicView = catchAsync(async (req, res) => {
+  const r = await resolve(req, { readWhenDone: true });
+  publicAnswer(res, req.sessionToken ? r : await rounds.noteOpened(r));
+});
 
 exports.publicInvoice = catchAsync(async (req, res) => {
   const { imageData, imageName, thumb, sessions } = req.body || {};
@@ -101,7 +113,7 @@ exports.publicRemoveInvoice = catchAsync(async (req, res) => publicAnswer(res, a
 exports.publicDone = catchAsync(async (req, res) => publicAnswer(res, await rounds.complete(await resolve(req), { note: req.body?.note })));
 
 exports.publicImage = catchAsync(async (req, res) => {
-  const file = await rounds.imageOf(await resolve(req), req.params.iid, req.query.thumb === "1");
+  const file = await rounds.imageOf(await resolve(req, { readWhenDone: true }), req.params.iid, req.query.thumb === "1");
   if (notModified(req, res, `${file._id}-${file.updatedAt ? new Date(file.updatedAt).getTime() : 0}`)) return;
   res.type(file.mime);
   res.send(file.data);

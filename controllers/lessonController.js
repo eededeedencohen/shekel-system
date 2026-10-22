@@ -11,6 +11,7 @@
 
 const Lesson = require("../models/Lesson");
 const Cycle = require("../models/Cycle");
+const InvoiceLesson = require("../models/InvoiceLesson");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 const lens = require("../services/lensService");
@@ -149,11 +150,14 @@ exports.deleteAttendanceRecord = catchAsync(async (req, res, next) => {
   res.status(200).json({ status: "success", data: { lesson } });
 });
 
-/** DELETE /api/lessons/:id - live lessons only (archive is immutable). */
+/** DELETE /api/lessons/:id - live lessons only (archive is immutable); a lesson written on an invoice stays (its invoice goes first). */
 exports.deleteLesson = catchAsync(async (req, res, next) => {
   const existing = await Lesson.findOne({ _id: req.params.id, world: req.world });
   if (!existing) return next(AppError.of("NOT_FOUND", 404, "שיעור"));
   if (existing.source === "archive") return next(AppError.of("ARCHIVE_READONLY", 400));
+  // the state machine of the invoices (2026-10-22, decision 5): a billed lesson that vanished left a dead pointer on the
+  // teacher's request and every later upload on that session failed - so a billed lesson cannot be deleted
+  if (await InvoiceLesson.exists({ lesson: existing._id })) return next(AppError.of("LESSON_BILLED", 409));
   await Lesson.deleteOne({ _id: existing._id }); // schema hook re-scopes anyway
   res.status(204).json({ status: "success", data: null });
 });

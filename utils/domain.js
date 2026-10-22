@@ -814,6 +814,10 @@ const ERROR_CODES = {
   INVOICE_NOT_A_TEACHER: "חשבונית אפשר להעלות רק למורה פעיל",
   INVOICE_LESSON_NOT_TEACHERS: "אחד השיעורים שסומנו לא של המורה הזה",
   INVOICE_LESSON_BILLED: "אחד השיעורים כבר רשום בחשבונית אחרת",
+  // the state machine of 2026-10-22: a link invoice is the staff's only while the month is open
+  INVOICE_LOCKED: "החשבונית נעולה - הדיווח של המורה נסגר או שהמייל יצא. רק סופר-מנהל משנה או מוחק אותה",
+  INVOICE_LINK_LESSONS: "השיעורים של חשבונית שהגיעה בקישור הם מה שהמורה סימן/ה - רק סופר-מנהל משנה אותם",
+  LESSON_BILLED: "השיעור רשום על חשבונית - מוחקים קודם את החשבונית",
   VOUCHER_IMAGE_INVALID: "תמונת השובר לא נתמכת - מותר JPG / PNG / WebP / GIF / AVIF עד 8MB",
   VOUCHER_IMAGE_FETCH: "לא נמצאה תמונה בקישור הזה - אפשר להדביק כתובת של תמונה, או של דף שיש בו תמונה",
   // תגיות
@@ -861,6 +865,9 @@ const ERROR_CODES = {
   INVOICE_NO_SESSIONS: "בוחרים לפחות מפגש אחד שהחשבונית מכסה",
   INVOICE_NOT_YOURS: "החשבונית הזו לא הועלתה דרך הקישור הזה",
   INVOICE_DONE_EMPTY: "אפשר לסיים אחרי חשבונית אחת לפחות, או עם הערה למה אין",
+  INVOICE_SESSION_SUBSTITUTE: "במפגש הזה לימד/ה מורה מחליף/ה - החשבונית שלו/ה מועלית מהתיק של המורה המחליף/ה",
+  INVOICE_ADMIN_ACTION: "פעולת ניהול לא מוכרת",
+  INVOICE_REQUEST_HAS_INVOICES: "למורה הזה יש חשבוניות בסבב - מוחקים אותן קודם, או מסירים עם force",
   DIARY_INVALID: "לרשומה ביומן חובה תאריך וכותרת",
   ATTENDANCE_REASON_INVALID: "סיבת היעדרות לא מוכרת",
   // סקיצת הנוכחות מההוסטלים (שלב 3 של סבב שמרית)

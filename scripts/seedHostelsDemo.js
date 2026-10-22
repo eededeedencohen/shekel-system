@@ -194,6 +194,15 @@ async function removeEarlierRun() {
     return;
   }
   const report = [];
+  // the invoice rows written on the ledger's invoices and lessons go first - the loop below deletes the invoices and the
+  // lessons themselves, and a row left behind pointed at nothing (139 of them in the test world by 2026-10-22, found by
+  // the super admin's orphan check)
+  const ledgerInvoices = ledger.ids?.invoices || [];
+  const ledgerLessons = ledger.ids?.lessons || [];
+  if (ledgerInvoices.length || ledgerLessons.length) {
+    const r = await InvoiceLesson.deleteMany({ $or: [{ invoice: { $in: ledgerInvoices } }, { lesson: { $in: ledgerLessons } }] });
+    report.push(`invoiceLessons (ledger) ${r.deletedCount}`);
+  }
   for (const [name, ids] of Object.entries(ledger.ids || {})) {
     const Model = MODELS[name];
     if (!Model || !ids.length) continue;
