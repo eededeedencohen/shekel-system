@@ -36,6 +36,7 @@ const MODELS = [
   Person,
   Profile,
   require("../models/Subject"),
+  require("../models/SubjectCategory"),
   require("../models/Cycle"),
   require("../models/Enrollment"),
   require("../models/Lesson"),
@@ -224,6 +225,9 @@ async function labelDocs(modelName, idStrings) {
       .select("name")
       .lean();
     docs.forEach((d) => put(d._id, d.name));
+  } else if (name === "SubjectCategory") {
+    const docs = await mongoose.model(name).find({ _id: { $in: ids } }).select("label").lean();
+    docs.forEach((d) => put(d._id, d.label));
   } else if (name === "Cycle") {
     const docs = await mongoose
       .model("Cycle")

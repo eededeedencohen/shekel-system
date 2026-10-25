@@ -68,6 +68,7 @@ app.use("/api/accounts", require("./routes/accountRoutes"));
 app.use("/api/people", require("./routes/personRoutes"));
 app.use("/api/profiles", require("./routes/profileRoutes"));
 app.use("/api/subjects", requireFamily("college"), require("./routes/subjectRoutes"));
+app.use("/api/subject-categories", requireFamily("college"), require("./routes/subjectCategoryRoutes"));
 app.use("/api/cycles", requireFamily("college"), require("./routes/cycleRoutes"));
 app.use("/api/enrollments", requireFamily("college"), require("./routes/enrollmentRoutes"));
 app.use("/api/lessons", requireFamily("college"), require("./routes/lessonRoutes"));

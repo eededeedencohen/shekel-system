@@ -741,6 +741,8 @@ const ERROR_CODES = {
   CYCLE_FULL: "אין מקום פנוי במחזור",
   ARCHIVE_READONLY: "שיעור ארכיוני - לקריאה בלבד",
   REFERENCED_BLOCKED: "אי אפשר למחוק - קיימות רשומות שמפנות לכאן",
+  SUBJECT_CATEGORY_UNKNOWN: "קטגוריה לא מוכרת",
+  SUBJECT_CATEGORY_EXISTS: "כבר יש קטגוריה בשם הזה",
   EVENT_NOT_DRAFT: "אירוע שפורסם אי אפשר למחוק - אפשר לבטל אותו",
   SLOT_NOT_FOUND: "המפגש המבוקש לא קיים במחזור הזה",
   EMAIL_TAKEN: "האימייל כבר קיים במערכת",

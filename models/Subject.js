@@ -10,7 +10,6 @@
  */
 
 const mongoose = require("mongoose");
-const { SUBJECT_CATEGORY_KEYS } = require("../utils/domain");
 
 const subjectSchema = new mongoose.Schema(
   {
@@ -19,10 +18,15 @@ const subjectSchema = new mongoose.Schema(
       required: [true, "שם מקצוע הוא חובה"],
       trim: true,
     },
-    /** English key (domain.SUBJECT_CATEGORIES); Hebrew labels ship from /api/meta. */
+    /**
+     * A built-in English key (domain.SUBJECT_CATEGORIES) or the id of a
+     * named category (models/SubjectCategory, since 2026-10-25); Hebrew
+     * labels ship from /api/meta as one merged list. The controller checks
+     * the key (services/subjectCategoryService assertCategoryKey).
+     */
     category: {
       type: String,
-      enum: SUBJECT_CATEGORY_KEYS,
+      trim: true,
       default: "other",
     },
     /**

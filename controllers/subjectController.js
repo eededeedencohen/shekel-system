@@ -8,6 +8,7 @@ const Cycle = require("../models/Cycle");
 const { Profile } = require("../models/profiles");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
+const { assertCategoryKey } = require("../services/subjectCategoryService");
 
 exports.getSubjects = catchAsync(async (req, res) => {
   const filter = {};
@@ -16,15 +17,18 @@ exports.getSubjects = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", results: subjects.length, data: { subjects } });
 });
 
+/** POST /api/subjects { name, category?, active? } - the category is a built-in key or a named category's id. */
 exports.createSubject = catchAsync(async (req, res) => {
   const { name, category, active } = req.body;
-  const subject = await Subject.create({ name, category, active });
+  await assertCategoryKey(category);
+  const subject = await Subject.create({ name, category: category || undefined, active });
   res.status(201).json({ status: "success", data: { subject } });
 });
 
 exports.updateSubject = catchAsync(async (req, res, next) => {
   const subject = await Subject.findById(req.params.id);
   if (!subject) return next(AppError.of("NOT_FOUND", 404, "מקצוע"));
+  if ("category" in req.body) await assertCategoryKey(req.body.category);
   for (const k of ["name", "category", "active", "importAliases"]) {
     if (k in req.body) subject[k] = req.body[k];
   }

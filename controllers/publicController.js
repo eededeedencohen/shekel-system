@@ -27,17 +27,18 @@ const {
   INTAKE_FILLED_BY,
   EVENT_CATEGORY_GROUPS,
   EVENT_CATEGORIES,
-  SUBJECT_CATEGORIES,
   DAY_PARTS,
   HOSTELS,
 } = require("../utils/domain");
 const intake = require("../services/intakeService");
+const { allCategories } = require("../services/subjectCategoryService");
 
 /** GET /api/public/join/options - everything the page renders from. */
 exports.joinOptions = catchAsync(async (req, res) => {
-  const [subjects, hostels] = await Promise.all([
+  const [subjects, hostels, subjectCategories] = await Promise.all([
     Subject.find({ active: { $ne: false } }).select("name category").sort({ name: 1 }).lean(),
     Hostel.find({ active: { $ne: false } }).select("name kind").sort({ name: 1 }).lean(),
+    allCategories(),
   ]);
   // "הוסטל ליבא" / "קהילת בית אחווה" - a house named by its kind
   const hostelNames = hostels.length ? hostels.map((h) => `${h.kind === "community" ? "קהילת" : "הוסטל"} ${h.name}`) : HOSTELS.map((h) => `הוסטל ${h}`);
@@ -47,7 +48,7 @@ exports.joinOptions = catchAsync(async (req, res) => {
       options: {
         programs: PROGRAMS,
         subjects,
-        subjectCategories: SUBJECT_CATEGORIES,
+        subjectCategories,
         eventCategoryGroups: EVENT_CATEGORY_GROUPS,
         eventCategories: EVENT_CATEGORIES,
         documents: INTAKE_DOCUMENTS.filter((d) => d.upload),
