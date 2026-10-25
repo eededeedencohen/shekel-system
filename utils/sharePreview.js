@@ -62,7 +62,7 @@ const STATIC = {
   // the teacher's invoice link and the house's report link (Eden, 2026-10-21: a WhatsApp card that says what the link is)
   invoiceLink: { title: "העלאת חשבוניות · שק״ל", description: "הקישור האישי להעלאת החשבוניות לשיעורי החודש - PDF או צילום, מהטלפון, בלי סיסמה. השיעורים כבר רשומים, רק מסמנים מה החשבונית מכסה." },
   invoices: { title: "חשבוניות · שק״ל", description: "הסבב החודשי של המורים: קישור לכל מורה, החשבוניות, ה-PDF והמייל להנהלת חשבונות." },
-  hostelReportLink: { title: "דיווח נוכחות · שק״ל", description: "הקישור של הבית לדיווח על מפגשי החודש - מי הגיע ומי לא, מהטלפון, בלי סיסמה." },
+  hostelReportLink: { title: "דיווח נוכחות · שק״ל", description: "הקישור של הבית לדיווח על מפגשי החודש." },
   hostelReports: { title: "דיווחי ההוסטלים · שק״ל", description: "דיווחי הנוכחות של הבתים, חודש אחרי חודש, והדוח למשרד הבריאות." },
   schedule: { title: "מערכת שבועית · מכללה לכל", description: "כל המפגשים של השבוע - לפי יום, מורה, קטגוריה והוסטל." },
   gantt: { title: "ציר זמן · מכללה לכל", description: "הקורסים על פני השנה - מתי כל מחזור מתחיל ומסתיים." },
@@ -185,7 +185,8 @@ async function enrich(preview) {
       const h = await HostelReport.findOne({ token: params.hostelReportToken }).populate("hostel", "name kind").lean();
       if (h) {
         const month = monthLabel(h.month);
-        return { ...preview, title: `דיווח נוכחות · ${month}`, description: `${h.hostel ? houseTitle(h.hostel) + " · " : ""}הדיווח על מפגשי ${month} - מי הגיע ומי לא, מהטלפון, בלי סיסמה.` };
+        // Eden (2026-10-25): the card says only whose report and which month
+        return { ...preview, title: `דיווח נוכחות · ${month}`, description: `${h.hostel ? houseTitle(h.hostel) + " · " : ""}הדיווח על מפגשי ${month}.` };
       }
     }
   } catch {
