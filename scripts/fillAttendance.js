@@ -1,8 +1,8 @@
 /**
- * @file fillAttendance - random attendance for everyone, in every world
+ * @file fillAttendance - random attendance for everyone
  * @module scripts/fillAttendance
  *
- * Eden (2026-10-12): "תמלא בצורה אקראית לכולם נוכחות (בכל העולמות) חוץ
+ * Eden (2026-10-12): "תמלא בצורה אקראית לכולם נוכחות חוץ
  * מבשבוע האחרון שבו אל תיגע". For every cycle with a weekly schedule and
  * every student who held a seat in it, every past meeting up to a week
  * ago gets an attendance record - a plausible random one: each student
@@ -12,11 +12,11 @@
  * Only GAPS are filled: a lesson that exists keeps every record it has; a
  * date that has an archive lesson (the old system's import) is left to
  * the archive; the last 7 days are not touched; the future is not touched.
- * Before writing, every world's `lessons` collection is dumped to
+ * Before writing, the `lessons` collection is dumped to
  * server/backups/attendance-<stamp>/ (EJSON - restorable with
  * scripts/backupJson.js's recipe).
  *
- * Usage:  node scripts/fillAttendance.js [--dry] [--worlds=real,pokemon,test] [--days=7]
+ * Usage:  node scripts/fillAttendance.js [--dry] [--days=7]
  */
 
 require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") });
@@ -28,11 +28,9 @@ const connectDB = require("../config/db");
 const Cycle = require("../models/Cycle");
 const Enrollment = require("../models/Enrollment");
 const Lesson = require("../models/Lesson");
-const { WORLDS } = require("../utils/domain");
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => { const m = a.match(/^--([^=]+)(?:=(.*))?$/); return m ? [m[1], m[2] ?? true] : [a, true]; }));
 const DRY = !!args.dry;
-const worlds = args.worlds ? String(args.worlds).split(",").filter((w) => WORLDS.includes(w)) : WORLDS;
 const KEEP_DAYS = Number(args.days) || 7;
 const DAY = 86400000;
 
@@ -74,9 +72,9 @@ async function backup(stamp) {
   return { dir, count: docs.length };
 }
 
-async function fillWorld(world) {
-  const cycles = await Cycle.find({ world, status: { $in: ["Active", "Completed"] }, "schedule.0": { $exists: true } }).select("startDate endDate schedule status").lean();
-  const enrollments = await Enrollment.find({ world, status: { $in: ["active", "completed", "left"] } }).select("cycle student status joinedAt registeredAt leftAt slotId").lean();
+async function fill() {
+  const cycles = await Cycle.find({ status: { $in: ["Active", "Completed"] }, "schedule.0": { $exists: true } }).select("startDate endDate schedule status").lean();
+  const enrollments = await Enrollment.find({ status: { $in: ["active", "completed", "left"] } }).select("cycle student status joinedAt registeredAt leftAt slotId").lean();
   const byCycle = new Map();
   for (const en of enrollments) {
     const k = String(en.cycle);
@@ -96,7 +94,7 @@ async function fillWorld(world) {
     if (last < start) continue;
     stats.cycles++;
     // every lesson this cycle already has (live + archive), by date
-    const existing = await Lesson.find({ world, cycle: cycle._id, date: { $gte: start, $lte: last } }).select("date source attendance.student").lean();
+    const existing = await Lesson.find({ cycle: cycle._id, date: { $gte: start, $lte: last } }).select("date source attendance.student").lean();
     const live = new Map();
     const archiveDates = new Set();
     for (const l of existing) {
@@ -125,7 +123,7 @@ async function fillWorld(world) {
         bulk.push({ updateOne: { filter: { _id: lesson._id, source: "live" }, update: { $push: { attendance: { $each: fresh } } } } });
       } else {
         stats.lessonsCreated++;
-        newLessons.push({ world, cycle: cycle._id, date, source: "live", attendance: fresh });
+        newLessons.push({ cycle: cycle._id, date, source: "live", attendance: fresh });
       }
     }
   }
@@ -138,16 +136,14 @@ async function fillWorld(world) {
 
 (async () => {
   await connectDB();
-  console.log(`${DRY ? "DRY RUN · " : ""}worlds: ${worlds.join(", ")} · up to ${cutoff.toISOString().slice(0, 10)} (the last ${KEEP_DAYS} days untouched)`);
+  console.log(`${DRY ? "DRY RUN · " : ""}up to ${cutoff.toISOString().slice(0, 10)} (the last ${KEEP_DAYS} days untouched)`);
   if (!DRY) {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const b = await backup(stamp);
     console.log(`backup: ${b.count} lessons → ${b.dir}`);
   }
-  for (const world of worlds) {
-    const s = await fillWorld(world);
-    console.log(`${world}: ${s.cycles} cycles · ${s.lessonsCreated} lessons created · ${s.lessonsFilled} existing lessons filled · ${s.records} attendance records · ${s.students.size} students · ${s.skippedArchive} archive dates left alone`);
-  }
+  const s = await fill();
+  console.log(`${s.cycles} cycles · ${s.lessonsCreated} lessons created · ${s.lessonsFilled} existing lessons filled · ${s.records} attendance records · ${s.students.size} students · ${s.skippedArchive} archive dates left alone`);
   await mongoose.disconnect();
 })().catch((e) => {
   console.error(e);

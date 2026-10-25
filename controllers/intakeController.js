@@ -2,8 +2,8 @@
  * @file Intake controller - a lead enters a department's pipeline
  * @module controllers/intakeController
  *
- * POST /api/people/intake - find-or-create the PERSON (by phone/email
- * within the world), then create the student profile for the requested
+ * POST /api/people/intake - find-or-create the PERSON (by phone/email),
+ * then create the student profile for the requested
  * department at stage "Interested". This kills the old duplicate-person
  * bug: a lead who already exists (came back, or through another
  * department) gets a second PROFILE, never a second human.
@@ -33,12 +33,11 @@ exports.createIntakeLead = catchAsync(async (req, res, next) => {
   if (email) or.push({ email: email.toLowerCase().trim() });
   if (phone) or.push({ phone: phone.trim() });
   let person = or.length
-    ? await Person.findOne({ world: req.world, deletedAt: null, $or: or })
+    ? await Person.findOne({ deletedAt: null, $or: or })
     : null;
   const personExisted = !!person;
   if (!person) {
     person = await Person.create({
-      world: req.world,
       firstName,
       lastName,
       ...(phone && { phone }),

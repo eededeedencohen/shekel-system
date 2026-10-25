@@ -13,11 +13,9 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS } = require("../utils/domain");
 
 const invoiceSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     teacher: { type: mongoose.Schema.Types.ObjectId, ref: "Person", required: [true, "חשבונית חייבת מורה"] },
     file: { type: mongoose.Schema.Types.ObjectId, ref: "StoredFile", required: [true, "חשבונית חייבת תמונה"] },
     uploadedAt: { type: Date, default: Date.now },
@@ -30,7 +28,7 @@ const invoiceSchema = new mongoose.Schema(
   { timestamps: true, collection: "invoices" }
 );
 
-invoiceSchema.index({ world: 1, teacher: 1, uploadedAt: -1 });
+invoiceSchema.index({ teacher: 1, uploadedAt: -1 });
 invoiceSchema.index({ request: 1 });
 
 module.exports = mongoose.model("Invoice", invoiceSchema);

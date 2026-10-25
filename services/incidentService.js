@@ -34,10 +34,9 @@ function activityFields(inc) {
 }
 
 /** A new report (+ its mirror on the person's record). */
-async function reportIncident({ world, person, at, reportedBy, primary, secondary, description, actions, managerNotified, by }) {
-  const p = await Person.findById(person).select("world deletedAt");
+async function reportIncident({ person, at, reportedBy, primary, secondary, description, actions, managerNotified, by }) {
+  const p = await Person.findById(person).select("deletedAt");
   if (!p) throw AppError.of("NOT_FOUND", 404, "אדם");
-  if (p.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
   if (p.deletedAt) throw AppError.of("PERSON_DELETED", 400);
   const when = at ? new Date(at) : null;
   const name = clean(reportedBy?.name, 80);
@@ -50,7 +49,6 @@ async function reportIncident({ world, person, at, reportedBy, primary, secondar
     : undefined;
   if (notified?.at && isNaN(notified.at.getTime())) throw AppError.of("INVALID_DATE", 400);
   const incident = await Incident.create({
-    world,
     person,
     at: when,
     reportedBy: { name, role: clean(reportedBy?.role, 80) },
@@ -62,7 +60,6 @@ async function reportIncident({ world, person, at, reportedBy, primary, secondar
     by,
   });
   const activity = await activities.addActivity({
-    world,
     person,
     kind: "incident",
     at: when,
@@ -79,8 +76,8 @@ async function reportIncident({ world, person, at, reportedBy, primary, secondar
 }
 
 /** Later facts: the manager was told, more actions, a corrected classification. */
-async function updateIncident({ world, id, patch = {}, by }) {
-  const incident = await Incident.findOne({ _id: id, world });
+async function updateIncident({ id, patch = {}, by }) {
+  const incident = await Incident.findOne({ _id: id });
   if (!incident) throw AppError.of("NOT_FOUND", 404, "אירוע חריג");
   if (patch.managerNotified !== undefined) {
     incident.managerNotified = patch.managerNotified?.name
@@ -109,9 +106,9 @@ async function updateIncident({ world, id, patch = {}, by }) {
   return incident;
 }
 
-/** Newest first (of one person, or of the world; `persons` = the lens's people - a Set of ids - or null for everyone). */
-function listIncidents({ world, person, persons = null }) {
-  const filter = { world };
+/** Newest first (of one person, or of everyone; `persons` = the lens's people - a Set of ids - or null for everyone). */
+function listIncidents({ person, persons = null }) {
+  const filter = {};
   if (person) filter.person = person;
   if (persons) filter.person = personCond(persons, filter.person);
   return Incident.find(filter).sort({ at: -1 });

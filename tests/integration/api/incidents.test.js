@@ -41,6 +41,5 @@ describe("incidents", () => {
 
     const list = await request(app).get(`/api/incidents?person=${s._id}`);
     expect(list.body.results).toBe(1);
-    expect((await request(app).get("/api/incidents").set("X-Dataset", "test")).body.results).toBe(0);
   });
 });

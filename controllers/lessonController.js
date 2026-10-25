@@ -44,7 +44,7 @@ exports.getLessons = catchAsync(async (req, res, next) => {
     return next(AppError.of("MISSING_FIELDS", 400, "cycle / student / date / from+to"));
   }
 
-  const filter = { world: req.world };
+  const filter = {};
   const source = req.query.source || "live";
   if (source !== "all") filter.source = source;
   if (cycle) filter.cycle = cycle;
@@ -73,7 +73,7 @@ exports.getLessons = catchAsync(async (req, res, next) => {
 
 /** GET /api/lessons/:id */
 exports.getLessonById = catchAsync(async (req, res, next) => {
-  const lesson = await Lesson.findOne({ _id: req.params.id, world: req.world }).populate(POPULATE);
+  const lesson = await Lesson.findById(req.params.id).populate(POPULATE);
   if (!lesson) return next(AppError.of("NOT_FOUND", 404, "שיעור"));
   res.status(200).json({ status: "success", data: { lesson } });
 });
@@ -91,9 +91,7 @@ exports.upsertAttendance = catchAsync(async (req, res, next) => {
   const day = toUtcMidnight(date);
   if (!day) return next(AppError.of("INVALID_DATE", 400));
 
-  const cyc = await Cycle.findById(cycle).select("world");
-  if (!cyc) return next(AppError.of("NOT_FOUND", 404, "מחזור"));
-  if (cyc.world !== req.world) return next(AppError.of("WORLD_MISMATCH", 400));
+  if (!(await Cycle.exists({ _id: cycle }))) return next(AppError.of("NOT_FOUND", 404, "מחזור"));
   await lens.assertCycle(req, cycle); // the grid of the lens's own cycle
   // an absence may carry its reason (the hostels' rule); anything else in a record is dropped here
   const rows = records.map((r) => {
@@ -101,7 +99,7 @@ exports.upsertAttendance = catchAsync(async (req, res, next) => {
     return { student: r.student, status: r.status, note: r.note, reason: r.reason || null, ...(r.progressRating != null && { progressRating: r.progressRating }), ...(r.isGuest != null && { isGuest: r.isGuest }) };
   });
 
-  const update = { $set: { attendance: rows }, $setOnInsert: { world: cyc.world } };
+  const update = { $set: { attendance: rows } };
   if (teacher !== undefined) update.$set.teacher = teacher;
   if (room !== undefined) update.$set.room = room;
 
@@ -119,7 +117,7 @@ exports.upsertAttendance = catchAsync(async (req, res, next) => {
  * Body: { status?, note? } - status required when creating a new record.
  */
 exports.patchAttendanceRecord = catchAsync(async (req, res, next) => {
-  const lesson = await Lesson.findOne({ _id: req.params.id, world: req.world });
+  const lesson = await Lesson.findById(req.params.id);
   if (!lesson) return next(AppError.of("NOT_FOUND", 404, "שיעור"));
   if (lesson.source === "archive") return next(AppError.of("ARCHIVE_READONLY", 400));
 
@@ -141,7 +139,7 @@ exports.patchAttendanceRecord = catchAsync(async (req, res, next) => {
 
 /** DELETE /api/lessons/:id/attendance/:studentId - un-report one student. */
 exports.deleteAttendanceRecord = catchAsync(async (req, res, next) => {
-  const lesson = await Lesson.findOne({ _id: req.params.id, world: req.world });
+  const lesson = await Lesson.findById(req.params.id);
   if (!lesson) return next(AppError.of("NOT_FOUND", 404, "שיעור"));
   if (lesson.source === "archive") return next(AppError.of("ARCHIVE_READONLY", 400));
   lesson.attendance = lesson.attendance.filter((r) => String(r.student) !== req.params.studentId);
@@ -152,7 +150,7 @@ exports.deleteAttendanceRecord = catchAsync(async (req, res, next) => {
 
 /** DELETE /api/lessons/:id - live lessons only (archive is immutable); a lesson written on an invoice stays (its invoice goes first). */
 exports.deleteLesson = catchAsync(async (req, res, next) => {
-  const existing = await Lesson.findOne({ _id: req.params.id, world: req.world });
+  const existing = await Lesson.findById(req.params.id);
   if (!existing) return next(AppError.of("NOT_FOUND", 404, "שיעור"));
   if (existing.source === "archive") return next(AppError.of("ARCHIVE_READONLY", 400));
   // the state machine of the invoices (2026-10-22, decision 5): a billed lesson that vanished left a dead pointer on the

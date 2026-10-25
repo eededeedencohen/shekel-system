@@ -20,7 +20,7 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, WAIVER_PARTY_KEYS } = require("../utils/domain");
+const { WAIVER_PARTY_KEYS } = require("../utils/domain");
 
 const partySchema = new mongoose.Schema(
   {
@@ -36,7 +36,6 @@ const partySchema = new mongoose.Schema(
 
 const waiverSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     intake: { type: mongoose.Schema.Types.ObjectId, ref: "Intake", required: true, index: true },
     person: { type: mongoose.Schema.Types.ObjectId, ref: "Person", required: true, index: true },
     /** When the person signed - the year of validity counts from here. */
@@ -73,7 +72,7 @@ const waiverSchema = new mongoose.Schema(
   { timestamps: true, collection: "waivers" }
 );
 
-waiverSchema.index({ world: 1, intake: 1, signedAt: -1 });
+waiverSchema.index({ intake: 1, signedAt: -1 });
 
 function stripSignatures(doc, ret) {
   if (ret.signatures) {

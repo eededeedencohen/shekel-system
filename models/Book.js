@@ -21,14 +21,13 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, BOOK_SOURCES } = require("../utils/domain");
+const { BOOK_SOURCES } = require("../utils/domain");
 
 /** A cover this small is inlined into the book's JSON. */
 const INLINE_COVER_BYTES = 96 * 1024;
 
 const bookSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     /** Digits (and X for old ISBN-10s), as printed under the bars. */
     barcode: { type: String, required: [true, "חובה להזין ברקוד"], trim: true },
     title: { type: String, required: [true, "חובה להזין שם ספר"], trim: true },
@@ -46,7 +45,7 @@ const bookSchema = new mongoose.Schema(
     /** The stored cover - the image bytes themselves (see the header). */
     cover: {
       data: { type: Buffer },
-      /** Legacy (until scripts/migrateCoversToDb.js ran): the file's name under UPLOAD_DIR/<world>/books/. */
+      /** Legacy (until scripts/migrateCoversToDb.js ran): the file's name under UPLOAD_DIR/real/books/ (written before the worlds were retired). */
       storedName: { type: String, trim: true },
       mime: { type: String, trim: true },
       size: { type: Number, min: 0 },
@@ -62,8 +61,8 @@ const bookSchema = new mongoose.Schema(
   { timestamps: true, collection: "books" }
 );
 
-bookSchema.index({ world: 1, barcode: 1 }, { unique: true });
-bookSchema.index({ world: 1, deletedAt: 1, title: 1 });
+bookSchema.index({ barcode: 1 }, { unique: true });
+bookSchema.index({ deletedAt: 1, title: 1 });
 
 /**
  * JSON never carries the raw bytes: a small cover becomes `coverData`

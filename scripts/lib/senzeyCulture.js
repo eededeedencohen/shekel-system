@@ -1,6 +1,6 @@
 /**
  * @file senzeyCulture - import the REAL תרבות לכל history (תשפ"ו) from the
- *       senzey exports into a world
+ *       senzey exports into the app
  * @module scripts/lib/senzeyCulture
  *
  * Sources (repo root, all committed):
@@ -37,12 +37,11 @@
  *     cancelled; attendance stays unreported (senzey has none)
  *   · leads: the interest list → StudentCulture at Interested
  *
- * `people: "real"` creates the actual humans (the real world); `people:
- * "fake"` (the test world) keeps the test world fake: a gender-matched
- * PSEUDONYM + "טסט" (no real name at all - senzey writes some people
- * last-first, so even a first token would leak surnames), a hashed anchor
- * instead of the senzey id, no contact details - the events, counts and
- * patterns are the real ones.
+ * `people: "real"` (the default) creates the actual humans; `people: "fake"`
+ * keeps every real name out: a gender-matched PSEUDONYM + "טסט" (no real
+ * name at all - senzey writes some people last-first, so even a first token
+ * would leak surnames), a hashed anchor instead of the senzey id, no contact
+ * details - the events, counts and patterns are the real ones.
  *
  * Idempotent: every entity has an anchor (course id, person anchor,
  * {event,student}) - a second run reports and changes nothing.
@@ -176,10 +175,10 @@ function defaultStart(category, title) {
 const genderOf = (label) => (label === "זכר" ? "male" : label === "נקבה" ? "female" : label === "אחר" ? "other" : undefined);
 
 /**
- * Pseudonyms for the test world: NO real name at all (senzey writes some
- * people last-first, so even "the first token" would leak surnames). A
+ * Pseudonyms for the fake-people mode: NO real name at all (senzey writes
+ * some people last-first, so even "the first token" would leak surnames). A
  * gender-matched first name picked by hash, "טסט" as the family name, a
- * letter (נועה ב׳) when the name is already taken in the world.
+ * letter (נועה ב׳) when the name is already taken.
  */
 const FAKE_FIRST = {
   female: ["נועה", "תמר", "שירה", "מאיה", "יעל", "אביגיל", "רוני", "הילה", "מיכל", "טליה", "ליאור", "עדי", "שני", "ענבר", "אורית", "רותם", "נעמה", "הדר", "יובל", "אלה", "גלי", "דנה", "מור", "ליהי", "אגם", "אופיר", "נטע", "ניצן", "רומי", "איילת", "קרן", "ליטל", "מעיין", "שקד", "עלמה", "זהר", "סיון", "אלינור", "יסמין", "נגה", "ירדן", "לירון", "אורין", "שלי", "בר", "תהילה", "הודיה", "אביה", "אלמוג", "ליאן", "דניאלה", "טל", "מירב", "אפרת", "חן", "רוית", "מיה", "הדס", "אורנה", "רבקה"],
@@ -410,20 +409,19 @@ function buildDataset({ payload, json, clients, students }) {
 
 /**
  * @param {object} o
- * @param {"real"|"test"|"pokemon"} o.world
- * @param {"real"|"fake"} [o.people]  real humans (contact details, senzey id)
- *        or the test world's fake stand-ins (first name + "טסט", hashed anchor)
+ * @param {"real"|"fake"} [o.people]  real humans (contact details, senzey id, the default)
+ *        or pseudonymous stand-ins (first name + "טסט", hashed anchor)
  * @param {boolean} [o.dry]        report only
  * @param {boolean} [o.reset]      delete previously imported events + their registrations first
  * @param {boolean} [o.interest]   also import the interest list as leads (default true)
  * @param {Function} [o.log]
  * @param {object}  [o.files]      override the source paths (tests)
  */
-async function importCultureSenzey({ world, people = world === "real" ? "real" : "fake", dry = false, reset = false, interest = true, log = console.log, files = FILES }) {
+async function importCultureSenzey({ people = "real", dry = false, reset = false, interest = true, log = console.log, files = FILES }) {
   const fake = people === "fake";
   const ds = buildDataset(loadSources(files));
   const report = {
-    world, people, dry,
+    people, dry,
     staff: { created: 0, existing: 0 },
     persons: { created: 0, matchedBySenzeyId: 0, matchedByName: 0, existing: 0, byName: [] },
     profiles: { members: 0, membersExisting: 0, bothPrograms: [], leads: 0, leadsExisting: 0, leadsSkippedCollege: [] },
@@ -438,21 +436,21 @@ async function importCultureSenzey({ world, people = world === "real" ? "real" :
   for (const p of ds.people.values()) if (!p.clientId) report.unmatchedMaster.push(p.name);
 
   if (reset && !dry) {
-    const ids = (await Event.find({ world, "import.senzeyCourseId": { $exists: true } }).select("_id")).map((e) => e._id);
-    const r1 = await EventRegistration.deleteMany({ world, event: { $in: ids } });
+    const ids = (await Event.find({ "import.senzeyCourseId": { $exists: true } }).select("_id")).map((e) => e._id);
+    const r1 = await EventRegistration.deleteMany({ event: { $in: ids } });
     const r2 = await Event.deleteMany({ _id: { $in: ids } });
-    log(`reset: removed ${r2.deletedCount} imported events and ${r1.deletedCount} registrations in ${world}`);
+    log(`reset: removed ${r2.deletedCount} imported events and ${r1.deletedCount} registrations`);
   }
 
   /* ── staff ─────────────────────────────────────────────────── */
   const staffPersons = new Map(); // manager string → Person (with an ACTIVE ManagerCulture profile)
-  const existingStaff = await Profile.find({ world, kind: "ManagerCulture" }).populate("person", "firstName lastName").lean();
+  const existingStaff = await Profile.find({ kind: "ManagerCulture" }).populate("person", "firstName lastName").lean();
   for (const [manager, spec] of Object.entries(STAFF)) {
     let hit = existingStaff.find((p) => p.person && p.person.firstName === spec.firstName && (fake || p.person.lastName === spec.lastName));
     if (hit && hit.active !== false) { staffPersons.set(manager, hit.person); report.staff.existing++; continue; }
     if (hit && hit.active === false) { report.staff.existing++; continue; } // left - their rows fall back to the coordinator
     if (dry) { report.staff.created++; continue; }
-    const person = await Person.create({ world, firstName: spec.firstName, lastName: fake ? "טסט" : spec.lastName });
+    const person = await Person.create({ firstName: spec.firstName, lastName: fake ? "טסט" : spec.lastName });
     await createProfile(person, "ManagerCulture", { title: spec.title }, { trusted: true, opened: { by: IMPORTER, note: SOURCE_NOTE, at: new Date("2025-09-01T09:00:00") } });
     staffPersons.set(manager, person);
     report.staff.created++;
@@ -462,7 +460,7 @@ async function importCultureSenzey({ world, people = world === "real" ? "real" :
   if (!primary && !dry) throw new Error("no culture staff to act as - cannot import");
 
   /* ── people ────────────────────────────────────────────────── */
-  const all = await Person.find({ world, deletedAt: null }).select("firstName lastName senzeyId email").lean();
+  const all = await Person.find({ deletedAt: null }).select("firstName lastName senzeyId email").lean();
   const bySenzey = new Map(all.filter((p) => p.senzeyId).map((p) => [p.senzeyId, p]));
   const byName = new Map();
   for (const p of all) {
@@ -471,8 +469,8 @@ async function importCultureSenzey({ world, people = world === "real" ? "real" :
   }
   const emails = new Set(all.map((p) => p.email).filter(Boolean));
   const usedFirst = new Set(all.filter((p) => p.lastName === "טסט").map((p) => p.firstName));
-  const collegeOf = new Set((await Profile.find({ world, kind: "StudentCollege", active: true }).select("person").lean()).map((p) => String(p.person)));
-  const cultureOf = new Set((await Profile.find({ world, kind: "StudentCulture" }).select("person").lean()).map((p) => String(p.person)));
+  const collegeOf = new Set((await Profile.find({ kind: "StudentCollege", active: true }).select("person").lean()).map((p) => String(p.person)));
+  const cultureOf = new Set((await Profile.find({ kind: "StudentCulture" }).select("person").lean()).map((p) => String(p.person)));
   const resolved = new Map(); // person key → Person doc (or null in dry)
 
   const resolvePerson = async (spec) => {
@@ -492,7 +490,7 @@ async function importCultureSenzey({ world, people = world === "real" ? "real" :
           report.persons.renamed = (report.persons.renamed || 0) + 1;
         }
       } else if (!dry) {
-        person = await Person.create({ world, firstName: pseudonym(spec, usedFirst), lastName: "טסט", senzeyId: anchor, ...(spec.gender && { gender: spec.gender }) });
+        person = await Person.create({ firstName: pseudonym(spec, usedFirst), lastName: "טסט", senzeyId: anchor, ...(spec.gender && { gender: spec.gender }) });
         bySenzey.set(anchor, person);
         report.persons.created++;
       } else report.persons.created++;
@@ -510,7 +508,6 @@ async function importCultureSenzey({ world, people = world === "real" ? "real" :
         const email = spec.email && !emails.has(spec.email) ? spec.email : undefined;
         if (email) emails.add(email);
         person = await Person.create({
-          world,
           firstName: spec.firstName,
           lastName: spec.lastName,
           ...(spec.clientId && { senzeyId: spec.clientId }),
@@ -591,7 +588,7 @@ async function importCultureSenzey({ world, people = world === "real" ? "real" :
       "import.senzeyName": c.rawName,
       ...(c.billingLabel && { "import.billingLabel": c.billingLabel }),
     };
-    let event = await Event.findOne({ world, "import.senzeyCourseId": c.id });
+    let event = await Event.findOne({ "import.senzeyCourseId": c.id });
     if (event) {
       if (!dry) await Event.updateOne({ _id: event._id }, { $set: mutable });
       report.events.updated++;
@@ -604,7 +601,6 @@ async function importCultureSenzey({ world, people = world === "real" ? "real" :
       continue;
     } else {
       event = await Event.create({
-        world,
         name: c.title,
         date: c.date,
         ...(c.endTime && { endTime: c.endTime }),
@@ -632,7 +628,7 @@ async function importCultureSenzey({ world, people = world === "real" ? "real" :
       const self = !isGuest && LANDING.test(r.source || "");
       const at = r.regAt || new Date(c.date.getTime() - 7 * DAY);
       const reason = isGuest ? "אורח/ת (סנזי)" : self ? "נרשם/ה דרך דף הנחיתה של תרבות לכל (סנזי)" : "נרשם/ה ע\"י הרכזת (סנזי)";
-      const base = { eventId: event._id, studentId: person._id, world, reason, at, trusted: true, guest: isGuest };
+      const base = { eventId: event._id, studentId: person._id, reason, at, trusted: true, guest: isGuest };
       let reg;
       try {
         reg = await culture.register({ ...base, by: self ? person._id : actorFor(r.manager)._id });
@@ -654,7 +650,7 @@ async function importCultureSenzey({ world, people = world === "real" ? "real" :
       if (self) report.registrations.self++;
       if (r.cancelled) {
         const cancelAt = c.date.getTime() < EXPORTED_AT.getTime() ? new Date(c.date.getTime() - DAY) : EXPORTED_AT;
-        await culture.cancelRegistration({ registrationId: reg._id, world, by: actorFor(r.manager)._id, reason: "בוטל בסנזי לפני ייצוא 26.8.2026", at: cancelAt });
+        await culture.cancelRegistration({ registrationId: reg._id, by: actorFor(r.manager)._id, reason: "בוטל בסנזי לפני ייצוא 26.8.2026", at: cancelAt });
         report.registrations.cancelled++;
       }
     }
@@ -682,13 +678,13 @@ async function importCultureSenzey({ world, people = world === "real" ? "real" :
     }
   }
 
-  /* ── the second hand left the department (real world only) ── */
+  /* ── the second hand left the department (real people only) ── */
   if (!fake && !dry) {
     for (const [manager, spec] of Object.entries(STAFF)) {
       if (!spec.leftAt) continue;
       const person = staffPersons.get(manager);
       if (!person) continue;
-      const prof = await Profile.findOne({ world, kind: "ManagerCulture", person: person._id });
+      const prof = await Profile.findOne({ kind: "ManagerCulture", person: person._id });
       if (prof && prof.active !== false) {
         prof.active = false;
         prof.until = spec.leftAt;
@@ -703,7 +699,7 @@ async function importCultureSenzey({ world, people = world === "real" ? "real" :
 /** Human-readable summary of a report. */
 function formatReport(r) {
   const lines = [];
-  lines.push(`${r.dry ? "[dry] " : ""}world ${r.world} · people ${r.people}`);
+  lines.push(`${r.dry ? "[dry] " : ""}people ${r.people}`);
   lines.push(`staff: ${r.staff.created} created, ${r.staff.existing} existing`);
   lines.push(`persons: ${r.persons.created} created · matched by senzey id ${r.persons.matchedBySenzeyId} · by name ${r.persons.matchedByName}${r.persons.byName.length ? ` (${r.persons.byName.join(", ")})` : ""} · existing anchors ${r.persons.existing}${r.persons.renamed ? ` (${r.persons.renamed} stand-ins renamed to pseudonyms)` : ""}`);
   lines.push(`members: ${r.profiles.members} profiles (${r.profiles.membersExisting} already) · both programs: ${r.profiles.bothPrograms.length ? r.profiles.bothPrograms.join(", ") : "none"}`);

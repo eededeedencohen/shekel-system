@@ -14,6 +14,6 @@ const schema = new mongoose.Schema({
   },
 });
 
-schema.index({ world: 1, hostels: 1 });
+schema.index({ hostels: 1 });
 
 module.exports = Profile.discriminator("ManagerHostel", schema);

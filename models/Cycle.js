@@ -20,7 +20,6 @@
 
 const mongoose = require("mongoose");
 const {
-  WORLDS,
   CYCLE_STATUSES,
   FUNCTIONING_LEVELS,
 } = require("../utils/domain");
@@ -33,7 +32,6 @@ const slotSchema = timeRangeSchema({
 
 const cycleSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     subject: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Subject",
@@ -87,12 +85,12 @@ const cycleSchema = new mongoose.Schema(
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
 
-cycleSchema.index({ world: 1, status: 1 });
-cycleSchema.index({ world: 1, subject: 1 });
-cycleSchema.index({ world: 1, teacher: 1 });
-cycleSchema.index({ world: 1, hostel: 1 });
+cycleSchema.index({ status: 1 });
+cycleSchema.index({ subject: 1 });
+cycleSchema.index({ teacher: 1 });
+cycleSchema.index({ hostel: 1 });
 cycleSchema.index(
-  { world: 1, "import.senzeyCourseId": 1 },
+  { "import.senzeyCourseId": 1 },
   { unique: true, partialFilterExpression: { "import.senzeyCourseId": { $exists: true } } }
 );
 

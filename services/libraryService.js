@@ -5,7 +5,7 @@
  * Eden's rules (2026-09-09):
  *  - ONE copy per book: a book is on the shelf or with exactly ONE student.
  *    `lend()` refuses a second open loan; the partial unique index on
- *    loans (world, book, open:true) is the backstop under concurrency.
+ *    loans (book, open:true) is the backstop under concurrency.
  *  - A return date is a DAY (local midnight), tomorrow at the earliest,
  *    never a Friday or Shabbat (the library is closed), at most
  *    LIBRARY.maxLoanDays ahead.
@@ -15,8 +15,9 @@
  *    barcode restores the record (its loan history comes back with it).
  *
  * Covers live IN the book record (`cover.data`, see models/Book) since
- * 2026-09-22 - the deploy wipes the disk. UPLOAD_DIR/<world>/books/ is
- * only read by the migration and by the cover route's legacy fallback.
+ * 2026-09-22 - the deploy wipes the disk. UPLOAD_DIR/real/books/ (the
+ * legacy layout, written before the worlds were retired) is only read by
+ * the migration and by the cover route's legacy fallback.
  */
 
 const fs = require("fs");
@@ -39,11 +40,11 @@ const MAX_COVER_BYTES = lookup.MAX_COVER_BYTES;
 function uploadRoot() {
   return process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads");
 }
-const coverDir = (world) => path.join(uploadRoot(), world, "books");
+const coverDir = () => path.join(uploadRoot(), "real", "books");
 /** Absolute path of a LEGACY on-disk cover (null when the record has none). */
 function coverPath(book) {
   if (!book?.cover?.storedName) return null;
-  return path.join(coverDir(book.world), book.cover.storedName);
+  return path.join(coverDir(), book.cover.storedName);
 }
 /** The cover's bytes: the record's own, else the legacy file if it still exists. */
 function coverBuffer(book) {
@@ -127,11 +128,11 @@ function assignFields(book, data) {
 }
 
 /** The open loan of a book (populated student), or null. */
-const openLoanOf = (world, bookId, session) =>
-  Loan.findOne({ world, book: bookId, open: true }).session(session || null);
+const openLoanOf = (bookId, session) =>
+  Loan.findOne({ book: bookId, open: true }).session(session || null);
 
-async function loadBook(world, bookId) {
-  const book = await Book.findOne({ _id: bookId, world, deletedAt: null });
+async function loadBook(bookId) {
+  const book = await Book.findOne({ _id: bookId, deletedAt: null });
   if (!book) throw AppError.of("NOT_FOUND", 404, "ספר");
   return book;
 }
@@ -140,19 +141,19 @@ async function loadBook(world, bookId) {
  * Add a book. `cover` is { mime, buffer } (a data URL the page sent, or
  * what the lookup downloaded); without one, `imageUrl` is fetched best-effort.
  */
-async function createBook({ world, data, by, cover }) {
+async function createBook({ data, by, cover }) {
   const barcode = lookup.normalizeBarcode(data.barcode);
   if (!barcode) throw AppError.of("BARCODE_INVALID", 400);
   if (!data.title || !String(data.title).trim()) throw AppError.of("MISSING_FIELDS", 400, "title");
 
   // The same book under any spelling of its code (leading zeros, ISBN
   // twins) is the same record - refuse a live one, restore a deleted one.
-  let book = await Book.findOne({ world, barcode: { $in: lookup.barcodeVariants(barcode) } });
+  let book = await Book.findOne({ barcode: { $in: lookup.barcodeVariants(barcode) } });
   if (book && !book.deletedAt) throw AppError.of("BOOK_EXISTS", 409);
   if (book) {
     book.deletedAt = null; // a deleted book comes back with its history
   } else {
-    book = new Book({ world, barcode });
+    book = new Book({ barcode });
   }
   assignFields(book, data);
   book.addedBy = by || book.addedBy;
@@ -171,13 +172,13 @@ async function createBook({ world, data, by, cover }) {
   return book;
 }
 
-async function updateBook({ world, bookId, data, by, cover, removeCoverFlag }) {
-  const book = await loadBook(world, bookId);
+async function updateBook({ bookId, data, by, cover, removeCoverFlag }) {
+  const book = await loadBook(bookId);
   if (data.barcode !== undefined) {
     const barcode = lookup.normalizeBarcode(data.barcode);
     if (!barcode) throw AppError.of("BARCODE_INVALID", 400);
     if (barcode !== book.barcode) {
-      const clash = await Book.findOne({ world, barcode: { $in: lookup.barcodeVariants(barcode) }, _id: { $ne: book._id } });
+      const clash = await Book.findOne({ barcode: { $in: lookup.barcodeVariants(barcode) }, _id: { $ne: book._id } });
       if (clash) throw AppError.of("BOOK_EXISTS", 409);
       book.barcode = barcode;
     }
@@ -191,9 +192,9 @@ async function updateBook({ world, bookId, data, by, cover, removeCoverFlag }) {
 }
 
 /** Soft delete - never while the book is out. */
-async function deleteBook({ world, bookId }) {
-  const book = await loadBook(world, bookId);
-  if (await openLoanOf(world, book._id)) throw AppError.of("BOOK_ON_LOAN", 409);
+async function deleteBook({ bookId }) {
+  const book = await loadBook(bookId);
+  if (await openLoanOf(book._id)) throw AppError.of("BOOK_ON_LOAN", 409);
   book.deletedAt = new Date();
   await book.save();
   return book;
@@ -201,17 +202,16 @@ async function deleteBook({ world, bookId }) {
 
 /* ───────────────────────── loans ───────────────────────── */
 
-async function lend({ world, bookId, studentId, dueAt, by, note }) {
-  const book = await loadBook(world, bookId);
+async function lend({ bookId, studentId, dueAt, by, note }) {
+  const book = await loadBook(bookId);
   if (!studentId) throw AppError.of("MISSING_FIELDS", 400, "student");
-  const student = await Person.findOne({ _id: studentId, world, deletedAt: null });
+  const student = await Person.findOne({ _id: studentId, deletedAt: null });
   if (!student) throw AppError.of("NOT_FOUND", 404, "סטודנט/ית");
   const due = assertDueDate(parseDueDate(dueAt));
 
   const loan = await withTxn(async (session) => {
-    if (await openLoanOf(world, book._id, session)) throw AppError.of("BOOK_ON_LOAN", 409);
+    if (await openLoanOf(book._id, session)) throw AppError.of("BOOK_ON_LOAN", 409);
     const doc = new Loan({
-      world,
       book: book._id,
       student: student._id,
       open: true,
@@ -232,15 +232,15 @@ async function lend({ world, bookId, studentId, dueAt, by, note }) {
   return loan;
 }
 
-async function loadLoan(world, loanId) {
-  const loan = await Loan.findOne({ _id: loanId, world });
+async function loadLoan(loanId) {
+  const loan = await Loan.findById(loanId);
   if (!loan) throw AppError.of("NOT_FOUND", 404, "השאלה");
   return loan;
 }
 
 /** הארכת זמן - a later return day; the old one is kept in `extensions`. */
-async function extend({ world, loanId, dueAt, by, note }) {
-  const loan = await loadLoan(world, loanId);
+async function extend({ loanId, dueAt, by, note }) {
+  const loan = await loadLoan(loanId);
   if (!loan.open) throw AppError.of("LOAN_CLOSED", 409);
   const floor = new Date(Math.max(new Date(loan.dueAt).getTime(), startOfToday().getTime()));
   const due = assertDueDate(parseDueDate(dueAt), { after: floor });
@@ -252,8 +252,8 @@ async function extend({ world, loanId, dueAt, by, note }) {
 }
 
 /** החזרת ספר - closes the loan; the book is back on the shelf. */
-async function returnBook({ world, loanId, by, note }) {
-  const loan = await loadLoan(world, loanId);
+async function returnBook({ loanId, by, note }) {
+  const loan = await loadLoan(loanId);
   if (!loan.open) throw AppError.of("LOAN_CLOSED", 409);
   loan.open = false;
   loan.returnedAt = new Date();

@@ -50,7 +50,7 @@ const DRY = process.argv.includes("--dry");
     rec.documents = rec.documents.filter((d) => d.key !== "shkedia");
     rec.status = intakeService.computeStatus(rec);
     dropped++;
-    console.log(`${DRY ? "[dry] " : ""}${rec.world} · ${rec._id} · ${row?.status} → ${rec.shkedia?.enteredAt ? "נקלט/ה בשקדיה" : "ללא קליטה"} · status ${rec.status}`);
+    console.log(`${DRY ? "[dry] " : ""}${rec._id} · ${row?.status} → ${rec.shkedia?.enteredAt ? "נקלט/ה בשקדיה" : "ללא קליטה"} · status ${rec.status}`);
     if (!DRY) await rec.save();
   }
   console.log(`\n${DRY ? "would rewrite" : "rewrote"} ${dropped} records (${moved} marked as entered in שקדיה)`);

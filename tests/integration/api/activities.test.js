@@ -12,7 +12,7 @@ const { Profile } = require("../../../models/profiles");
 const { makeStudent, makeCycle } = require("../../helpers/factories");
 
 describe("activity templates", () => {
-  it("every kind has a default; a world stores its own version and can go back", async () => {
+  it("every kind has a default; a stored version wins and can go back", async () => {
     const all = await request(app).get("/api/activities/templates");
     expect(all.status).toBe(200);
     expect(all.body.results).toBe(10); // the nine kinds of the social worker's round + the signed waiver (2026-10-11)
@@ -33,9 +33,6 @@ describe("activity templates", () => {
     expect(saved.body.data.template.stored).toBe(true);
     expect(saved.body.data.template.fields).toHaveLength(2);
     expect(await ActivityTemplate.countDocuments()).toBe(1);
-    // the test world still sees the default
-    const other = await request(app).get("/api/activities/templates/followUp").set("X-Dataset", "test");
-    expect(other.body.data.template.stored).toBe(false);
 
     const reset = await request(app).delete("/api/activities/templates/followUp");
     expect(reset.body.data.template.stored).toBe(false);
@@ -84,11 +81,10 @@ describe("activities", () => {
     expect((await request(app).delete(`/api/activities/${a._id}`)).status).toBe(404);
   });
 
-  it("refuses an unknown kind, a bad date, and a person of another world", async () => {
+  it("refuses an unknown kind and a bad date", async () => {
     const s = await makeStudent();
     expect((await request(app).post("/api/activities").send({ person: s._id, kind: "nope", by: "נעה" })).body.code).toBe("ACTIVITY_KIND_UNKNOWN");
     expect((await request(app).post("/api/activities").send({ person: s._id, kind: "update", by: "נעה", at: "yesterday" })).body.code).toBe("INVALID_DATE");
-    expect((await request(app).post("/api/activities").set("X-Dataset", "test").send({ person: s._id, kind: "update", by: "נעה" })).body.code).toBe("WORLD_MISMATCH");
   });
 });
 

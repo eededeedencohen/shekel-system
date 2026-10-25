@@ -57,12 +57,12 @@ describe("POST /api/enrollments/residents", () => {
     const hostel = await makeHostel();
     const teacher = await makeTeacher();
     const cycle = await makeCycle({ hostel: hostel._id, teacher: teacher._id });
-    await tags.setCycleProgram({ world: "real", cycleId: cycle._id, key: "hostels" });
+    await tags.setCycleProgram({ cycleId: cycle._id, key: "hostels" });
     const a = await makeStudent({ residence: { hostel: hostel._id, since: new Date("2026-01-01") } });
     const b = await makeStudent({ residence: { hostel: hostel._id } });
     const gone = await makeStudent({ residence: { hostel: hostel._id, until: new Date("2026-02-01") } });
     await makeStudent(); // lives elsewhere
-    await tags.give({ world: "real", personId: b._id, key: "hostels" });
+    await tags.give({ personId: b._id, key: "hostels" });
     await request(app).post("/api/enrollments").send({ cycle: cycle._id, student: b._id });
 
     const res = await request(app).post("/api/enrollments/residents").send({ cycle: cycle._id, createdBy: "שמרית" });
@@ -70,7 +70,7 @@ describe("POST /api/enrollments/residents", () => {
     expect(res.body.data.enrollments.map((e) => String(e.student._id))).toEqual([String(a._id)]);
     expect(res.body.data.skipped).toBe(1);
     expect(res.body.data.tagged).toBe(1);
-    expect(await tags.holds(a._id, "real", "hostels")).toBe(true);
+    expect(await tags.holds(a._id, "hostels")).toBe(true);
     expect(await Enrollment.countDocuments({ cycle: cycle._id, status: "active" })).toBe(2);
     expect(await Enrollment.exists({ cycle: cycle._id, student: gone._id })).toBeNull();
     const prof = await Profile.findOne({ person: a._id });
@@ -86,7 +86,7 @@ describe("POST /api/enrollments/residents", () => {
 });
 
 describe("a person's documents", () => {
-  it("files a syllabus on a teacher, lists it (also for the world), serves the bytes, removes it", async () => {
+  it("files a syllabus on a teacher, lists it (also across everyone), serves the bytes, removes it", async () => {
     const t = await makeTeacher();
     const res = await request(app).post(`/api/people/${t._id}/documents`).send({ kind: "syllabus", label: "סילבוס תשפ״ז", fileName: "syllabus.png", mime: "image/png", data: IMAGE });
     expect(res.status).toBe(201);
@@ -134,7 +134,7 @@ async function hostelMonth() {
   const subject = await makeSubject({ name: "עיצוב גרפי" });
   const teacher = await makeTeacher({ firstName: "אביה", lastName: "טסט", gender: "female" });
   const cycle = await makeCycle({ subject: subject._id, teacher: teacher._id, hostel: hostel._id, startDate: new Date("2026-09-01"), endDate: new Date("2026-12-31"), schedule: [{ day: 4, start: "15:00", end: "16:00" }] });
-  await tags.setCycleProgram({ world: "real", cycleId: cycle._id, key: "hostels" });
+  await tags.setCycleProgram({ cycleId: cycle._id, key: "hostels" });
   const college = await makeCycle({ teacher: teacher._id, startDate: new Date("2026-09-01"), endDate: new Date("2026-12-31"), schedule: [{ day: 1, start: "10:00", end: "11:00" }] });
   return { hostel, teacher, cycle, college };
 }
@@ -181,18 +181,7 @@ describe("the monthly invoice round", () => {
 
     const url = `/api/public/invoices/${req0.token}`;
     const view = (await request(app).get(url)).body.data.view;
-    expect(view).toMatchObject({ month: "2026-10", monthLabel: "אוקטובר 2026", done: false, world: "real" });
-    // a link carries no world: the token says where it lives (utils/tokenWorld); a world named by the request still wins
-    expect((await request(app).get(url).set("X-Dataset", "test")).status).toBe(404);
-    await InvoiceRequest.collection.updateOne({ token: req0.token }, { $set: { world: "test" } }); // the raw driver: `world` is stamped, never updated through mongoose
-    const { tokenWorld } = require("../../../utils/tokenWorld");
-    const fakeReq = { params: { token: req0.token }, method: "GET", query: {}, world: "real", get: () => undefined };
-    await new Promise((resolve, reject) => tokenWorld([[InvoiceRequest, "token"]])(fakeReq, {}, (e) => (e ? reject(e) : resolve())));
-    expect(fakeReq.world).toBe("test");
-    const named = { ...fakeReq, world: "real", get: (h) => (h === "x-dataset" ? "real" : undefined) };
-    await new Promise((resolve, reject) => tokenWorld([[InvoiceRequest, "token"]])(named, {}, (e) => (e ? reject(e) : resolve())));
-    expect(named.world).toBe("real");
-    await InvoiceRequest.collection.updateOne({ token: req0.token }, { $set: { world: "real" } });
+    expect(view).toMatchObject({ month: "2026-10", monthLabel: "אוקטובר 2026", done: false });
     expect(view.teacher).toMatchObject({ firstName: "אביה", gender: "female" });
     expect(view.courses).toHaveLength(1);
     expect(view.courses[0].name).toBe("עיצוב גרפי · הוסטל שיירות");
@@ -397,7 +386,7 @@ describe("the state machine of the invoices (2026-10-22)", () => {
     // E: a teacher whose course came after the opening gets a link; a second sync adds nobody
     const late = await makeTeacher({ firstName: "מאוחר", lastName: "טסט" });
     const lateCycle = await makeCycle({ subject: cycle.subject, teacher: late._id, hostel: hostel._id, startDate: new Date("2026-10-10"), endDate: new Date("2026-12-31"), schedule: [{ day: 2, start: "12:00", end: "13:00" }] });
-    await tags.setCycleProgram({ world: "real", cycleId: lateCycle._id, key: "hostels" });
+    await tags.setCycleProgram({ cycleId: lateCycle._id, key: "hostels" });
     const e = await admin(round._id, { action: "requestsSync" });
     expect(e.body.data.did.requests).toBe(1);
     expect(e.body.data.round.requests).toHaveLength(2);

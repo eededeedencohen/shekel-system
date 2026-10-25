@@ -18,7 +18,6 @@
 
 const mongoose = require("mongoose");
 const {
-  WORLDS,
   EVENT_CATEGORY_KEYS,
   EVENT_STATUSES,
   EVENT_GENDER_SCOPES,
@@ -35,7 +34,6 @@ const stampSchema = new mongoose.Schema(
 
 const eventSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     name: { type: String, required: [true, "שם האירוע הוא חובה"], trim: true },
     /** Start date+time of the event. */
     date: { type: Date, required: [true, "תאריך האירוע הוא חובה"] },
@@ -73,10 +71,10 @@ const eventSchema = new mongoose.Schema(
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
 
-eventSchema.index({ world: 1, date: 1 });
-eventSchema.index({ world: 1, status: 1, date: 1 });
+eventSchema.index({ date: 1 });
+eventSchema.index({ status: 1, date: 1 });
 eventSchema.index(
-  { world: 1, "import.senzeyCourseId": 1 },
+  { "import.senzeyCourseId": 1 },
   { unique: true, partialFilterExpression: { "import.senzeyCourseId": { $exists: true } } }
 );
 

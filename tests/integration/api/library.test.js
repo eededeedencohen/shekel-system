@@ -1,8 +1,7 @@
 /**
  * הספרייה - the scan flow end to end: lookup (library first, then the
  * internet), add with a cover, lend / extend / return with Eden's rules
- * (one copy per book, no Fri/Shabbat return days), soft delete + restore,
- * world isolation.
+ * (one copy per book, no Fri/Shabbat return days), soft delete + restore.
  */
 
 const fs = require("fs");
@@ -252,15 +251,6 @@ describe("lend / extend / return", () => {
     const detail = await request(app).get(`/api/library/books/${book._id}`);
     expect(detail.body.data.loan.student.firstName).toBe("יוסי");
     expect(detail.body.data.history).toHaveLength(2);
-  });
-
-  it("refuses a student or book from another world", async () => {
-    const book = await makeBook();
-    const s = await makeStudent();
-    const res = await request(app).post(`/api/library/books/${book._id}/lend`).set("X-Dataset", "test").send({ student: s._id, dueAt: dayStr(14), by: "x" });
-    expect(res.status).toBe(404);
-    const all = await request(app).get("/api/library/books").set("X-Dataset", "test");
-    expect(all.body.results).toBe(0);
   });
 });
 

@@ -97,7 +97,6 @@ const makeEnrollment = async (overrides = {}) => {
   return Enrollment.create({
     cycle,
     student,
-    world: "real",
     status: "active",
     joinedAt: new Date("2026-03-02"),
     ...overrides,

@@ -68,7 +68,7 @@ function applyStudentCore(schema) {
     return this.save();
   };
 
-  schema.index({ world: 1, "pipeline.stage": 1, "pipeline.since": 1 });
+  schema.index({ "pipeline.stage": 1, "pipeline.since": 1 });
   return schema;
 }
 

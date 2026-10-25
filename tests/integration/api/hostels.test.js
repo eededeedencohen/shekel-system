@@ -59,12 +59,4 @@ describe("/api/hostels", () => {
     expect(ok.status).toBe(204);
     expect(await Hostel.findById(free._id)).toBeNull();
   });
-
-  it("keeps the worlds apart", async () => {
-    const h = await makeHostel({ world: "test" });
-    const real = await request(app).get(`/api/hostels/${h._id}`);
-    expect(real.status).toBe(404);
-    const test = await request(app).get(`/api/hostels/${h._id}`).set("X-Dataset", "test");
-    expect(test.status).toBe(200);
-  });
 });

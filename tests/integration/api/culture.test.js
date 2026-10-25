@@ -108,7 +108,7 @@ describe("registrations - who, capacity, waitlist, promotion", () => {
     expect(asGuest.body.data.registration).toMatchObject({ status: "registered", isGuest: true });
   });
 
-  it("events carry a price and senzey import keys (unique per world)", async () => {
+  it("events carry a price and senzey import keys (unique)", async () => {
     const staff = await makeCultureStaff();
     const body = { by: staff._id, name: "הצגה", date: "2030-01-01T20:15:00Z", price: 240, import: { senzeyCourseId: "1624", senzeyName: "הצגה - תיאטרון ירושלים" } };
     const a = await request(app).post("/api/events").send(body);
@@ -223,7 +223,7 @@ describe("attendance", () => {
 });
 
 describe("vouchers", () => {
-  it("create (staff), grant once to a culture student, redeem once, number unique per world", async () => {
+  it("create (staff), grant once to a culture student, redeem once, number unique", async () => {
     const staff = await makeCultureStaff();
     const a = await makeCultureStudent();
     const college = await makeStudent();
@@ -272,19 +272,6 @@ describe("vouchers", () => {
     expect(res.body.data.voucher.grant).toBeNull();
     res = await request(app).delete(`/api/vouchers/${v._id}?by=${staff._id}`);
     expect(res.status).toBe(204);
-  });
-});
-
-describe("world isolation", () => {
-  it("a test-world staff cannot act in the real world", async () => {
-    const realStaff = await makeCultureStaff();
-    const ev = await makeEvent({ by: realStaff._id });
-    const a = await makeCultureStudent();
-    const res = await request(app)
-      .post("/api/event-registrations")
-      .set("X-Dataset", "test")
-      .send({ event: ev._id, student: a._id, by: realStaff._id });
-    expect(res.body.code).toBe("WORLD_MISMATCH");
   });
 });
 

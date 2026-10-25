@@ -9,14 +9,14 @@
  * `show` is now the catch-all "מופע אחר", so nothing is ever invalid.
  * Idempotent: a second run finds nothing to do.
  *
- * Usage:  node scripts/retagEventCategories.js [--dry] [--world=test]
+ * Usage:  node scripts/retagEventCategories.js [--dry]
  */
 
 require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") });
 const mongoose = require("mongoose");
 const connectDB = require("../config/db");
 const Event = require("../models/Event");
-const { EVENT_CATEGORY_KEYS, WORLDS } = require("../utils/domain");
+const { EVENT_CATEGORY_KEYS } = require("../utils/domain");
 
 /** Per pre-split key: ordered [pattern on the NAME, finer key]. */
 const RULES = {
@@ -34,30 +34,24 @@ const RULES = {
 
 const args = process.argv.slice(2);
 const dry = args.includes("--dry");
-const onlyWorld = (args.find((a) => a.startsWith("--world=")) || "").slice(8) || null;
 
 (async () => {
   await connectDB();
   for (const key of Object.values(RULES).flat().map(([, k]) => k)) {
     if (!EVENT_CATEGORY_KEYS.includes(key)) throw new Error(`unknown target category ${key}`);
   }
-  const worlds = onlyWorld ? [onlyWorld] : WORLDS;
-  let total = 0;
-  for (const world of worlds) {
-    const events = await Event.find({ world, category: { $in: Object.keys(RULES) } }).select("name category").lean();
-    let n = 0;
-    for (const ev of events) {
-      const hit = RULES[ev.category].find(([re]) => re.test(ev.name));
-      if (!hit) continue;
-      const [, to] = hit;
-      console.log(`  ${world} · ${ev.name}: ${ev.category} → ${to}`);
-      if (!dry) await Event.updateOne({ _id: ev._id }, { $set: { category: to } });
-      n++;
-    }
-    console.log(`${world}: ${events.length} pre-split events, ${n} ${dry ? "would be " : ""}re-filed`);
-    total += n;
+  const events = await Event.find({ category: { $in: Object.keys(RULES) } }).select("name category").lean();
+  let n = 0;
+  for (const ev of events) {
+    const hit = RULES[ev.category].find(([re]) => re.test(ev.name));
+    if (!hit) continue;
+    const [, to] = hit;
+    console.log(`  ${ev.name}: ${ev.category} → ${to}`);
+    if (!dry) await Event.updateOne({ _id: ev._id }, { $set: { category: to } });
+    n++;
   }
-  console.log(`${dry ? "[dry] " : ""}done - ${total} event(s)`);
+  console.log(`${events.length} pre-split events, ${n} ${dry ? "would be " : ""}re-filed`);
+  console.log(`${dry ? "[dry] " : ""}done - ${n} event(s)`);
   await mongoose.disconnect();
 })().catch((e) => {
   console.error(e);

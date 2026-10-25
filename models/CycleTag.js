@@ -9,17 +9,15 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS } = require("../utils/domain");
 
 const cycleTagSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     cycle: { type: mongoose.Schema.Types.ObjectId, ref: "Cycle", required: true },
     tag: { type: mongoose.Schema.Types.ObjectId, ref: "Tag", required: true },
   },
   { timestamps: true, collection: "cycleTags" }
 );
 cycleTagSchema.index({ cycle: 1, tag: 1 }, { unique: true });
-cycleTagSchema.index({ world: 1, tag: 1 });
+cycleTagSchema.index({ tag: 1 });
 
 module.exports = mongoose.model("CycleTag", cycleTagSchema);

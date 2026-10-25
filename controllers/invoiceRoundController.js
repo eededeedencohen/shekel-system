@@ -24,7 +24,7 @@ function programsOf(req) {
 
 /** A round outside the persona's side reads as not there. */
 async function loadVisible(req) {
-  const round = await rounds.loadRound({ world: req.world, roundId: req.params.id });
+  const round = await rounds.loadRound({ roundId: req.params.id });
   const programs = programsOf(req);
   if (programs && !programs.includes(round.program)) throw AppError.of("OUT_OF_SCOPE", 403);
   return round;
@@ -35,7 +35,7 @@ const answer = (res, round, status = 200) => res.status(status).json({ status: "
 /* ───────────────────────── staff ───────────────────────── */
 
 exports.list = catchAsync(async (req, res) => {
-  const list = await rounds.listRounds({ world: req.world, programs: programsOf(req) });
+  const list = await rounds.listRounds({ programs: programsOf(req) });
   res.status(200).json({ status: "success", results: list.length, data: { rounds: list } });
 });
 
@@ -43,42 +43,42 @@ exports.open = catchAsync(async (req, res) => {
   const program = req.body?.program || "hostels";
   const programs = programsOf(req);
   if (programs && !programs.includes(program)) throw AppError.of("OUT_OF_SCOPE", 403);
-  answer(res, await rounds.openRound({ world: req.world, month: req.body?.month, program, by: by(req) }), 201);
+  answer(res, await rounds.openRound({ month: req.body?.month, program, by: by(req) }), 201);
 });
 
 exports.getOne = catchAsync(async (req, res) => {
   const round = await loadVisible(req);
-  answer(res, await rounds.getRound({ world: req.world, roundId: round._id }));
+  answer(res, await rounds.getRound({ roundId: round._id }));
 });
 
 exports.markSent = catchAsync(async (req, res) => {
   const round = await loadVisible(req);
-  answer(res, await rounds.markSent({ world: req.world, roundId: round._id, requestId: req.params.rid, by: by(req) }));
+  answer(res, await rounds.markSent({ roundId: round._id, requestId: req.params.rid, by: by(req) }));
 });
 
 exports.renew = catchAsync(async (req, res) => {
   const round = await loadVisible(req);
-  answer(res, await rounds.renew({ world: req.world, roundId: round._id, requestId: req.params.rid, days: req.body?.days }));
+  answer(res, await rounds.renew({ roundId: round._id, requestId: req.params.rid, days: req.body?.days }));
 });
 
 exports.reopen = catchAsync(async (req, res) => {
   const round = await loadVisible(req);
-  answer(res, await rounds.reopen({ world: req.world, roundId: round._id, requestId: req.params.rid }));
+  answer(res, await rounds.reopen({ roundId: round._id, requestId: req.params.rid }));
 });
 
 exports.setMail = catchAsync(async (req, res) => {
   const round = await loadVisible(req);
-  answer(res, await rounds.setMail({ world: req.world, roundId: round._id, sent: req.body?.sent !== false, by: by(req) }));
+  answer(res, await rounds.setMail({ roundId: round._id, sent: req.body?.sent !== false, by: by(req) }));
 });
 
 exports.setNote = catchAsync(async (req, res) => {
   const round = await loadVisible(req);
-  answer(res, await rounds.setNote({ world: req.world, roundId: round._id, note: req.body?.note }));
+  answer(res, await rounds.setNote({ roundId: round._id, note: req.body?.note }));
 });
 
 exports.remove = catchAsync(async (req, res) => {
   const round = await loadVisible(req);
-  await rounds.deleteRound({ world: req.world, roundId: round._id });
+  await rounds.deleteRound({ roundId: round._id });
   res.status(204).json({ status: "success", data: null });
 });
 
@@ -91,9 +91,8 @@ exports.admin = catchAsync(async (req, res) => {
 
 /* ───────────────────────── the teacher, behind the link ───────────────────────── */
 
-const resolve = (req, opts) => rounds.resolveToken({ world: req.world, token: req.params.token, ...opts });
-// the view says which world the link lives in (the page shows a demo world's ribbon; the link itself carries none)
-const publicAnswer = async (res, r) => res.status(200).json({ status: "success", data: { view: { ...(await rounds.publicView(r)), world: r.world } } });
+const resolve = (req, opts) => rounds.resolveToken({ token: req.params.token, ...opts });
+const publicAnswer = async (res, r) => res.status(200).json({ status: "success", data: { view: await rounds.publicView(r) } });
 
 // a finished teacher may read the summary after the link expired (decision 12); a signed-in staff member checking
 // the link is not the teacher opening it, so it is not noted as opened (decision 8)

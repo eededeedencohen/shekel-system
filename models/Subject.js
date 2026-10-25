@@ -6,17 +6,14 @@
  * interests, teacher expertise, desk grouping and every cycle point at.
  * Renaming a subject renames it everywhere atomically (everything refs the
  * _id). Retire via active:false - deletion is refused while referenced.
- *
- * Demo worlds hold their own copies/clones ({world,name} unique), so world
- * isolation has no special cases.
+ * The name is unique.
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, SUBJECT_CATEGORY_KEYS } = require("../utils/domain");
+const { SUBJECT_CATEGORY_KEYS } = require("../utils/domain");
 
 const subjectSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     name: {
       type: String,
       required: [true, "שם מקצוע הוא חובה"],
@@ -38,7 +35,7 @@ const subjectSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-subjectSchema.index({ world: 1, name: 1 }, { unique: true });
-subjectSchema.index({ world: 1, category: 1 });
+subjectSchema.index({ name: 1 }, { unique: true });
+subjectSchema.index({ category: 1 });
 
 module.exports = mongoose.model("Subject", subjectSchema);

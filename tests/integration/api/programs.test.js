@@ -90,7 +90,7 @@ describe("POST /api/people/:id/transfer", () => {
     expect(w.body.data.registration.status).toBe("waitlisted");
     // a past registration, built as history
     const culture = require("../../../services/cultureService");
-    await culture.register({ eventId: past._id, studentId: mover._id, world: "real", by: staff._id, trusted: true });
+    await culture.register({ eventId: past._id, studentId: mover._id, by: staff._id, trusted: true });
 
     const res = await request(app)
       .post(`/api/people/${mover._id}/transfer`)

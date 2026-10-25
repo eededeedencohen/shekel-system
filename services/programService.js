@@ -27,10 +27,10 @@ const { STUDENT_KINDS, PROGRAM_LABELS, OCCUPYING_STATUSES, LEAVE_REASONS, LEAVE_
 const tags = require("./tagService");
 
 /** The `student` role tag closes only when no student profile stays open. */
-async function syncStudentTag({ personId, world, at, by }) {
+async function syncStudentTag({ personId, at, by }) {
   const open = await Profile.exists({ person: personId, kind: { $in: STUDENT_KINDS }, active: true });
-  if (open) await tags.give({ world, personId, key: "student", at, by });
-  else await tags.take({ world, personId, key: "student", at, by });
+  if (open) await tags.give({ personId, key: "student", at, by });
+  else await tags.take({ personId, key: "student", at, by });
 }
 
 /** The stage a (re)opened student profile starts at unless told otherwise. */
@@ -80,26 +80,25 @@ async function leaveProgramEffects({ personId, kind, at, reason }) {
   return effects;
 }
 
-/** Person + world/deleted guards shared by every entry point. */
-async function requirePerson(personId, world) {
+/** Person + deleted guards shared by every entry point. */
+async function requirePerson(personId) {
   const person = await Person.findById(personId);
   if (!person) throw AppError.of("NOT_FOUND", 404, "אדם");
-  if (person.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
   if (person.deletedAt) throw AppError.of("PERSON_DELETED", 400);
   return person;
 }
 
 /**
  * Move a student from one program to the other.
- *   { personId, world, from, to, by, note, at?, stage? }
+ *   { personId, from, to, by, note, at?, stage? }
  * Returns { source, target, effects }.
  */
-async function transfer({ personId, world, from, to, by, note, at, stage }) {
+async function transfer({ personId, from, to, by, note, at, stage }) {
   if (!STUDENT_KINDS.includes(from) || !STUDENT_KINDS.includes(to) || from === to) {
     throw AppError.of("INVALID_TRANSFER", 400, `${from} → ${to}`);
   }
   const when = at ? new Date(at) : new Date();
-  const person = await requirePerson(personId, world);
+  const person = await requirePerson(personId);
 
   const source = await Profile.findOne({ person: person._id, kind: from });
   if (!source || !source.active) throw AppError.of("PROFILE_INACTIVE", 400, PROGRAM_LABELS[from]);
@@ -114,7 +113,7 @@ async function transfer({ personId, world, from, to, by, note, at, stage }) {
   source.log.push({ event: "transferredOut", at: when, by, note, otherKind: to });
   await source.save();
 
-  await tags.take({ world, personId: person._id, key: tags.PROGRAM_OF_KIND[from], at: when, by, note, otherKey: tags.PROGRAM_OF_KIND[to] });
+  await tags.take({ personId: person._id, key: tags.PROGRAM_OF_KIND[from], at: when, by, note, otherKey: tags.PROGRAM_OF_KIND[to] });
 
   // 2 · give back what the old program was holding for them
   const effects = await leaveProgramEffects({
@@ -137,7 +136,6 @@ async function transfer({ personId, world, from, to, by, note, at, stage }) {
     const Model = MODEL_BY_KIND[to];
     target = new Model({
       person: person._id,
-      world: person.world,
       active: true,
       since: when,
       log: [{ event: "transferredIn", at: when, by, note, otherKind: from }],
@@ -147,8 +145,8 @@ async function transfer({ personId, world, from, to, by, note, at, stage }) {
     await target.save();
   }
 
-  await tags.give({ world, personId: person._id, key: tags.PROGRAM_OF_KIND[to], at: when, by, note, otherKey: tags.PROGRAM_OF_KIND[from] });
-  await syncStudentTag({ personId: person._id, world, at: when, by });
+  await tags.give({ personId: person._id, key: tags.PROGRAM_OF_KIND[to], at: when, by, note, otherKey: tags.PROGRAM_OF_KIND[from] });
+  await syncStudentTag({ personId: person._id, at: when, by });
   return { source, target, effects };
 }
 
@@ -156,8 +154,7 @@ async function transfer({ personId, world, from, to, by, note, at, stage }) {
  * Close a profile (leave a program / retire a role) with a reason.
  * Student kinds unwind their live memberships; other kinds just close.
  */
-async function closeProfile({ profile, world, by, note, at }) {
-  if (profile.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
+async function closeProfile({ profile, by, note, at }) {
   if (!profile.active) throw AppError.of("PROFILE_INACTIVE", 400);
   const when = at ? new Date(at) : new Date();
   profile.active = false;
@@ -165,9 +162,9 @@ async function closeProfile({ profile, world, by, note, at }) {
   profile.log.push({ event: "closed", at: when, by, note });
   await profile.save();
   for (const key of tags.KIND_TAGS[profile.kind] || []) {
-    if (key !== "student") await tags.take({ world, personId: profile.person, key, at: when, by, note });
+    if (key !== "student") await tags.take({ personId: profile.person, key, at: when, by, note });
   }
-  await syncStudentTag({ personId: profile.person, world, at: when, by });
+  await syncStudentTag({ personId: profile.person, at: when, by });
   const effects = STUDENT_KINDS.includes(profile.kind)
     ? await leaveProgramEffects({ personId: profile.person, kind: profile.kind, at: when, reason: note || "עזב/ה את התוכנית" })
     : null;
@@ -182,19 +179,18 @@ async function closeProfile({ profile, world, by, note, at }) {
  * the person's record beside the narrative closure report (which the
  * coordinator writes first - the client reminds her; nothing blocks).
  */
-async function leaveProgram({ profile, world, by, leftAt, reason, note, shkediaReported = false }) {
+async function leaveProgram({ profile, by, leftAt, reason, note, shkediaReported = false }) {
   if (!STUDENT_KINDS.includes(profile.kind)) throw AppError.of("INVALID_KIND", 400, profile.kind);
   if (!LEAVE_REASON_KEYS.includes(reason)) throw AppError.of("LEAVE_REASON_INVALID", 400, reason);
   const when = leftAt ? new Date(leftAt) : new Date();
   if (isNaN(when.getTime())) throw AppError.of("INVALID_DATE", 400);
   const label = LEAVE_REASONS.find((r) => r.key === reason).label;
   const text = [label, note].filter(Boolean).join(" · ");
-  const { effects } = await closeProfile({ profile, world, by, note: text, at: when });
+  const { effects } = await closeProfile({ profile, by, note: text, at: when });
   // lazy: activityService has no dependency on this file, keep the load graph simple
   const activities = require("./activityService");
   const now = new Date();
   const activity = await activities.addActivity({
-    world,
     person: profile.person,
     kind: "leave",
     at: when,
@@ -209,17 +205,16 @@ async function leaveProgram({ profile, world, by, leftAt, reason, note, shkediaR
 }
 
 /** Reopen a closed profile; a student profile restarts its pipeline. */
-async function reopenProfile({ profile, world, by, note, at, stage }) {
-  if (profile.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
+async function reopenProfile({ profile, by, note, at, stage }) {
   if (profile.active) throw AppError.of("PROFILE_ACTIVE", 400);
-  const person = await requirePerson(profile.person, world);
+  const person = await requirePerson(profile.person);
   const when = at ? new Date(at) : new Date();
   profile.active = true;
   profile.since = when;
   profile.until = null;
   profile.log.push({ event: "reopened", at: when, by, note });
   await profile.save();
-  for (const key of tags.KIND_TAGS[profile.kind] || []) await tags.give({ world, personId: profile.person, key, at: when, by, note });
+  for (const key of tags.KIND_TAGS[profile.kind] || []) await tags.give({ personId: profile.person, key, at: when, by, note });
   if (STUDENT_KINDS.includes(profile.kind)) {
     await profile.moveToStage(stage || DEFAULT_ENTRY_STAGE, by, note || "חזר/ה לתוכנית");
   }

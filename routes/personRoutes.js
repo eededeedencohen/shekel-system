@@ -31,7 +31,7 @@ const documents = require("../controllers/personDocumentController");
 const lens = require("../services/lensService");
 
 // a person's own papers (a teacher's syllabus; שמרית's round, 2026-10-19) -
-// the world's list for the client's slice sits before /:id
+// the whole list for the client's slice sits before /:id
 router.get("/documents", documents.listAll);
 
 // Every person-addressed path: the person must be in the acting persona's

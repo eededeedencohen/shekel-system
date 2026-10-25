@@ -24,7 +24,7 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, ATTENDANCE_STATUSES, ABSENCE_REASON_KEYS } = require("../utils/domain");
+const { ATTENDANCE_STATUSES, ABSENCE_REASON_KEYS } = require("../utils/domain");
 
 /** Any date-ish value → Date at UTC midnight of its UTC day. */
 function utcMidnight(v) {
@@ -56,7 +56,6 @@ const lessonSchema = new mongoose.Schema(
       required: true,
       default: "live",
     },
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     attendance: [
       {
         student: {
@@ -89,7 +88,7 @@ lessonSchema.index(
 );
 lessonSchema.index({ cycle: 1, source: 1, date: 1 });
 lessonSchema.index({ "attendance.student": 1, date: -1 });
-lessonSchema.index({ world: 1, date: 1 });
+lessonSchema.index({ date: 1 });
 
 /** No student twice in one ledger (the embed's stand-in for a unique index). */
 lessonSchema.pre("validate", function (next) {

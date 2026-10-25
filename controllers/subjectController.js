@@ -10,7 +10,7 @@ const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 
 exports.getSubjects = catchAsync(async (req, res) => {
-  const filter = { world: req.world };
+  const filter = {};
   if (req.query.active === "true") filter.active = true;
   const subjects = await Subject.find(filter).sort({ name: 1 });
   res.status(200).json({ status: "success", results: subjects.length, data: { subjects } });
@@ -18,12 +18,12 @@ exports.getSubjects = catchAsync(async (req, res) => {
 
 exports.createSubject = catchAsync(async (req, res) => {
   const { name, category, active } = req.body;
-  const subject = await Subject.create({ name, category, active, world: req.world });
+  const subject = await Subject.create({ name, category, active });
   res.status(201).json({ status: "success", data: { subject } });
 });
 
 exports.updateSubject = catchAsync(async (req, res, next) => {
-  const subject = await Subject.findOne({ _id: req.params.id, world: req.world });
+  const subject = await Subject.findById(req.params.id);
   if (!subject) return next(AppError.of("NOT_FOUND", 404, "מקצוע"));
   for (const k of ["name", "category", "active", "importAliases"]) {
     if (k in req.body) subject[k] = req.body[k];
@@ -34,7 +34,7 @@ exports.updateSubject = catchAsync(async (req, res, next) => {
 
 /** Deletion refused while referenced - retire with active:false instead. */
 exports.deleteSubject = catchAsync(async (req, res, next) => {
-  const subject = await Subject.findOne({ _id: req.params.id, world: req.world });
+  const subject = await Subject.findById(req.params.id);
   if (!subject) return next(AppError.of("NOT_FOUND", 404, "מקצוע"));
   const [cycles, interested, teaching] = await Promise.all([
     Cycle.countDocuments({ subject: subject._id }),

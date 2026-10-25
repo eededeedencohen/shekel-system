@@ -31,18 +31,18 @@ const scopeSets = async (req) => {
 exports.getTeacherLessons = catchAsync(async (req, res) => {
   await lens.assertPerson(req, req.query.teacher);
   const { cycleIds } = await scopeSets(req);
-  const lessons = await invoices.lessonsOfTeacher({ world: req.world, teacherId: req.query.teacher, cycleIds });
+  const lessons = await invoices.lessonsOfTeacher({ teacherId: req.query.teacher, cycleIds });
   res.status(200).json({ status: "success", results: lessons.length, data: { lessons } });
 });
 
 exports.getInvoices = catchAsync(async (req, res) => {
   const { people, cycleIds } = await scopeSets(req);
-  const list = await invoices.listInvoices({ world: req.world, teacherId: req.query.teacher, people, cycleIds });
+  const list = await invoices.listInvoices({ teacherId: req.query.teacher, people, cycleIds });
   res.status(200).json({ status: "success", results: list.length, data: { invoices: list } });
 });
 
 exports.getInvoice = catchAsync(async (req, res) => {
-  const invoice = await invoices.getInvoice({ world: req.world, invoiceId: req.params.id });
+  const invoice = await invoices.getInvoice({ invoiceId: req.params.id });
   res.status(200).json({ status: "success", data: { invoice } });
 });
 
@@ -50,7 +50,6 @@ exports.createInvoice = catchAsync(async (req, res) => {
   await lens.assertPerson(req, req.body.teacher);
   const { cycleIds } = await scopeSets(req);
   const invoice = await invoices.createInvoice({
-    world: req.world,
     teacherId: req.body.teacher,
     lessonIds: req.body.lessons,
     imageData: req.body.imageData,
@@ -74,23 +73,23 @@ const assertUnlocked = (req, invoice, { lessons = false } = {}) => {
 
 exports.updateInvoice = catchAsync(async (req, res) => {
   const { cycleIds } = await scopeSets(req);
-  assertUnlocked(req, await invoices.getInvoice({ world: req.world, invoiceId: req.params.id }), { lessons: req.body.lessons !== undefined });
-  const invoice = await invoices.updateInvoice({ world: req.world, invoiceId: req.params.id, lessonIds: req.body.lessons, note: req.body.note, cycleIds });
+  assertUnlocked(req, await invoices.getInvoice({ invoiceId: req.params.id }), { lessons: req.body.lessons !== undefined });
+  const invoice = await invoices.updateInvoice({ invoiceId: req.params.id, lessonIds: req.body.lessons, note: req.body.note, cycleIds });
   res.status(200).json({ status: "success", data: { invoice } });
 });
 
 exports.deleteInvoice = catchAsync(async (req, res) => {
-  const current = await invoices.getInvoice({ world: req.world, invoiceId: req.params.id });
+  const current = await invoices.getInvoice({ invoiceId: req.params.id });
   assertUnlocked(req, current);
-  await invoices.deleteInvoice({ world: req.world, invoiceId: req.params.id });
+  await invoices.deleteInvoice({ invoiceId: req.params.id });
   // rule 4: a finished request left with nothing opens again
-  if (current.request) await rounds.settleAfterDelete({ world: req.world, requestId: current.request });
+  if (current.request) await rounds.settleAfterDelete({ requestId: current.request });
   res.status(204).json({ status: "success", data: null });
 });
 
 /** The stored file (image or PDF), inline - a plain link the browser may open in a tab; `?thumb=1` the small JPEG. */
 exports.getImage = catchAsync(async (req, res) => {
-  const file = await invoices.imageOf({ world: req.world, invoiceId: req.params.id, thumb: req.query.thumb === "1" });
+  const file = await invoices.imageOf({ invoiceId: req.params.id, thumb: req.query.thumb === "1" });
   // revalidated every time (utils/sendFile): a replaced picture never shows its old bytes
   if (notModified(req, res, `${file._id}-${file.updatedAt ? new Date(file.updatedAt).getTime() : 0}`)) return;
   res.type(file.mime);

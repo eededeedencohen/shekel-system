@@ -1,6 +1,6 @@
 /**
  * @file importShimritSeptember - שמרית's September 2026 picture of the
- * hostels (her answers of 2026-10-19), merged into a world: the houses
+ * hostels (her answers of 2026-10-19), merged into the app: the houses
  * with their address, contact, Ministry numbers and courses; the teachers
  * with phone and rate; the residents of every house, seated in its
  * courses.
@@ -12,13 +12,11 @@
  * in the report for שמרית to judge.
  *
  * Usage:
- *   node scripts/importShimritSeptember.js --world=test --dry   what would happen, no writes
- *   node scripts/importShimritSeptember.js --world=test         do it (test world)
- *   node scripts/importShimritSeptember.js --world=real --dry   the real world's plan
- *   node scripts/importShimritSeptember.js --world=real         do it for real
- *   node scripts/importShimritSeptember.js --world=test --undo  take back what a run made (its ledger)
+ *   node scripts/importShimritSeptember.js --dry    what would happen, no writes
+ *   node scripts/importShimritSeptember.js          do it
+ *   node scripts/importShimritSeptember.js --undo   take back what a run made (its ledger)
  *
- * The ledger (server/backups/import-shimrit-<world>.json, gitignored)
+ * The ledger (server/backups/import-shimrit.json, gitignored)
  * remembers every row it created and the fields it changed, so `--undo`
  * removes exactly those rows and puts the changed fields back.
  */
@@ -40,20 +38,14 @@ const tags = require("../services/tagService");
 const { createPersonWithProfile } = require("../services/profileService");
 const { enroll } = require("../services/enrollmentService");
 const { createResident, ensureResidence } = require("../services/hostelReportService");
-const { SUBJECT_CATEGORY_KEYS, WORLDS } = require("../utils/domain");
+const { SUBJECT_CATEGORY_KEYS } = require("../utils/domain");
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => (a.startsWith("--") ? a.slice(2).split("=") : [a, true])).map(([k, v]) => [k, v === undefined ? true : v]));
-const WORLD = args.world;
 const DRY = !!args.dry;
 const UNDO = !!args.undo;
 const DATA = path.resolve(__dirname, args.data || "../../project-files/data/hostels/shimrit-2026-09.json");
-const LEDGER = path.join(__dirname, "..", "backups", `import-shimrit-${WORLD}.json`);
+const LEDGER = path.join(__dirname, "..", "backups", "import-shimrit.json");
 const BY = "ייבוא ספטמבר 2026 (שמרית)";
-
-if (!WORLDS.includes(WORLD)) {
-  console.error("Usage: node scripts/importShimritSeptember.js --world=test|real [--dry] [--undo]");
-  process.exit(1);
-}
 
 /* ───────────────────────── names ───────────────────────── */
 
@@ -78,7 +70,7 @@ function splitName(entry) {
 
 /* ───────────────────────── the ledger ───────────────────────── */
 
-const ledger = { at: new Date().toISOString(), world: WORLD, data: DATA, created: { subjects: [], hostels: [], people: [], profiles: [], cycles: [], enrollments: [], personTags: [] }, updated: [] };
+const ledger = { at: new Date().toISOString(), data: DATA, created: { subjects: [], hostels: [], people: [], profiles: [], cycles: [], enrollments: [], personTags: [] }, updated: [] };
 const writeLedger = () => {
   if (DRY) return;
   fs.mkdirSync(path.dirname(LEDGER), { recursive: true });
@@ -127,7 +119,7 @@ async function undo() {
       await PersonTagEvent.deleteMany({ personTag: { $in: rows.map((r) => r._id) } });
       await PersonTag.deleteMany({ _id: { $in: rows.map((r) => r._id) } });
     }
-    const r = await Model.deleteMany({ _id: { $in: ids }, world: WORLD });
+    const r = await Model.deleteMany({ _id: { $in: ids } });
     out.push(`${kind} ${r.deletedCount}`);
   }
   // tags given to people who were already there
@@ -165,32 +157,32 @@ async function main() {
   const data = JSON.parse(fs.readFileSync(DATA, "utf8"));
   const D = data.defaults;
   const alias = (name) => data.subjectAliases?.[name] || name;
-  console.log(`${DRY ? "DRY RUN" : "IMPORT"} → world "${WORLD}" from ${path.basename(DATA)}`);
-  if (!DRY) await tags.ensureCatalog(WORLD);
+  console.log(`${DRY ? "DRY RUN" : "IMPORT"} from ${path.basename(DATA)}`);
+  if (!DRY) await tags.ensureCatalog();
 
   /* 1 ── subjects */
   console.log("\nSubjects");
-  const subjectByName = new Map((await Subject.find({ world: WORLD }).lean()).map((s) => [s.name, s]));
+  const subjectByName = new Map((await Subject.find({}).lean()).map((s) => [s.name, s]));
   const wantedSubjects = new Set([...data.subjects.map((s) => s.name), ...data.hostels.flatMap((h) => h.courses.map((c) => alias(c.subject))), ...data.teachers.flatMap((t) => t.subjects.map(alias))]);
   for (const name of wantedSubjects) {
     if (subjectByName.has(name)) continue;
     const spec = data.subjects.find((s) => s.name === name) || { category: "other" };
     log("subjects", `+ מקצוע חדש: ${name} (${spec.category})`);
     if (DRY) subjectByName.set(name, { _id: new mongoose.Types.ObjectId(), name });
-    else subjectByName.set(name, created("subjects", await Subject.create({ world: WORLD, name, category: SUBJECT_CATEGORY_KEYS.includes(spec.category) ? spec.category : "other", active: true })));
+    else subjectByName.set(name, created("subjects", await Subject.create({ name, category: SUBJECT_CATEGORY_KEYS.includes(spec.category) ? spec.category : "other", active: true })));
   }
   const subjectId = (name) => subjectByName.get(alias(name))?._id;
 
   /* 2 ── the houses */
   console.log("\nHostels");
-  const hostelByName = new Map((await Hostel.find({ world: WORLD })).map((h) => [h.name, h]));
+  const hostelByName = new Map((await Hostel.find({})).map((h) => [h.name, h]));
   for (const h of data.hostels) {
     let doc = hostelByName.get(h.name);
     const fields = { kind: h.kind, address: h.address, city: h.city || D.city, notes: h.notes, approvals: h.approvals ?? undefined, since: h.since ? new Date(h.since) : undefined };
     if (!doc) {
       log("hostels", `+ ${h.kind === "community" ? "קהילה" : h.kind === "both" ? "הוסטל וקהילה" : "הוסטל"} חדש: ${h.name}`);
       if (DRY) doc = { _id: new mongoose.Types.ObjectId(), name: h.name, kind: h.kind, contacts: h.contacts, isNew: true };
-      else doc = created("hostels", await Hostel.create({ world: WORLD, name: h.name, contacts: h.contacts, ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined)) }));
+      else doc = created("hostels", await Hostel.create({ name: h.name, contacts: h.contacts, ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined)) }));
       hostelByName.set(h.name, doc);
       continue;
     }
@@ -231,7 +223,7 @@ async function main() {
 
   /* 3 ── the teachers */
   console.log("\nTeachers");
-  const teacherProfiles = await Profile.find({ world: WORLD, kind: "Teacher" }).lean();
+  const teacherProfiles = await Profile.find({ kind: "Teacher" }).lean();
   const teacherPeople = await Person.find({ _id: { $in: teacherProfiles.map((p) => p.person) }, deletedAt: null });
   const teacherByName = new Map(); // the file's name → Person doc
   for (const t of data.teachers) {
@@ -251,10 +243,10 @@ async function main() {
       log("teachers", `+ מורה חדש/ה: ${t.name} (${t.subjects.join(", ")}${t.rate ? `, ${t.rate} ₪` : ""})`);
       if (DRY) person = { _id: new mongoose.Types.ObjectId(), firstName, lastName };
       else {
-        const made = await createPersonWithProfile("Teacher", { world: WORLD, firstName, lastName, gender: t.gender, phone: t.phone, subjects: t.subjects.map(subjectId).filter(Boolean), hostelRate: t.rate ?? undefined, notes: t.note }, { opened: { by: BY } });
+        const made = await createPersonWithProfile("Teacher", { firstName, lastName, gender: t.gender, phone: t.phone, subjects: t.subjects.map(subjectId).filter(Boolean), hostelRate: t.rate ?? undefined, notes: t.note }, { opened: { by: BY } });
         person = created("people", made.person);
         created("profiles", made.profile);
-        const row = await tags.give({ world: WORLD, personId: person._id, key: "hostels", by: BY, note: "מורה בהוסטלים" });
+        const row = await tags.give({ personId: person._id, key: "hostels", by: BY, note: "מורה בהוסטלים" });
         if (row) ledger.created.personTags.push(String(row._id));
         writeLedger();
       }
@@ -297,8 +289,8 @@ async function main() {
         await doc.save();
       }
     }
-    if (!DRY && !(await tags.holds(person._id, WORLD, "hostels"))) {
-      const row = await tags.give({ world: WORLD, personId: person._id, key: "hostels", by: BY, note: "מורה בהוסטלים" });
+    if (!DRY && !(await tags.holds(person._id, "hostels"))) {
+      const row = await tags.give({ personId: person._id, key: "hostels", by: BY, note: "מורה בהוסטלים" });
       if (row) ledger.created.personTags.push(String(row._id));
       writeLedger();
       changes.push("תג הוסטלים");
@@ -313,7 +305,7 @@ async function main() {
   const cycleOf = new Map(); // `${hostel}|${subject}` → cycle doc
   for (const h of data.hostels) {
     const hostel = hostelByName.get(h.name);
-    const existing = hostel.isNew ? [] : await Cycle.find({ world: WORLD, hostel: hostel._id, status: { $ne: "Cancelled" } }).sort({ endDate: -1 });
+    const existing = hostel.isNew ? [] : await Cycle.find({ hostel: hostel._id, status: { $ne: "Cancelled" } }).sort({ endDate: -1 });
     for (const c of h.courses) {
       const subj = subjectId(c.subject);
       if (!subj) {
@@ -331,8 +323,8 @@ async function main() {
         log("cycles", `+ קורס חדש: ${label}${teacher ? ` · ${fullName(teacher)}` : " · ללא מורה"}${slot ? ` · יום ${["א", "ב", "ג", "ד", "ה", "ו", "ש"][slot.day]} ${slot.start}-${slot.end}` : " · ללא מועד"}${c.atShekel ? " · בשק״ל" : ""}`);
         if (DRY) cycle = { _id: new mongoose.Types.ObjectId(), schedule: slot ? [slot] : [] };
         else {
-          cycle = created("cycles", await Cycle.create({ world: WORLD, subject: subj, teacher: teacher?._id || null, status: "Active", startDate: new Date(D.startDate), endDate, schedule: slot ? [slot] : [], hostel: hostel._id, venue: c.atShekel ? { label: "שק״ל" } : { hostel: hostel._id }, matching: { enrollmentOpen: true } }));
-          await tags.setCycleProgram({ world: WORLD, cycleId: cycle._id, key: "hostels" });
+          cycle = created("cycles", await Cycle.create({ subject: subj, teacher: teacher?._id || null, status: "Active", startDate: new Date(D.startDate), endDate, schedule: slot ? [slot] : [], hostel: hostel._id, venue: c.atShekel ? { label: "שק״ל" } : { hostel: hostel._id }, matching: { enrollmentOpen: true } }));
+          await tags.setCycleProgram({ cycleId: cycle._id, key: "hostels" });
         }
         cycleOf.set(key, cycle);
         continue;
@@ -374,7 +366,7 @@ async function main() {
         }
       }
       if (!DRY && changes.length) await cycle.save();
-      if (!DRY) await tags.setCycleProgram({ world: WORLD, cycleId: cycle._id, key: "hostels" });
+      if (!DRY) await tags.setCycleProgram({ cycleId: cycle._id, key: "hostels" });
       log("cycles", `${changes.length ? "~" : "="} ${label}${changes.length ? `: ${changes.join(" · ")}` : ""}`);
       cycleOf.set(key, cycle);
     }
@@ -388,13 +380,13 @@ async function main() {
 
   /* 5 ── the people */
   console.log("\nPeople");
-  const everyone = await Person.find({ world: WORLD, deletedAt: null });
+  const everyone = await Person.find({ deletedAt: null });
   const hostelsTagHolders = new Set();
   {
-    const tag = (await tags.tagMap(WORLD)).get("hostels");
-    if (tag) for (const row of await PersonTag.find({ world: WORLD, tag: tag._id, until: null }).select("person").lean()) hostelsTagHolders.add(String(row.person));
+    const tag = (await tags.tagMap()).get("hostels");
+    if (tag) for (const row of await PersonTag.find({ tag: tag._id, until: null }).select("person").lean()) hostelsTagHolders.add(String(row.person));
   }
-  const seatsBefore = await Enrollment.find({ world: WORLD, status: { $in: ["active", "reserved"] } }).select("cycle student").lean();
+  const seatsBefore = await Enrollment.find({ status: { $in: ["active", "reserved"] } }).select("cycle student").lean();
   const seated = new Set(seatsBefore.map((e) => `${e.cycle}|${e.student}`));
   const listedSeats = new Set();
   let made = 0;
@@ -421,7 +413,7 @@ async function main() {
           log("ambiguous", `${h.name}: "${entry.name}" עם רמז "${entry.match}" - ${hits.length} התאמות; דולג/ת`);
           continue;
         }
-        if (!hits.length) log("warnings", `${h.name}: הרמז "${entry.match}" ל"${entry.name}" לא נמצא בעולם הזה - נוצר/ה כחדש/ה`);
+        if (!hits.length) log("warnings", `${h.name}: הרמז "${entry.match}" ל"${entry.name}" לא נמצא באפליקציה - נוצר/ה כחדש/ה`);
         person = hits[0] || null;
       } else {
         const want = tokensOf(entry.name);
@@ -454,7 +446,7 @@ async function main() {
           }
           continue;
         }
-        const r = await createResident({ world: WORLD, firstName, lastName, hostel: hostel._id, since: new Date(D.residenceSince), notes: entry.note ? `${entry.note} (${BY})` : `${BY}`, by: BY });
+        const r = await createResident({ firstName, lastName, hostel: hostel._id, since: new Date(D.residenceSince), notes: entry.note ? `${entry.note} (${BY})` : `${BY}`, by: BY });
         created("people", r.person);
         created("profiles", r.profile);
         person = r.person;
@@ -463,7 +455,7 @@ async function main() {
         const changes = [];
         if (!DRY) {
           if (!hostelsTagHolders.has(String(person._id))) {
-            const row = await tags.give({ world: WORLD, personId: person._id, key: "hostels", by: BY, note: "דייר/ת בהוסטל" });
+            const row = await tags.give({ personId: person._id, key: "hostels", by: BY, note: "דייר/ת בהוסטל" });
             if (row) ledger.created.personTags.push(String(row._id));
             hostelsTagHolders.add(String(person._id));
             changes.push("תג הוסטלים");
@@ -472,7 +464,7 @@ async function main() {
           const livesHere = profBefore && String(profBefore.residence?.hostel || "") === String(hostel._id) && !(profBefore.residence?.until && profBefore.residence.until <= new Date());
           if (!livesHere) {
             if (profBefore) touched("Profile", profBefore, "residence");
-            const prof = await ensureResidence({ world: WORLD, personId: person._id, hostel: hostel._id, since: new Date(D.residenceSince), by: BY });
+            const prof = await ensureResidence({ personId: person._id, hostel: hostel._id, since: new Date(D.residenceSince), by: BY });
             if (!profBefore) created("profiles", prof);
             changes.push(`מגורים: ${profBefore?.residence?.label || profBefore?.residence?.hostel || "-"} → ${h.name}`);
           }
@@ -496,7 +488,7 @@ async function main() {
           continue;
         }
         try {
-          const e = await enroll({ cycleId: cycle._id, studentId: person._id, world: WORLD, status: "active", createdBy: BY, joinedAt: new Date(D.residenceSince), note: "לפי רשימת ספטמבר 2026 של שמרית" });
+          const e = await enroll({ cycleId: cycle._id, studentId: person._id, status: "active", createdBy: BY, joinedAt: new Date(D.residenceSince), note: "לפי רשימת ספטמבר 2026 של שמרית" });
           created("enrollments", e);
           seated.add(seatKey);
           log("seats", `+ ${fullName(person)} → ${name} @${h.name}`);
@@ -509,7 +501,7 @@ async function main() {
 
   /* 6 ── what the app has and her list lacks (nothing is removed): seats in HER courses held by people not on her list */
   const herCycleIds = new Set([...cycleOf.values()].map((c) => String(c._id)));
-  const hostelCycles = await Cycle.find({ world: WORLD, hostel: { $ne: null } }).populate("subject", "name").populate("hostel", "name").lean();
+  const hostelCycles = await Cycle.find({ hostel: { $ne: null } }).populate("subject", "name").populate("hostel", "name").lean();
   const byCycle = new Map(hostelCycles.map((c) => [String(c._id), c]));
   for (const e of seatsBefore) {
     const c = byCycle.get(String(e.cycle));
@@ -522,7 +514,7 @@ async function main() {
   writeLedger();
   console.log(`\n${DRY ? "Would do" : "Done"}: ${report.subjects.length} subjects · ${report.hostels.filter((l) => l[0] !== "=").length} hostels changed · ${report.teachers.filter((l) => l[0] !== "=").length} teachers changed · ${report.cycles.filter((l) => l[0] !== "=").length} courses changed · people: ${matched} matched, ${made} new · ${report.seats.length} seats · ${report.ambiguous.length} ambiguous · ${report.warnings.length} warnings · ${report.unmatchedSeats.length} in the app but not in her list`);
   if (!DRY) console.log(`Ledger: ${LEDGER}`);
-  const out = path.join(__dirname, "..", "backups", `import-shimrit-${WORLD}-${DRY ? "dry" : "run"}.txt`);
+  const out = path.join(__dirname, "..", "backups", `import-shimrit-${DRY ? "dry" : "run"}.txt`);
   fs.mkdirSync(path.dirname(out), { recursive: true });
   fs.writeFileSync(out, Object.entries(report).map(([k, lines]) => `## ${k}\n${lines.join("\n")}`).join("\n\n"));
   console.log(`Report: ${out}`);

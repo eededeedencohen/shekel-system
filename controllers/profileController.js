@@ -5,8 +5,8 @@
  * Generic by construction: kind → model comes from the registry
  * (models/profiles), and each profile schema IS its own field whitelist
  * (strict mode drops anything foreign) - adding a user type touches
- * nothing here. Guarded paths (person/world/kind/pipeline/stageHistory)
- * are stripped centrally in profileService.
+ * nothing here. Guarded paths (person/kind/pipeline/stageHistory) are
+ * stripped centrally in profileService.
  */
 
 const { Person } = require("../models/Person");
@@ -26,7 +26,7 @@ const lens = require("../services/lensService");
 
 /** GET /api/people/:id/profiles?includeInactive= */
 exports.getPersonProfiles = catchAsync(async (req, res, next) => {
-  const person = await Person.findOne({ _id: req.params.id, world: req.world });
+  const person = await Person.findOne({ _id: req.params.id });
   if (!person) return next(AppError.of("NOT_FOUND", 404, "אדם"));
   const profiles = await profilesOf(person._id, {
     includeInactive: req.query.includeInactive === "true",
@@ -36,7 +36,7 @@ exports.getPersonProfiles = catchAsync(async (req, res, next) => {
 
 /** POST /api/people/:id/profiles - body { kind*, ...kind fields }. */
 exports.createPersonProfile = catchAsync(async (req, res, next) => {
-  const person = await Person.findOne({ _id: req.params.id, world: req.world });
+  const person = await Person.findOne({ _id: req.params.id });
   if (!person) return next(AppError.of("NOT_FOUND", 404, "אדם"));
   if (person.deletedAt) return next(AppError.of("PERSON_DELETED", 400));
   if (!req.body.kind) return next(AppError.of("MISSING_FIELDS", 400, "kind"));
@@ -52,7 +52,7 @@ exports.createPersonProfile = catchAsync(async (req, res, next) => {
 
 /** GET /api/profiles?kind=&active= - list across people (e.g. all hostel managers). */
 exports.getProfiles = catchAsync(async (req, res) => {
-  const filter = { world: req.world };
+  const filter = {};
   filter.active = req.query.active === "false" ? false : true;
   if (req.query.kind) filter.kind = { $in: req.query.kind.split(",") };
   if (req.query.person) filter.person = req.query.person;
@@ -65,7 +65,7 @@ exports.getProfiles = catchAsync(async (req, res) => {
 
 /** GET /api/profiles/:id */
 exports.getProfileById = catchAsync(async (req, res, next) => {
-  const profile = await Profile.findOne({ _id: req.params.id, world: req.world })
+  const profile = await Profile.findOne({ _id: req.params.id })
     .populate({ path: "person", select: "firstName lastName email phone avatar deletedAt" });
   if (!profile) return next(AppError.of("NOT_FOUND", 404, "פרופיל"));
   res.status(200).json({ status: "success", data: { profile } });
@@ -77,16 +77,16 @@ exports.getProfileById = catchAsync(async (req, res, next) => {
  * complete (closed / reopened, with `by` + `note` when given).
  */
 exports.updateProfile = catchAsync(async (req, res, next) => {
-  const profile = await Profile.findOne({ _id: req.params.id, world: req.world });
+  const profile = await Profile.findOne({ _id: req.params.id });
   if (!profile) return next(AppError.of("NOT_FOUND", 404, "פרופיל"));
   Object.assign(profile, pickProfileFields(req.body));
   await profile.save();
   if ("active" in req.body) {
     const want = !!req.body.active;
     if (want && !profile.active) {
-      await reopenProfile({ profile, world: req.world, by: req.body.by, note: req.body.note, stage: req.body.stage });
+      await reopenProfile({ profile, by: req.body.by, note: req.body.note, stage: req.body.stage });
     } else if (!want && profile.active) {
-      await closeProfile({ profile, world: req.world, by: req.body.by, note: req.body.note });
+      await closeProfile({ profile, by: req.body.by, note: req.body.note });
     }
   }
   res.status(200).json({ status: "success", data: { profile } });
@@ -94,10 +94,10 @@ exports.updateProfile = catchAsync(async (req, res, next) => {
 
 /** DELETE /api/profiles/:id?by=&note= - close the role (logged); the person stays. */
 exports.deactivateProfile = catchAsync(async (req, res, next) => {
-  const profile = await Profile.findOne({ _id: req.params.id, world: req.world });
+  const profile = await Profile.findOne({ _id: req.params.id });
   if (!profile) return next(AppError.of("NOT_FOUND", 404, "פרופיל"));
   if (profile.active) {
-    await closeProfile({ profile, world: req.world, by: req.query.by, note: req.query.note });
+    await closeProfile({ profile, by: req.query.by, note: req.query.note });
   }
   res.status(204).json({ status: "success", data: null });
 });
@@ -116,7 +116,6 @@ const asStudentProfile = (fn) =>
     } catch (e) {
       return next(AppError.of("NOT_FOUND", 404, "סטודנט"));
     }
-    if (profile.world !== req.world) return next(AppError.of("NOT_FOUND", 404, "סטודנט"));
     res.set("X-Deprecated", "role-api");
     const err = await fn(profile, req);
     if (err) return next(err);
@@ -127,7 +126,7 @@ const asStudentProfile = (fn) =>
 
 /** POST /api/profiles/:id/stage - body { stage*, movedBy?, note? } (students). */
 exports.moveStage = catchAsync(async (req, res, next) => {
-  const profile = await Profile.findOne({ _id: req.params.id, world: req.world });
+  const profile = await Profile.findOne({ _id: req.params.id });
   if (!profile) return next(AppError.of("NOT_FOUND", 404, "פרופיל"));
   if (typeof profile.moveToStage !== "function") {
     return next(AppError.of("NO_STUDENT_PROFILE", 404));
@@ -147,7 +146,7 @@ exports.moveStage = catchAsync(async (req, res, next) => {
  * null clears a key.
  */
 exports.updateMatching = catchAsync(async (req, res, next) => {
-  const profile = await Profile.findOne({ _id: req.params.id, world: req.world });
+  const profile = await Profile.findOne({ _id: req.params.id });
   if (!profile) return next(AppError.of("NOT_FOUND", 404, "פרופיל"));
   if (!profile.schema.path("matching.functioningLevel")) {
     return next(AppError.of("NO_STUDENT_PROFILE", 404));

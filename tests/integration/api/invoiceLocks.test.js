@@ -48,7 +48,7 @@ describe("the locks of a link invoice, and the super admin's door", () => {
     const subject = await makeSubject({ name: "עיצוב גרפי" });
     const teacher = await makeTeacher({ firstName: "אביה", lastName: "טסט", gender: "female" });
     const cycle = await makeCycle({ subject: subject._id, teacher: teacher._id, hostel: hostel._id, startDate: new Date("2026-09-01"), endDate: new Date("2026-12-31"), schedule: [{ day: 4, start: "15:00", end: "16:00" }] });
-    await tags.setCycleProgram({ world: "real", cycleId: cycle._id, key: "hostels" });
+    await tags.setCycleProgram({ cycleId: cycle._id, key: "hostels" });
     const round = (await request(app).post("/api/invoice-rounds").set("Cookie", tamar).send({ month: "2026-10" })).body.data.round;
     const req0 = round.requests[0];
     const url = `/api/public/invoices/${req0.token}`;

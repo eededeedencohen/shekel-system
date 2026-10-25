@@ -4,9 +4,6 @@
  *
  * Everything that touches seats goes through here, so the invariants hold
  * from every caller:
- *  - world isolation: the request's world must equal the cycle's world
- *    (WORLD_MISMATCH), and the enrollment's world is stamped from the
- *    cycle - never from the client.
  *  - capacity: active+reserved < capacity, checked inside a transaction
  *    (Atlas replica set - real transactions; the unique {cycle,student}
  *    index still backstops double-enrollment even without one).
@@ -70,7 +67,7 @@ async function advancePlacement(personId, movedBy, enrollment) {
     const name = await cycleName(enrollment.cycle);
     // Lazy require: intakeService depends on enrollment records, not on us.
     const { isIntakeComplete } = require("./intakeService");
-    if (await isIntakeComplete(personId, college.world)) {
+    if (await isIntakeComplete(personId)) {
       if (active) await college.moveToStage("Placed", movedBy, `שובץ/ה ל"${name}"`);
       else await college.moveToStage("AwaitingPlacement", movedBy, `שוריין מקום ב"${name}" - הקליטה כבר הושלמה, נשאר לקבוע תאריך התחלה`);
     } else {
@@ -111,21 +108,19 @@ async function occupiedCount(cycleId, session) {
   );
 }
 
-async function assertCycleAndStudent({ cycleId, studentId, world }) {
+async function assertCycleAndStudent({ cycleId, studentId }) {
   const cycle = await Cycle.findById(cycleId);
   if (!cycle) throw AppError.of("NOT_FOUND", 404, "מחזור");
-  if (cycle.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
   const person = await Person.findById(studentId);
   if (!person) throw AppError.of("NOT_FOUND", 404, "סטודנט");
   // A seat belongs to the cycle's program: the person must hold that
   // program's tag - מכללה לכל for a college cycle, הוסטלים for a hostel's
   // (Eden, 2026-10-05). A student of another program first joins.
   const program = cycle.hostel ? "hostels" : "college";
-  if (!(await tags.holds(studentId, world, program))) {
-    if (!(await tags.holds(studentId, world, "student"))) throw AppError.of("NO_STUDENT_PROFILE", 404);
+  if (!(await tags.holds(studentId, program))) {
+    if (!(await tags.holds(studentId, "student"))) throw AppError.of("NO_STUDENT_PROFILE", 404);
     throw AppError.of("NOT_IN_PROGRAM", 400, program === "hostels" ? "הוסטלים" : "מכללה לכל");
   }
-  if (person.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
   if (person.deletedAt) throw AppError.of("PERSON_DELETED", 400);
   return { cycle, person };
 }
@@ -141,9 +136,9 @@ function assertSlot(cycle, slotId) {
  * Fulfils an existing reservation / reactivates a left|completed record by
  * flipping the same document.
  */
-async function enroll({ cycleId, studentId, world, status = "active", slotId = null, note, createdBy, joinedAt }) {
+async function enroll({ cycleId, studentId, status = "active", slotId = null, note, createdBy, joinedAt }) {
   if (!["active", "reserved"].includes(status)) throw AppError.of("INVALID_STATUS", 400);
-  const { cycle, person } = await assertCycleAndStudent({ cycleId, studentId, world });
+  const { cycle, person } = await assertCycleAndStudent({ cycleId, studentId });
   assertSlot(cycle, slotId);
 
   const enrollment = await withTxn(async (session) => {
@@ -185,7 +180,6 @@ async function enroll({ cycleId, studentId, world, status = "active", slotId = n
         {
           cycle: cycleId,
           student: studentId,
-          world: cycle.world,
           status,
           slotId,
           note,
@@ -211,10 +205,9 @@ async function enroll({ cycleId, studentId, world, status = "active", slotId = n
  * re-reserve. Capacity re-checked when a non-occupying record re-takes a
  * seat.
  */
-async function updateStatus({ enrollmentId, world, status, leftAt, joinedAt, note, movedBy }) {
+async function updateStatus({ enrollmentId, status, leftAt, joinedAt, note, movedBy }) {
   const enrollment = await Enrollment.findById(enrollmentId);
   if (!enrollment) throw AppError.of("NOT_FOUND", 404, "שיבוץ");
-  if (enrollment.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
 
   if (status === "active" || status === "reserved") {
     if (!OCCUPYING_STATUSES.includes(enrollment.status)) {
@@ -264,14 +257,13 @@ async function updateStatus({ enrollmentId, world, status, leftAt, joinedAt, not
  * someone already seated (or holding a reservation) is skipped. Returns
  * what was done, so the page can say "7 נוספו, 2 כבר היו".
  */
-async function enrollResidents({ cycleId, world, createdBy }) {
-  const cycle = await Cycle.findOne({ _id: cycleId, world }).select("hostel").lean();
+async function enrollResidents({ cycleId, createdBy }) {
+  const cycle = await Cycle.findOne({ _id: cycleId }).select("hostel").lean();
   if (!cycle) throw AppError.of("NOT_FOUND", 404, "מחזור");
   if (!cycle.hostel) throw AppError.of("NOT_A_HOSTEL_CYCLE", 400);
   const { Profile } = require("../models/profiles");
   const now = new Date();
   const profiles = await Profile.find({
-    world,
     kind: "StudentCollege",
     active: true,
     "residence.hostel": cycle.hostel,
@@ -280,7 +272,7 @@ async function enrollResidents({ cycleId, world, createdBy }) {
     .select("person")
     .lean();
   const personIds = [...new Set(profiles.map((p) => String(p.person)))];
-  const people = await Person.find({ _id: { $in: personIds }, world, deletedAt: null }).select("_id").lean();
+  const people = await Person.find({ _id: { $in: personIds }, deletedAt: null }).select("_id").lean();
   if (!people.length) throw AppError.of("NO_RESIDENTS", 400);
   const seated = await Enrollment.find({ cycle: cycleId, student: { $in: people.map((p) => p._id) }, status: { $in: OCCUPYING_STATUSES } })
     .select("student")
@@ -291,11 +283,11 @@ async function enrollResidents({ cycleId, world, createdBy }) {
   for (const p of people) {
     const id = String(p._id);
     if (already.has(id)) continue;
-    if (!(await tags.holds(id, world, "hostels"))) {
-      await tags.give({ world, personId: id, key: "hostels", by: createdBy, note: "נוסף/ה עם כל דיירי ההוסטל" });
+    if (!(await tags.holds(id, "hostels"))) {
+      await tags.give({ personId: id, key: "hostels", by: createdBy, note: "נוסף/ה עם כל דיירי ההוסטל" });
       tagged++;
     }
-    created.push(await enroll({ cycleId, studentId: id, world, status: "active", createdBy, note: "כל דיירי ההוסטל" }));
+    created.push(await enroll({ cycleId, studentId: id, status: "active", createdBy, note: "כל דיירי ההוסטל" }));
   }
   return { created, skipped: already.size, tagged, residents: people.length };
 }

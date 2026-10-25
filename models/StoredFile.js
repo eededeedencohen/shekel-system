@@ -13,11 +13,9 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS } = require("../utils/domain");
 
 const storedFileSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     /** The name it was uploaded under (display only). */
     name: { type: String, trim: true },
     mime: { type: String, required: true, trim: true },

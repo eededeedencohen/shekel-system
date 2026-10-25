@@ -10,7 +10,7 @@
  *    (No auth yet: the client sends the acting person's id from the
  *    persona; the check is on the id, exactly like the ERD demands.)
  *  - REGISTRATION: only a published, future event; the student must hold an
- *    active StudentCulture profile in the same world; the event's
+ *    active StudentCulture profile; the event's
  *    settings (gender scope, age range) must fit - staff may `force`.
  *  - CAPACITY: registered < capacity, checked in a transaction; when full,
  *    the student joins the WAITLIST (position = last+1) unless told not to.
@@ -35,44 +35,42 @@ const LIVE = ["registered", "waitlisted"];
 
 /* ───────────────────────── actors ───────────────────────── */
 
-/** Active ManagerCulture profile of a person in a world, or null. */
-function staffProfileOf(personId, world) {
+/** Active ManagerCulture profile of a person, or null. */
+function staffProfileOf(personId) {
   if (!personId) return null;
-  return Profile.findOne({ person: personId, kind: "ManagerCulture", active: true, world });
+  return Profile.findOne({ person: personId, kind: "ManagerCulture", active: true });
 }
 
-/** Throw unless `personId` is culture staff in this world. */
-async function assertStaff(personId, world) {
+/** Throw unless `personId` is culture staff. */
+async function assertStaff(personId) {
   if (!personId) throw AppError.of("NO_ACTOR", 400);
-  const p = await staffProfileOf(personId, world);
+  const p = await staffProfileOf(personId);
   if (!p) throw AppError.of("NOT_CULTURE_STAFF", 403);
   return p;
 }
 
 /** The student themself or culture staff - returns "self" | "staff". */
-async function assertActor({ actorId, world, studentId }) {
+async function assertActor({ actorId, studentId }) {
   if (!actorId) throw AppError.of("NO_ACTOR", 400);
   if (String(actorId) === String(studentId)) return "self";
-  const p = await staffProfileOf(actorId, world);
+  const p = await staffProfileOf(actorId);
   if (!p) throw AppError.of("NOT_CULTURE_STAFF", 403);
   return "staff";
 }
 
-/** Person + active StudentCulture profile, world-checked. */
-async function assertCultureStudent(personId, world) {
+/** Person + active StudentCulture profile. */
+async function assertCultureStudent(personId) {
   const person = await Person.findById(personId);
   if (!person) throw AppError.of("NOT_FOUND", 404, "סטודנט/ית");
-  if (person.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
   if (person.deletedAt) throw AppError.of("PERSON_DELETED", 400);
   const profile = await Profile.findOne({ person: person._id, kind: "StudentCulture", active: true });
   if (!profile) throw AppError.of("NOT_CULTURE_STUDENT", 400);
   return { person, profile };
 }
 
-async function requireEvent(eventId, world) {
+async function requireEvent(eventId) {
   const event = await Event.findById(eventId);
   if (!event) throw AppError.of("NOT_FOUND", 404, "אירוע");
-  if (event.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
   return event;
 }
 
@@ -85,27 +83,26 @@ const pickEvent = (data = {}) => {
   return out;
 };
 
-async function createEvent({ world, by, data, at }) {
-  await assertStaff(by, world);
+async function createEvent({ by, data, at }) {
+  await assertStaff(by);
   return Event.create({
     ...pickEvent(data),
-    world,
     status: "draft",
     created: { by, at: at || new Date() },
   });
 }
 
-async function updateEvent({ eventId, world, by, data }) {
-  await assertStaff(by, world);
-  const event = await requireEvent(eventId, world);
+async function updateEvent({ eventId, by, data }) {
+  await assertStaff(by);
+  const event = await requireEvent(eventId);
   if (event.status === "cancelled") throw AppError.of("EVENT_NOT_OPEN", 400, "האירוע בוטל");
   Object.assign(event, pickEvent(data));
   return event.save();
 }
 
-async function publishEvent({ eventId, world, by, at }) {
-  await assertStaff(by, world);
-  const event = await requireEvent(eventId, world);
+async function publishEvent({ eventId, by, at }) {
+  await assertStaff(by);
+  const event = await requireEvent(eventId);
   if (event.status === "cancelled") throw AppError.of("EVENT_NOT_OPEN", 400, "האירוע בוטל");
   if (event.status === "published") return event;
   event.status = "published";
@@ -114,9 +111,9 @@ async function publishEvent({ eventId, world, by, at }) {
 }
 
 /** Cancel the event and every live registration on it (with the reason). */
-async function cancelEvent({ eventId, world, by, reason, at }) {
-  await assertStaff(by, world);
-  const event = await requireEvent(eventId, world);
+async function cancelEvent({ eventId, by, reason, at }) {
+  await assertStaff(by);
+  const event = await requireEvent(eventId);
   if (event.status === "cancelled") return { event, cancelled: 0 };
   const when = at || new Date();
   event.status = "cancelled";
@@ -133,9 +130,9 @@ async function cancelEvent({ eventId, world, by, reason, at }) {
   return { event, cancelled: live.length };
 }
 
-async function markEventDone({ eventId, world, by }) {
-  await assertStaff(by, world);
-  const event = await requireEvent(eventId, world);
+async function markEventDone({ eventId, by }) {
+  await assertStaff(by);
+  const event = await requireEvent(eventId);
   if (event.status !== "published") throw AppError.of("EVENT_NOT_OPEN", 400);
   event.status = "done";
   return event.save();
@@ -147,9 +144,9 @@ async function markEventDone({ eventId, world, by }) {
  * לבטל"). A published event - and anything with registrations - keeps its
  * history: it is cancelled, never deleted.
  */
-async function deleteEvent({ eventId, world, by }) {
-  await assertStaff(by, world);
-  const event = await requireEvent(eventId, world);
+async function deleteEvent({ eventId, by }) {
+  await assertStaff(by);
+  const event = await requireEvent(eventId);
   if (event.status !== "draft") throw AppError.of("EVENT_NOT_DRAFT", 409);
   const refs = await EventRegistration.countDocuments({ event: event._id });
   if (refs) throw AppError.of("REFERENCED_BLOCKED", 409);
@@ -241,28 +238,27 @@ async function promoteNext(eventId, at) {
 }
 
 /** A person who is NOT a culture member - allowed on as a guest by staff. */
-async function assertGuestPerson(personId, world) {
+async function assertGuestPerson(personId) {
   const person = await Person.findById(personId);
   if (!person) throw AppError.of("NOT_FOUND", 404, "אדם");
-  if (person.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
   if (person.deletedAt) throw AppError.of("PERSON_DELETED", 400);
   return { person };
 }
 
 /**
  * Register a culture student to an event (seat or waitlist).
- *   { eventId, studentId, world, by, reason?, at?, force?, allowWaitlist?, guest?, trusted? }
+ *   { eventId, studentId, by, reason?, at?, force?, allowWaitlist?, guest?, trusted? }
  * `trusted` (seeds) skips the published/future checks so history can be
  * built; `force` (staff only) overrides the settings check; `guest` (staff
  * only) admits a person without a culture profile as אורח/ת.
  */
 async function register({
-  eventId, studentId, world, by, reason, at, force = false, allowWaitlist = true, guest = false, trusted = false,
+  eventId, studentId, by, reason, at, force = false, allowWaitlist = true, guest = false, trusted = false,
 }) {
-  const event = await requireEvent(eventId, world);
-  const actor = await assertActor({ actorId: by, world, studentId });
+  const event = await requireEvent(eventId);
+  const actor = await assertActor({ actorId: by, studentId });
   if (guest && actor !== "staff") throw AppError.of("NOT_CULTURE_STAFF", 403);
-  const { person } = guest ? await assertGuestPerson(studentId, world) : await assertCultureStudent(studentId, world);
+  const { person } = guest ? await assertGuestPerson(studentId) : await assertCultureStudent(studentId);
   const when = at || new Date();
 
   if (!trusted) {
@@ -300,7 +296,7 @@ async function register({
       return existing.save(opts);
     }
     const [created] = await EventRegistration.create(
-      [{ event: event._id, student: person._id, world: event.world, ...fields, history: [entry] }],
+      [{ event: event._id, student: person._id, ...fields, history: [entry] }],
       opts
     );
     return created;
@@ -308,12 +304,11 @@ async function register({
 }
 
 /** Cancel a live registration; a freed seat promotes the waitlist head. */
-async function cancelRegistration({ registrationId, world, by, reason, at }) {
+async function cancelRegistration({ registrationId, by, reason, at }) {
   const reg = await EventRegistration.findById(registrationId);
   if (!reg) throw AppError.of("NOT_FOUND", 404, "רישום");
-  if (reg.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
   if (!LIVE.includes(reg.status)) throw AppError.of("REGISTRATION_CLOSED", 400);
-  await assertActor({ actorId: by, world, studentId: reg.student });
+  await assertActor({ actorId: by, studentId: reg.student });
   const when = at || new Date();
   const hadSeat = reg.status === "registered";
   reg.status = "cancelled";
@@ -332,11 +327,10 @@ async function cancelRegistration({ registrationId, world, by, reason, at }) {
  * Report attendance on a registered seat (staff only, after the event).
  * `present: null` clears the report.
  */
-async function reportAttendance({ registrationId, world, by, present, note, at, trusted = false }) {
-  await assertStaff(by, world);
+async function reportAttendance({ registrationId, by, present, note, at, trusted = false }) {
+  await assertStaff(by);
   const reg = await EventRegistration.findById(registrationId).populate({ path: "event", select: "date" });
   if (!reg) throw AppError.of("NOT_FOUND", 404, "רישום");
-  if (reg.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
   if (reg.status !== "registered") throw AppError.of("REGISTRATION_CLOSED", 400, "אפשר לדווח רק על רשומים");
   if (!trusted && reg.event?.date && reg.event.date.getTime() > Date.now()) {
     throw AppError.of("EVENT_NOT_HELD", 400);
@@ -361,10 +355,9 @@ const pickVoucher = (data = {}) => {
   return out;
 };
 
-async function requireVoucher(voucherId, world) {
+async function requireVoucher(voucherId) {
   const v = await Voucher.findById(voucherId);
   if (!v) throw AppError.of("NOT_FOUND", 404, "שובר");
-  if (v.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
   return v;
 }
 
@@ -394,43 +387,43 @@ function parseImageData(dataUrl, max = MAX_IMAGE_BYTES) {
 }
 
 /** The stored file id the body asks for (or undefined = no change / none). */
-async function resolveVoucherImage(world, data = {}) {
+async function resolveVoucherImage(data = {}) {
   if (data.imageFrom) {
-    const other = await Voucher.findOne({ _id: data.imageFrom, world }).select("image").lean();
+    const other = await Voucher.findOne({ _id: data.imageFrom }).select("image").lean();
     if (!other || !other.image) throw AppError.of("NOT_FOUND", 404, "תמונת השובר");
     return other.image;
   }
   if (data.imageData) {
     const { mime, buffer } = parseImageData(data.imageData);
     const thumb = data.imageThumb ? parseImageData(data.imageThumb, MAX_THUMB_BYTES).buffer : undefined;
-    const file = await StoredFile.create({ world, name: data.imageName || "תמונת השובר", mime, size: buffer.length, data: buffer, thumb });
+    const file = await StoredFile.create({ name: data.imageName || "תמונת השובר", mime, size: buffer.length, data: buffer, thumb });
     return file._id;
   }
   if (data.imageUrl) {
     const got = await images.fetchImage(String(data.imageUrl).trim());
     if (!got) throw AppError.of("VOUCHER_IMAGE_FETCH", 400);
     if (!IMAGE_MIMES.has(got.mime) || got.buffer.length > MAX_IMAGE_BYTES) throw AppError.of("VOUCHER_IMAGE_INVALID", 400);
-    const file = await StoredFile.create({ world, name: data.imageName || got.from, mime: normMime(got.mime), size: got.buffer.length, data: got.buffer });
+    const file = await StoredFile.create({ name: data.imageName || got.from, mime: normMime(got.mime), size: got.buffer.length, data: got.buffer });
     return file._id;
   }
   return undefined;
 }
 
 /** Drop a stored file once no voucher points at it any more. */
-async function releaseVoucherImage(fileId, world) {
+async function releaseVoucherImage(fileId) {
   if (!fileId) return;
-  const still = await Voucher.countDocuments({ world, image: fileId });
+  const still = await Voucher.countDocuments({ image: fileId });
   if (!still) await StoredFile.deleteOne({ _id: fileId });
 }
 
-async function createVoucher({ world, by, data }) {
-  await assertStaff(by, world);
+async function createVoucher({ by, data }) {
+  await assertStaff(by);
   const fields = pickVoucher(data);
   if (fields.balance == null && fields.initialValue != null) fields.balance = fields.initialValue;
   if (fields.initialValue == null && fields.balance != null) fields.initialValue = fields.balance;
-  const image = await resolveVoucherImage(world, data);
+  const image = await resolveVoucherImage(data);
   try {
-    return await Voucher.create({ ...fields, world, ...(image && { image }) });
+    return await Voucher.create({ ...fields, ...(image && { image }) });
   } catch (e) {
     // a fresh upload that found no voucher to belong to
     if (image && !data.imageFrom) await StoredFile.deleteOne({ _id: image }).catch(() => {});
@@ -440,27 +433,27 @@ async function createVoucher({ world, by, data }) {
 }
 
 /** Set / replace / remove the picture of an existing voucher (`remove: true`). */
-async function setVoucherImage({ voucherId, world, by, data = {} }) {
-  await assertStaff(by, world);
-  const v = await requireVoucher(voucherId, world);
+async function setVoucherImage({ voucherId, by, data = {} }) {
+  await assertStaff(by);
+  const v = await requireVoucher(voucherId);
   const before = v.image;
   if (data.remove) {
     if (!before) return v;
     v.image = null;
   } else {
-    const image = await resolveVoucherImage(world, data);
+    const image = await resolveVoucherImage(data);
     if (!image) throw AppError.of("MISSING_FIELDS", 400, "imageData | imageUrl | imageFrom");
     if (String(image) === String(before)) return v;
     v.image = image;
   }
   await v.save();
-  await releaseVoucherImage(before, world);
+  await releaseVoucherImage(before);
   return v;
 }
 
 /** The bytes of a voucher's picture: the small JPEG when asked for and there is one, else the file. */
-async function voucherImageOf(voucherId, world, wantThumb) {
-  const v = await Voucher.findOne({ _id: voucherId, world }).select("image").lean();
+async function voucherImageOf(voucherId, wantThumb) {
+  const v = await Voucher.findOne({ _id: voucherId }).select("image").lean();
   if (!v || !v.image) return null;
   const file = await StoredFile.findById(v.image).select(wantThumb ? "mime thumb data updatedAt" : "mime data updatedAt");
   if (!file) return null;
@@ -471,9 +464,9 @@ async function voucherImageOf(voucherId, world, wantThumb) {
 /** Pictures on the web for a place name (voucherImageService). */
 const searchVoucherImages = (q) => images.searchImages(q);
 
-async function updateVoucher({ voucherId, world, by, data }) {
-  await assertStaff(by, world);
-  const v = await requireVoucher(voucherId, world);
+async function updateVoucher({ voucherId, by, data }) {
+  await assertStaff(by);
+  const v = await requireVoucher(voucherId);
   Object.assign(v, pickVoucher(data));
   try {
     return await v.save();
@@ -484,18 +477,18 @@ async function updateVoucher({ voucherId, world, by, data }) {
 }
 
 /** Hand the voucher to a culture student (the ERD's "קיבל שובר"). */
-async function grantVoucher({ voucherId, world, by, studentId, at, note }) {
-  await assertStaff(by, world);
-  const v = await requireVoucher(voucherId, world);
+async function grantVoucher({ voucherId, by, studentId, at, note }) {
+  await assertStaff(by);
+  const v = await requireVoucher(voucherId);
   if (v.grant) throw AppError.of("VOUCHER_TAKEN", 409);
-  const { person } = await assertCultureStudent(studentId, world);
+  const { person } = await assertCultureStudent(studentId);
   v.grant = { student: person._id, by, at: at || new Date(), redeemed: false, note };
   return v.save();
 }
 
-async function redeemVoucher({ voucherId, world, by, at }) {
-  await assertStaff(by, world);
-  const v = await requireVoucher(voucherId, world);
+async function redeemVoucher({ voucherId, by, at }) {
+  await assertStaff(by);
+  const v = await requireVoucher(voucherId);
   if (!v.grant) throw AppError.of("VOUCHER_NOT_GRANTED", 400);
   if (v.grant.redeemed) throw AppError.of("VOUCHER_REDEEMED", 400);
   v.grant.redeemed = true;
@@ -504,22 +497,22 @@ async function redeemVoucher({ voucherId, world, by, at }) {
 }
 
 /** Take back an un-redeemed grant (a mistake) - the voucher returns to stock. */
-async function revokeGrant({ voucherId, world, by }) {
-  await assertStaff(by, world);
-  const v = await requireVoucher(voucherId, world);
+async function revokeGrant({ voucherId, by }) {
+  await assertStaff(by);
+  const v = await requireVoucher(voucherId);
   if (!v.grant) throw AppError.of("VOUCHER_NOT_GRANTED", 400);
   if (v.grant.redeemed) throw AppError.of("VOUCHER_REDEEMED", 400);
   v.grant = null;
   return v.save();
 }
 
-async function deleteVoucher({ voucherId, world, by }) {
-  await assertStaff(by, world);
-  const v = await requireVoucher(voucherId, world);
+async function deleteVoucher({ voucherId, by }) {
+  await assertStaff(by);
+  const v = await requireVoucher(voucherId);
   if (v.grant) throw AppError.of("REFERENCED_BLOCKED", 409);
   const image = v.image;
   await v.deleteOne();
-  await releaseVoucherImage(image, world);
+  await releaseVoucherImage(image);
 }
 
 module.exports = {

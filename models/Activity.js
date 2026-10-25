@@ -18,11 +18,10 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, STUDENT_KINDS, ACTIVITY_KIND_KEYS } = require("../utils/domain");
+const { STUDENT_KINDS, ACTIVITY_KIND_KEYS } = require("../utils/domain");
 
 const activitySchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     person: { type: mongoose.Schema.Types.ObjectId, ref: "Person", required: true, index: true },
     kind: { type: String, enum: ACTIVITY_KIND_KEYS, required: true },
     /** When it happened (not when it was typed). */
@@ -42,7 +41,7 @@ const activitySchema = new mongoose.Schema(
   { timestamps: true, collection: "activities" }
 );
 
-activitySchema.index({ world: 1, person: 1, at: -1 });
-activitySchema.index({ world: 1, kind: 1, at: -1 });
+activitySchema.index({ person: 1, at: -1 });
+activitySchema.index({ kind: 1, at: -1 });
 
 module.exports = mongoose.model("Activity", activitySchema);

@@ -168,7 +168,7 @@ describe("/api/suppliers + /api/public/supplier/:token", () => {
     const removed = await request(app).delete(`${pub(t)}/files/bankProof`);
     expect(removed.status).toBe(200);
     expect(removed.body.data.view.status).toBe("filling");
-    expect(await StoredFile.countDocuments({ world: "real" })).toBe(2);
+    expect(await StoredFile.countDocuments()).toBe(2);
   });
 
   it("the supplier's שליחה: refused until everything is in, then stamped with a line for the coordinator; a later change clears it (2026-10-23)", async () => {
@@ -292,7 +292,7 @@ describe("/api/suppliers + /api/public/supplier/:token", () => {
     s = (await admin({ action: "fileRemove", key: "bankProof" })).body.data.supplier;
     expect(s.fileRows.find((r) => r.key === "bankProof").fileName).toBeNull();
     expect(s.status).toBe("filling");
-    expect(await StoredFile.countDocuments({ world: "real" })).toBe(2);
+    expect(await StoredFile.countDocuments()).toBe(2);
     s = (await admin({ action: "waive", key: "exempt", value: false })).body.data.supplier;
     expect(s.fileRows.find((r) => r.key === "exempt").notApplicable).toBe(false);
     s = (await admin({ action: "formReset" })).body.data.supplier;
@@ -305,20 +305,11 @@ describe("/api/suppliers + /api/public/supplier/:token", () => {
     expect((await request(app).get(pub(token))).status).toBe(410);
   });
 
-  it("deleting a supplier takes its stored files with it; the worlds stay apart", async () => {
+  it("deleting a supplier takes its stored files with it", async () => {
     const { id } = await readySupplier();
-    expect(await StoredFile.countDocuments({ world: "real" })).toBe(3);
+    expect(await StoredFile.countDocuments()).toBe(3);
     expect((await request(app).delete(`/api/suppliers/${id}`).set("Cookie", tamar)).status).toBe(204);
     expect(await Supplier.findById(id)).toBeNull();
-    expect(await StoredFile.countDocuments({ world: "real" })).toBe(0);
-
-    const t = (await request(app).post("/api/suppliers").set("Cookie", tamar).set("X-Dataset", "test").send({ firstName: "א", lastName: "ב", gender: "male", phone: "0501111111" })).body.data.supplier;
-    expect((await request(app).get(`/api/suppliers/${t._id}`).set("Cookie", tamar)).status).toBe(404);
-    // a link carries no world: the token says where it lives (utils/tokenWorld); a world named by the request still wins
-    const bare = await request(app).get(pub(t.link.token));
-    expect(bare.status).toBe(200);
-    expect(bare.body.data.view.world).toBe("test");
-    expect((await request(app).get(pub(t.link.token)).set("X-Dataset", "real")).status).toBe(404);
-    expect((await request(app).get(pub(t.link.token)).set("X-Dataset", "test")).status).toBe(200);
+    expect(await StoredFile.countDocuments()).toBe(0);
   });
 });

@@ -1,5 +1,5 @@
 /**
- * @file Cycle controller - lean, world-scoped cycle CRUD
+ * @file Cycle controller - lean cycle CRUD
  * @module controllers/cycleController
  *
  * The cohort is NOT here (see enrollmentController) - list responses are
@@ -38,7 +38,7 @@ const pickBody = (body) => {
 
 /** GET /api/cycles?status=&subject=&teacher=&hostel=&track=hostel|college */
 exports.getCycles = catchAsync(async (req, res) => {
-  const filter = { world: req.world };
+  const filter = {};
   if (req.query.status) filter.status = { $in: req.query.status.split(",") };
   if (req.query.subject) filter.subject = req.query.subject;
   if (req.query.teacher) filter.teacher = req.query.teacher;
@@ -48,34 +48,33 @@ exports.getCycles = catchAsync(async (req, res) => {
   // the acting persona's side only: hostel cycles for the hostels coordinator, college ones for a manager (lensService)
   lens.narrowCycles(req, filter);
 
-  const cycles = await attachCycleTags(req.world, await Cycle.find(filter).populate(POPULATE));
+  const cycles = await attachCycleTags(await Cycle.find(filter).populate(POPULATE));
   res.status(200).json({ status: "success", results: cycles.length, data: { cycles } });
 });
 
 /** GET /api/cycles/:id */
 exports.getCycleById = catchAsync(async (req, res, next) => {
-  const cycle = await Cycle.findOne({ _id: req.params.id, world: req.world }).populate(POPULATE);
+  const cycle = await Cycle.findOne({ _id: req.params.id }).populate(POPULATE);
   if (!cycle) return next(AppError.of("NOT_FOUND", 404, "מחזור"));
-  res.status(200).json({ status: "success", data: { cycle: await attachCycleTags(req.world, cycle) } });
+  res.status(200).json({ status: "success", data: { cycle: await attachCycleTags(cycle) } });
 });
 
 /** POST /api/cycles */
 exports.createCycle = catchAsync(async (req, res, next) => {
   lens.assertCycleBody(req, req.body, { create: true }); // a hostel cycle from the hostels lens, a college one from the college's
-  // Worlds never mix: the subject must belong to the request's world.
+  // the subject must exist
   if (req.body.subject) {
-    const subject = await Subject.findById(req.body.subject).select("world");
+    const subject = await Subject.exists({ _id: req.body.subject });
     if (!subject) return next(AppError.of("NOT_FOUND", 404, "מקצוע"));
-    if (subject.world !== req.world) return next(AppError.of("WORLD_MISMATCH", 400));
   }
-  const cycle = await Cycle.create({ ...pickBody(req.body), world: req.world });
+  const cycle = await Cycle.create(pickBody(req.body));
   await cycle.populate(POPULATE);
   res.status(201).json({ status: "success", data: { cycle } });
 });
 
 /** PUT /api/cycles/:id - whitelisted merge through document validation. */
 exports.updateCycle = catchAsync(async (req, res, next) => {
-  const cycle = await Cycle.findOne({ _id: req.params.id, world: req.world });
+  const cycle = await Cycle.findById(req.params.id);
   if (!cycle) return next(AppError.of("NOT_FOUND", 404, "מחזור"));
   lens.assertCycleBody(req, req.body); // it may not be moved to the other side
   Object.assign(cycle, pickBody(req.body));
@@ -89,7 +88,7 @@ exports.updateCycle = catchAsync(async (req, res, next) => {
  * (end a cycle with status Cancelled/Completed instead).
  */
 exports.deleteCycle = catchAsync(async (req, res, next) => {
-  const cycle = await Cycle.findOne({ _id: req.params.id, world: req.world });
+  const cycle = await Cycle.findById(req.params.id);
   if (!cycle) return next(AppError.of("NOT_FOUND", 404, "מחזור"));
   const [enr, les] = await Promise.all([
     Enrollment.countDocuments({ cycle: cycle._id }),

@@ -318,7 +318,7 @@ const HOSTEL_REPORT_STATUS_LABELS = {
 /**
  * The activities tab (the social worker, 2026-10-07): every event in a
  * person's life with us, in order - each kind with the template the
- * coordinator starts from (editable per world: ActivityTemplate). `resets`
+ * coordinator starts from (editable in the app: ActivityTemplate). `resets`
  * says which periodic clock saving this kind restarts (lib/followups).
  */
 const ACTIVITY_KINDS = [
@@ -355,9 +355,9 @@ const WAIVER_PARTY_KEYS = WAIVER_PARTIES.map((p) => p.key);
 const ACTIVITY_FIELD_TYPES = ["text", "textarea", "select", "checkbox", "date"];
 
 /**
- * The templates she described, as the starting point of every world. A
- * coordinator edits them in the app (PUT /api/activities/templates/:kind);
- * a world without a stored template gets this one.
+ * The templates she described, as the starting point. A coordinator edits
+ * them in the app (PUT /api/activities/templates/:kind); a kind without a
+ * stored template gets this one.
  */
 const DEFAULT_ACTIVITY_TEMPLATES = {
   firstCall: {
@@ -536,14 +536,6 @@ const HOSTELS = [
 ];
 
 /**
- * Data worlds (demo isolation). `world` is a REQUIRED field on every
- * collection, injected by server middleware from the X-Dataset header -
- * never taken from a request body. "real" is the default.
- */
-const WORLDS = ["real", "pokemon", "test"];
-const WORLD_LABELS = { real: "אמיתי", pokemon: "פוקימון", test: "טסט" };
-
-/**
  * Profile kinds - the user types of the identity+profiles split. A person
  * holds any number of profiles ({person,kind} unique); adding a kind here +
  * a discriminator file under models/profiles/ is ALL a new user type needs.
@@ -711,7 +703,6 @@ const SUBJECT_CATEGORIES = [
   { key: "lifeSkills", label: "כישורי חיים" },
   { key: "animals", label: "בעלי חיים" },
   { key: "events", label: "אירועים" },
-  { key: "pokemon", label: "סוג פוקימון" },
   { key: "other", label: "אחר" },
 ];
 const SUBJECT_CATEGORY_KEYS = SUBJECT_CATEGORIES.map((c) => c.key);
@@ -748,7 +739,6 @@ const ERROR_CODES = {
   INVALID_STATUS: "סטטוס לא חוקי",
   DUPLICATE_ENROLLMENT: "הסטודנט כבר משובץ במחזור הזה",
   CYCLE_FULL: "אין מקום פנוי במחזור",
-  WORLD_MISMATCH: "הרשומה שייכת לעולם נתונים אחר - החליפו מתג נתונים",
   ARCHIVE_READONLY: "שיעור ארכיוני - לקריאה בלבד",
   REFERENCED_BLOCKED: "אי אפשר למחוק - קיימות רשומות שמפנות לכאן",
   EVENT_NOT_DRAFT: "אירוע שפורסם אי אפשר למחוק - אפשר לבטל אותו",
@@ -927,7 +917,6 @@ const RESET_LINK_HOURS = 24;
  * labels from this instead of maintaining mirror tables.
  */
 const DOMAIN_META = {
-  worlds: WORLDS.map((k) => ({ key: k, label: WORLD_LABELS[k] })),
   profileKinds: PROFILE_KINDS,
   studentKinds: STUDENT_KINDS,
   programs: PROGRAMS,
@@ -1057,8 +1046,6 @@ module.exports = {
   FUNCTIONING_LABELS,
   GROUP_PREFERENCES,
   HOSTELS,
-  WORLDS,
-  WORLD_LABELS,
   PROFILE_KINDS,
   PROFILE_KIND_KEYS,
   STUDENT_KINDS,

@@ -7,11 +7,11 @@
  * - intake, follow-up calls, evaluation calls, hospitalisations, general
  * updates, the closure report, the leave report, incidents - is one row
  * here, in order. Each kind has a template (title, opening text, small
- * fields); a world's stored template wins over the default in domain.js,
- * so a coordinator can change the questions without a deploy.
+ * fields); a stored template wins over the default in domain.js, so a
+ * coordinator can change the questions without a deploy.
  *
  * Rules:
- *  - the person must exist in the world (and not be archived);
+ *  - the person must exist (and not be archived);
  *  - `fields` are validated against the template: unknown keys dropped,
  *    required ones present (unless the caller says `skipRequired` - the
  *    intake and the first call write their own fields), selects limited to
@@ -51,16 +51,16 @@ function shapeTemplate(kind, doc) {
   return { kind, title: o.title || kindLabel(kind), body: o.body || "", fields: o.fields || [], stored: true, updatedBy: o.updatedBy, updatedAt: o.updatedAt };
 }
 
-/** Every kind's template for a world - the stored one where it exists, else the default. */
-async function templatesOf(world) {
-  const stored = await ActivityTemplate.find({ world }).lean();
+/** Every kind's template - the stored one where it exists, else the default. */
+async function templatesOf() {
+  const stored = await ActivityTemplate.find().lean();
   const byKind = new Map(stored.map((t) => [t.kind, t]));
   return ACTIVITY_KIND_KEYS.map((kind) => shapeTemplate(kind, byKind.get(kind)));
 }
 
-async function templateOf(world, kind) {
+async function templateOf(kind) {
   if (!ACTIVITY_KIND_KEYS.includes(kind)) throw AppError.of("ACTIVITY_KIND_UNKNOWN", 400, kind);
-  return shapeTemplate(kind, await ActivityTemplate.findOne({ world, kind }));
+  return shapeTemplate(kind, await ActivityTemplate.findOne({ kind }));
 }
 
 /** A template's fields, checked: keys unique, labels present, types known, selects with options. */
@@ -82,11 +82,11 @@ function cleanFields(fields) {
   return out;
 }
 
-/** Store a world's template for a kind (replaces the default from here on). */
-async function saveTemplate({ world, kind, title, body, fields, by }) {
+/** Store the template of a kind (replaces the default from here on). */
+async function saveTemplate({ kind, title, body, fields, by }) {
   if (!ACTIVITY_KIND_KEYS.includes(kind)) throw AppError.of("ACTIVITY_KIND_UNKNOWN", 400, kind);
   const doc = await ActivityTemplate.findOneAndUpdate(
-    { world, kind },
+    { kind },
     { $set: { title: clean(title, 80) || kindLabel(kind), body: clean(body, 8000) || "", fields: cleanFields(fields), updatedBy: by } },
     { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true }
   );
@@ -94,9 +94,9 @@ async function saveTemplate({ world, kind, title, body, fields, by }) {
 }
 
 /** Back to the default (the stored one is deleted). */
-async function resetTemplate({ world, kind }) {
+async function resetTemplate({ kind }) {
   if (!ACTIVITY_KIND_KEYS.includes(kind)) throw AppError.of("ACTIVITY_KIND_UNKNOWN", 400, kind);
-  await ActivityTemplate.deleteOne({ world, kind });
+  await ActivityTemplate.deleteOne({ kind });
   return defaultTemplate(kind);
 }
 
@@ -130,28 +130,26 @@ function validateFields(template, raw, { skipRequired = false } = {}) {
   return out;
 }
 
-/** The person, in this world, not archived. */
-async function requirePerson(personId, world) {
-  const person = await Person.findById(personId).select("world deletedAt firstName lastName");
+/** The person, not archived. */
+async function requirePerson(personId) {
+  const person = await Person.findById(personId).select("deletedAt firstName lastName");
   if (!person) throw AppError.of("NOT_FOUND", 404, "אדם");
-  if (person.world !== world) throw AppError.of("WORLD_MISMATCH", 400);
   if (person.deletedAt) throw AppError.of("PERSON_DELETED", 400);
   return person;
 }
 
 /**
- * One new row. `fields` are validated against the kind's template of the
- * world; `skipRequired` lets a step that writes its own fields (the
- * intake, the first call, the leave report) skip the template's rules.
+ * One new row. `fields` are validated against the kind's template;
+ * `skipRequired` lets a step that writes its own fields (the intake, the
+ * first call, the leave report) skip the template's rules.
  */
-async function addActivity({ world, person, kind, at, by, title, body, fields, program, related, skipRequired = false }) {
+async function addActivity({ person, kind, at, by, title, body, fields, program, related, skipRequired = false }) {
   if (!ACTIVITY_KIND_KEYS.includes(kind)) throw AppError.of("ACTIVITY_KIND_UNKNOWN", 400, kind);
-  await requirePerson(person, world);
+  await requirePerson(person);
   const when = at ? new Date(at) : new Date();
   if (isNaN(when.getTime())) throw AppError.of("INVALID_DATE", 400);
-  const template = await templateOf(world, kind);
+  const template = await templateOf(kind);
   const row = await Activity.create({
-    world,
     person,
     kind,
     at: when,
@@ -166,8 +164,8 @@ async function addActivity({ world, person, kind, at, by, title, body, fields, p
 }
 
 /** Edit the text, the date or the fields of a row (who edited is stamped). */
-async function updateActivity({ world, id, at, title, body, fields, by }) {
-  const row = await Activity.findOne({ _id: id, world });
+async function updateActivity({ id, at, title, body, fields, by }) {
+  const row = await Activity.findOne({ _id: id });
   if (!row) throw AppError.of("NOT_FOUND", 404, "פעילות");
   if (at !== undefined) {
     const when = new Date(at);
@@ -177,7 +175,7 @@ async function updateActivity({ world, id, at, title, body, fields, by }) {
   if (title !== undefined) row.title = clean(title, 120) || row.title;
   if (body !== undefined) row.body = clean(body, 8000) || "";
   if (fields !== undefined) {
-    const template = await templateOf(world, row.kind);
+    const template = await templateOf(row.kind);
     row.fields = validateFields(template, fields, { skipRequired: true });
     row.markModified("fields");
   }
@@ -187,16 +185,16 @@ async function updateActivity({ world, id, at, title, body, fields, by }) {
   return row;
 }
 
-async function removeActivity({ world, id }) {
-  const row = await Activity.findOne({ _id: id, world });
+async function removeActivity({ id }) {
+  const row = await Activity.findOne({ _id: id });
   if (!row) throw AppError.of("NOT_FOUND", 404, "פעילות");
   await row.deleteOne();
   return row;
 }
 
-/** The rows, newest first (of one person, or of the world; `persons` = the lens's people - a Set of ids - or null for everyone). */
-function listActivities({ world, person, kind, persons = null, limit = 2000 }) {
-  const filter = { world };
+/** The rows, newest first (of one person, or of everyone; `persons` = the lens's people - a Set of ids - or null for everyone). */
+function listActivities({ person, kind, persons = null, limit = 2000 }) {
+  const filter = {};
   if (person) filter.person = person;
   if (persons) filter.person = personCond(persons, filter.person);
   if (kind) filter.kind = kind;

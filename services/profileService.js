@@ -4,8 +4,8 @@
  *
  * Everything role-shaped goes through here so the rules hold from every
  * caller:
- *  - createProfile copies world from the person and enforces {person,kind}
- *    uniqueness with a proper error code.
+ *  - createProfile enforces {person,kind} uniqueness with a proper error
+ *    code.
  *  - requireStudentProfile / kindsOf are what other services use instead of
  *    the dead `person.role` field.
  *  - splitBody separates identity fields from profile fields, so the HTTP
@@ -27,7 +27,7 @@ const IDENTITY_FIELDS = [
 
 /** Never mass-assignable on any profile (lifecycle goes through programService). */
 const PROFILE_GUARDED = new Set([
-  "person", "world", "kind", "pipeline", "stageHistory", "_id",
+  "person", "kind", "pipeline", "stageHistory", "_id",
   "active", "since", "until", "log",
 ]);
 
@@ -59,8 +59,8 @@ function modelOfKind(kind) {
 }
 
 /**
- * Create a profile for an existing person. Copies world from the person,
- * translates the duplicate-key race into PROFILE_EXISTS.
+ * Create a profile for an existing person. Translates the duplicate-key
+ * race into PROFILE_EXISTS.
  *
  * Options:
  *  - pipelineInit {stage, movedBy, note}  - student kinds start here
@@ -74,7 +74,6 @@ async function createProfile(person, kind, fields = {}, { pipelineInit, trusted,
   const doc = new Model({
     ...pickProfileFields(fields),
     person: person._id,
-    world: person.world,
   });
   if (trusted) {
     if (STUDENT_KINDS.includes(kind)) {
@@ -112,15 +111,15 @@ async function createProfile(person, kind, fields = {}, { pipelineInit, trusted,
 async function writeTagsOfProfile(profile, by) {
   const since = profile.since || profile.createdAt || new Date();
   for (const key of tags.KIND_TAGS[profile.kind] || []) {
-    await tags.give({ world: profile.world, personId: profile.person, key, at: since, by });
-    if (profile.active === false) await tags.take({ world: profile.world, personId: profile.person, key, at: profile.until || new Date(), by });
+    await tags.give({ personId: profile.person, key, at: since, by });
+    if (profile.active === false) await tags.take({ personId: profile.person, key, at: profile.until || new Date(), by });
   }
 }
 
 /** One call for "new human with a first role" (seeds, intake, tests). */
 async function createPersonWithProfile(kind, data, opts = {}) {
   const { identity, profile } = splitBody(data);
-  const person = await Person.create({ ...identity, ...(data.world && { world: data.world }) });
+  const person = await Person.create(identity);
   // Guarded paths are dropped by splitBody; trusted callers (seeds) may
   // still hand a historical pipeline + lifecycle through - createProfile
   // only applies them under `trusted`.

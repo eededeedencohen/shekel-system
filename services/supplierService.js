@@ -93,7 +93,7 @@ function parseDays(days) {
 }
 
 /** A new supplier with a fresh link. */
-async function create({ world, body = {}, by }) {
+async function create({ body = {}, by }) {
   const firstName = clean(body.firstName, 60);
   const lastName = clean(body.lastName, 60);
   const gender = SUPPLIER_GENDER_KEYS.includes(body.gender) ? body.gender : null;
@@ -101,22 +101,21 @@ async function create({ world, body = {}, by }) {
   if (!firstName || !lastName || !gender || digits(phone).length < 9) throw AppError.of("SUPPLIER_INVALID", 400);
   const days = parseDays(body.days ?? 7);
   const s = new Supplier({
-    world,
     firstName,
     lastName,
     gender,
     phone,
     createdBy: by,
-    person: await personOf(world, body.person),
+    person: await personOf(body.person),
     link: { token: makeToken(), expiresAt: new Date(Date.now() + days * DAY_MS), days, createdAt: new Date(), by },
   });
   return settle(s);
 }
 
-/** The שק״ל person a file belongs to (a teacher, usually) - must exist in the world; null / "" unlinks. */
-async function personOf(world, id) {
+/** The שק״ל person a file belongs to (a teacher, usually) - must exist; null / "" unlinks. */
+async function personOf(id) {
   if (id == null || id === "") return null;
-  const person = mongoose.isValidObjectId(id) && (await Person.findOne({ _id: id, world, deletedAt: null }).select("_id").lean());
+  const person = mongoose.isValidObjectId(id) && (await Person.findOne({ _id: id, deletedAt: null }).select("_id").lean());
   if (!person) throw AppError.of("SUPPLIER_PERSON_INVALID", 400);
   return person._id;
 }
@@ -127,7 +126,7 @@ async function updateDetails(s, body = {}) {
   if ("lastName" in body) s.lastName = clean(body.lastName, 60) || s.lastName;
   if ("gender" in body && SUPPLIER_GENDER_KEYS.includes(body.gender)) s.gender = body.gender;
   if ("phone" in body && digits(body.phone).length >= 9) s.phone = clean(body.phone, 30);
-  if ("person" in body) s.person = await personOf(s.world, body.person);
+  if ("person" in body) s.person = await personOf(body.person);
   return settle(s);
 }
 
@@ -302,10 +301,10 @@ async function remove(s) {
 
 /* ───────────────────────── the supplier's side (behind the link) ───────────────────────── */
 
-async function resolveToken({ world, token }) {
+async function resolveToken({ token }) {
   const t = String(token || "");
   if (!/^[\w-]{12,64}$/.test(t)) throw AppError.of("SUPPLIER_LINK_INVALID", 404);
-  const s = await Supplier.findOne({ world, "link.token": t });
+  const s = await Supplier.findOne({ "link.token": t });
   if (!s) throw AppError.of("SUPPLIER_LINK_INVALID", 404);
   if (!s.linkLive()) throw AppError.of("SUPPLIER_LINK_EXPIRED", 410);
   return s;
@@ -397,7 +396,7 @@ async function uploadFile(s, { key, fileName, mime, data, thumb }) {
   const thumbBuf = parseThumb(thumb);
   if (row.file?.stored) await StoredFile.deleteOne({ _id: row.file.stored });
   const name = clean(fileName, 120) || `${key}.${kind.ext}`;
-  const stored = await StoredFile.create({ world: s.world, name, mime: kind.mime, size: buffer.length, data: buffer, ...(thumbBuf && { thumb: thumbBuf }) });
+  const stored = await StoredFile.create({ name, mime: kind.mime, size: buffer.length, data: buffer, ...(thumbBuf && { thumb: thumbBuf }) });
   const now = new Date();
   const wasBad = row.review?.state === "bad";
   const again = !!row.file?.stored || row.notApplicable;

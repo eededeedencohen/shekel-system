@@ -41,7 +41,7 @@ function pick(body = {}, { creating = false } = {}) {
 }
 
 exports.list = catchAsync(async (req, res) => {
-  const filter = { world: req.world, owner: ownerOf(req) };
+  const filter = { owner: ownerOf(req) };
   if (req.query.from) filter.date = { ...(filter.date || {}), $gte: String(req.query.from) };
   if (req.query.to) filter.date = { ...(filter.date || {}), $lte: String(req.query.to) };
   const entries = await DiaryEntry.find(filter).sort({ date: 1, createdAt: 1 });
@@ -49,12 +49,12 @@ exports.list = catchAsync(async (req, res) => {
 });
 
 exports.create = catchAsync(async (req, res) => {
-  const entry = await DiaryEntry.create({ ...pick(req.body, { creating: true }), world: req.world, owner: ownerOf(req), createdBy: by(req) });
+  const entry = await DiaryEntry.create({ ...pick(req.body, { creating: true }), owner: ownerOf(req), createdBy: by(req) });
   res.status(201).json({ status: "success", data: { entry } });
 });
 
 async function load(req) {
-  const entry = await DiaryEntry.findOne({ _id: req.params.id, world: req.world, owner: ownerOf(req) });
+  const entry = await DiaryEntry.findOne({ _id: req.params.id, owner: ownerOf(req) });
   if (!entry) throw AppError.of("NOT_FOUND", 404, "רשומה ביומן");
   return entry;
 }

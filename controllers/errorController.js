@@ -24,17 +24,17 @@ const handleDuplicateFields = (err) => {
   if (err.keyPattern && err.keyPattern.event && err.keyPattern.student) {
     return AppError.of("DUPLICATE_REGISTRATION", 409);
   }
-  if (err.keyPattern && err.keyPattern.number && err.keyPattern.world) {
+  if (err.keyPattern && err.keyPattern.number && Object.keys(err.keyPattern).length === 1) {
     return AppError.of("VOUCHER_NUMBER_TAKEN", 409);
   }
   if (err.keyPattern && err.keyPattern.person && err.keyPattern.kind) {
     return AppError.of("PROFILE_EXISTS", 409);
   }
   // הספרייה: one copy per book / one record per barcode
-  if (err.keyPattern && err.keyPattern.book && err.keyPattern.world) {
+  if (err.keyPattern && err.keyPattern.book && Object.keys(err.keyPattern).length === 1) {
     return AppError.of("BOOK_ON_LOAN", 409);
   }
-  if (err.keyPattern && err.keyPattern.barcode && err.keyPattern.world) {
+  if (err.keyPattern && err.keyPattern.barcode) {
     return AppError.of("BOOK_EXISTS", 409);
   }
   const value =

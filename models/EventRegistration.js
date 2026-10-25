@@ -22,7 +22,7 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, REGISTRATION_STATUSES, REGISTRATION_ACTION_KEYS } = require("../utils/domain");
+const { REGISTRATION_STATUSES, REGISTRATION_ACTION_KEYS } = require("../utils/domain");
 
 const historySchema = new mongoose.Schema(
   {
@@ -37,7 +37,6 @@ const historySchema = new mongoose.Schema(
 
 const registrationSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, immutable: true },
     event: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Event",
@@ -79,6 +78,6 @@ const registrationSchema = new mongoose.Schema(
 registrationSchema.index({ event: 1, student: 1 }, { unique: true });
 registrationSchema.index({ event: 1, status: 1, "waitlist.position": 1 });
 registrationSchema.index({ student: 1, status: 1 });
-registrationSchema.index({ world: 1, status: 1 });
+registrationSchema.index({ status: 1 });
 
 module.exports = mongoose.model("EventRegistration", registrationSchema);

@@ -9,7 +9,7 @@ const Lesson = require("../../../models/Lesson");
 const { makeStudent, makeCycle, makeLesson } = require("../../helpers/factories");
 
 describe("PUT /api/lessons/attendance", () => {
-  it("creates the live lesson on first report, world stamped from the cycle", async () => {
+  it("creates the live lesson on first report", async () => {
     const s = await makeStudent();
     const cycle = await makeCycle();
     const res = await request(app)
@@ -22,7 +22,6 @@ describe("PUT /api/lessons/attendance", () => {
     expect(res.status).toBe(200);
     const { lesson } = res.body.data;
     expect(lesson.source).toBe("live");
-    expect(lesson.world).toBe("real");
     expect(lesson.date).toBe("2026-03-15T00:00:00.000Z");
     expect(lesson.attendance).toHaveLength(1);
   });
@@ -48,16 +47,6 @@ describe("PUT /api/lessons/attendance", () => {
       .send({ cycle: cycle._id, date: "2026-03-16", records: [] });
     expect(res.status).toBe(200);
     expect(res.body.data.lesson.attendance).toHaveLength(0);
-  });
-
-  it("rejects a report for a cycle of another world", async () => {
-    const cycle = await makeCycle(); // real
-    const res = await request(app)
-      .put("/api/lessons/attendance")
-      .set("X-Dataset", "pokemon")
-      .send({ cycle: cycle._id, date: "2026-03-15", records: [] });
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe("WORLD_MISMATCH");
   });
 });
 

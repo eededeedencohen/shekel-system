@@ -5,17 +5,16 @@
  *
  * The base of the identity+profiles split (people-remodel-plan.html).
  * Inheritance lives HERE, where it belongs: every profile shares the same
- * skeleton (person, world, active, lifecycle log) and each user type is a
+ * skeleton (person, active, lifecycle log) and each user type is a
  * discriminator on `kind` under models/profiles/ - adding a user type is
  * one schema file + a registry line, no migration, no controller change.
  *
  * Invariants at the schema layer:
  *  - {person, kind} unique - a person holds each role at most once
  *    (deactivate with active:false, never duplicate; reopen later).
- *  - `world` must equal the person's world, asserted once here on create -
- *    no controller has to remember (WORLD_MISMATCH by construction).
- *  - person/world/kind are immutable - a profile never migrates between
- *    humans or worlds.
+ *  - the person must exist, asserted once here on create - no controller
+ *    has to remember.
+ *  - person/kind are immutable - a profile never migrates between humans.
  *
  * Lifecycle ("הכל מתועד אצל הסטודנט"): `log` is the append-only story of
  * the role - opened / closed / reopened / transferredOut / transferredIn -
@@ -27,7 +26,7 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, PROFILE_EVENT_KEYS } = require("../utils/domain");
+const { PROFILE_EVENT_KEYS } = require("../utils/domain");
 
 const logEntrySchema = new mongoose.Schema(
   {
@@ -50,7 +49,6 @@ const profileSchema = new mongoose.Schema(
       required: [true, "פרופיל חייב אדם"],
       immutable: true,
     },
-    world: { type: String, enum: WORLDS, required: true, immutable: true },
     /** Deactivate a role, keep the person (and the history). */
     active: { type: Boolean, default: true },
     /** Current open interval - since = last opened/reopened, until = closed. */
@@ -64,18 +62,14 @@ const profileSchema = new mongoose.Schema(
 );
 
 profileSchema.index({ person: 1, kind: 1 }, { unique: true });
-profileSchema.index({ world: 1, kind: 1, active: 1 });
+profileSchema.index({ kind: 1, active: 1 });
 
-/** world must equal the person's world - asserted once, on create. */
+/** The person must exist - asserted once, on create. */
 profileSchema.pre("validate", async function (next) {
   if (!this.isNew || !this.person) return next();
   try {
-    const person = await mongoose.model("Person").findById(this.person).select("world deletedAt");
+    const person = await mongoose.model("Person").findById(this.person).select("deletedAt");
     if (!person) return next(new Error("פרופיל חייב להצביע על אדם קיים"));
-    if (!this.world) this.world = person.world;
-    if (this.world !== person.world) {
-      return next(new Error("world של הפרופיל חייב להשתוות ל-world של האדם"));
-    }
     next();
   } catch (e) {
     next(e);

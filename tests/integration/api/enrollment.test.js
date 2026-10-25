@@ -1,7 +1,7 @@
 /**
  * Enrollment API - the single membership write path: capacity enforcement,
  * the unique no-double-enroll invariant, reservation fulfillment as a
- * status flip, world isolation, and the pipeline auto-advance side-effect.
+ * status flip, and the pipeline auto-advance side-effect.
  */
 
 const request = require("supertest");
@@ -10,14 +10,14 @@ const Enrollment = require("../../../models/Enrollment");
 const { makeStudent, makeCycle, makeSubject } = require("../../helpers/factories");
 
 describe("POST /api/enrollments", () => {
-  it("enrolls a student (201) and stamps world from the cycle", async () => {
+  it("enrolls a student (201)", async () => {
     const s = await makeStudent();
     const cycle = await makeCycle();
     const res = await request(app)
       .post("/api/enrollments")
       .send({ cycle: cycle._id, student: s._id });
     expect(res.status).toBe(201);
-    expect(res.body.data.enrollment).toMatchObject({ status: "active", world: "real" });
+    expect(res.body.data.enrollment).toMatchObject({ status: "active" });
   });
 
   it("blocks double-enrollment with 409 DUPLICATE_ENROLLMENT", async () => {
@@ -116,17 +116,6 @@ describe("POST /api/enrollments", () => {
     expect((await request(app).get(`/api/people/${s._id}`)).body.data.person.pipeline.stage).toBe("AwaitingPlacement");
   });
 
-  it("rejects cross-world enrollment with WORLD_MISMATCH", async () => {
-    const s = await makeStudent({ world: "test" });
-    const cycle = await makeCycle(); // real world
-    const res = await request(app)
-      .post("/api/enrollments")
-      .set("X-Dataset", "test")
-      .send({ cycle: cycle._id, student: s._id });
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe("WORLD_MISMATCH");
-  });
-
   it("validates slotId against the cycle schedule", async () => {
     const s = await makeStudent();
     const cycle = await makeCycle();
@@ -195,7 +184,7 @@ describe("PATCH /api/enrollments/:id", () => {
 });
 
 describe("GET /api/enrollments", () => {
-  it("filters by cycle and by student, world-scoped", async () => {
+  it("filters by cycle and by student", async () => {
     const s = await makeStudent();
     const cycle = await makeCycle();
     await request(app).post("/api/enrollments").send({ cycle: cycle._id, student: s._id });
@@ -203,9 +192,5 @@ describe("GET /api/enrollments", () => {
     expect(byCycle.body.results).toBe(1);
     const byStudent = await request(app).get(`/api/enrollments?student=${s._id}`);
     expect(byStudent.body.results).toBe(1);
-    const otherWorld = await request(app)
-      .get(`/api/enrollments?cycle=${cycle._id}`)
-      .set("X-Dataset", "test");
-    expect(otherWorld.body.results).toBe(0);
   });
 });

@@ -25,14 +25,6 @@ describe("POST /api/people/intake", () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("MISSING_FIELDS");
   });
-
-  it("stamps the demo world from the header", async () => {
-    const res = await request(app)
-      .post("/api/people/intake")
-      .set("X-Dataset", "test")
-      .send({ firstName: "טסט", lastName: "עולם" });
-    expect(res.body.data.person.world).toBe("test");
-  });
 });
 
 describe("POST /api/people/:id/stage", () => {

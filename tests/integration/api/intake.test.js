@@ -32,17 +32,14 @@ const { makeStudent, makeCycle, makeSubject } = require("../../helpers/factories
 const PNG_1PX =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
-const submit = (body, world) => {
-  const r = request(app).post("/api/public/join");
-  if (world) r.set("X-Dataset", world);
-  return r.send({
+const submit = (body) =>
+  request(app).post("/api/public/join").send({
     firstName: "דנה",
     lastName: "לוי",
     phone: "0521234567",
     programs: ["StudentCulture"],
     ...body,
   });
-};
 
 const stageOf = async (personId, kind) => (await Profile.findOne({ person: personId, kind })).pipeline.stage;
 const dayStr = (daysFromNow) => new Date(Date.now() + daysFromNow * 86400000).toISOString().slice(0, 10);
@@ -124,15 +121,6 @@ describe("POST /api/public/join", () => {
     expect((await submit({ phone: "12" })).body.code).toBe("INVALID_PHONE");
     expect((await submit({ programs: [] })).body.code).toBe("NO_PROGRAM");
     expect((await submit({ website: "http://spam" })).body.code).toBe("SPAM_REJECTED");
-  });
-
-  it("stamps the demo world from the header and keeps subjects world-scoped", async () => {
-    const real = await makeSubject({ name: "מוסיקה" });
-    const res = await submit({ programs: ["StudentCollege"], preferences: { subjects: [String(real._id)] } }, "test");
-    expect(res.status).toBe(201);
-    const intake = await Intake.findOne({});
-    expect(intake.world).toBe("test");
-    expect(intake.landing.preferences.subjects).toHaveLength(0); // a real-world subject is not visible from test
   });
 });
 

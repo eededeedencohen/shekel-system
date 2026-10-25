@@ -6,7 +6,7 @@
 
 const { Person } = require("../../../models/Person");
 const { Profile, MODEL_BY_KIND } = require("../../../models/profiles");
-const { createProfile, createPersonWithProfile } = require("../../../services/profileService");
+const { createProfile } = require("../../../services/profileService");
 const { makeStudent, makeHostel } = require("../../helpers/factories");
 
 describe("identity + profiles split", () => {
@@ -33,14 +33,6 @@ describe("identity + profiles split", () => {
     await expect(createProfile(s, "StudentCollege", {})).rejects.toThrow(/כבר יש פרופיל/);
     const kinds = (await Profile.find({ person: s._id })).map((p) => p.kind).sort();
     expect(kinds).toEqual(["ManagerHostel", "StudentCollege"]);
-  });
-
-  it("profile world is copied from the person and never mismatched", async () => {
-    const { person } = await createPersonWithProfile("Teacher", {
-      firstName: "מורה", world: "test",
-    });
-    const profile = await Profile.findOne({ person: person._id });
-    expect(profile.world).toBe("test");
   });
 
   it("every declared kind is registered as a discriminator", () => {

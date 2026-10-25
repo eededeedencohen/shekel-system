@@ -16,7 +16,6 @@
 
 const mongoose = require("mongoose");
 const {
-  WORLDS,
   SUPPLIER_GENDER_KEYS,
   SUPPLIER_FILE_KEYS,
   SUPPLIER_FIELD_KEYS,
@@ -72,7 +71,6 @@ const updateSchema = new mongoose.Schema(
 
 const supplierSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, trim: true },
     gender: { type: String, enum: SUPPLIER_GENDER_KEYS, required: true },
@@ -132,9 +130,9 @@ const supplierSchema = new mongoose.Schema(
   { timestamps: true, collection: "suppliers" }
 );
 
-supplierSchema.index({ world: 1, "link.token": 1 }, { unique: true });
-supplierSchema.index({ world: 1, status: 1, updatedAt: -1 });
-supplierSchema.index({ world: 1, person: 1 });
+supplierSchema.index({ "link.token": 1 }, { unique: true });
+supplierSchema.index({ status: 1, updatedAt: -1 });
+supplierSchema.index({ person: 1 });
 
 /** Still open right now? */
 supplierSchema.methods.linkLive = function () {

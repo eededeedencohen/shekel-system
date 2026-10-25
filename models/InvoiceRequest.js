@@ -14,7 +14,7 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, INVOICE_SESSION_STATES } = require("../utils/domain");
+const { INVOICE_SESSION_STATES } = require("../utils/domain");
 
 const sessionSchema = new mongoose.Schema(
   {
@@ -33,7 +33,6 @@ const sessionSchema = new mongoose.Schema(
 
 const invoiceRequestSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     round: { type: mongoose.Schema.Types.ObjectId, ref: "InvoiceRound", required: true },
     teacher: { type: mongoose.Schema.Types.ObjectId, ref: "Person", required: true },
     token: { type: String, required: true, trim: true },
@@ -50,7 +49,7 @@ const invoiceRequestSchema = new mongoose.Schema(
   { timestamps: true, collection: "invoiceRequests" }
 );
 
-invoiceRequestSchema.index({ world: 1, token: 1 }, { unique: true });
+invoiceRequestSchema.index({ token: 1 }, { unique: true });
 invoiceRequestSchema.index({ round: 1, teacher: 1 }, { unique: true });
 
 invoiceRequestSchema.methods.linkLive = function () {

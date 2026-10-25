@@ -12,11 +12,9 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS } = require("../utils/domain");
 
 const adminActionSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     at: { type: Date, default: Date.now },
     /** The ACTING account (always the super admin himself - viewing as someone closes these). */
     actor: {
@@ -36,6 +34,6 @@ const adminActionSchema = new mongoose.Schema(
   { timestamps: false, collection: "adminActions" }
 );
 
-adminActionSchema.index({ world: 1, at: -1 });
+adminActionSchema.index({ at: -1 });
 
 module.exports = mongoose.model("AdminAction", adminActionSchema);

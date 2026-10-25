@@ -129,7 +129,8 @@ function fileKind(mime, fileName) {
 function uploadRoot() {
   return process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads");
 }
-const fileDir = (intake) => path.join(uploadRoot(), intake.world, String(intake._id));
+// legacy rows written before 2026-10-25 sit under uploads/real/<intakeId>/ - "real" was the former dataset segment
+const fileDir = (intake) => path.join(uploadRoot(), "real", String(intake._id));
 /** Absolute path of a document's legacy disk file (null when it is not on the disk). */
 function documentPath(intake, doc) {
   if (!doc?.file?.storedName) return null;
@@ -285,8 +286,8 @@ function parseDate(raw) {
   return d;
 }
 
-/** Find the human behind a landing submission (phone/email within the world). */
-async function findPerson({ world, phone, email }) {
+/** Find the human behind a landing submission (by phone/email). */
+async function findPerson({ phone, email }) {
   const or = [];
   if (email) or.push({ email: email.toLowerCase().trim() });
   if (phone) {
@@ -294,25 +295,25 @@ async function findPerson({ world, phone, email }) {
     or.push({ phone: { $in: [phone, digits, `${digits.slice(0, 3)}-${digits.slice(3)}`] } });
   }
   if (!or.length) return null;
-  return Person.findOne({ world, deletedAt: null, $or: or });
+  return Person.findOne({ deletedAt: null, $or: or });
 }
 
 /** The person's intake record, or null. */
-function intakeOf(personId, world) {
-  return Intake.findOne({ world, person: personId });
+function intakeOf(personId) {
+  return Intake.findOne({ person: personId });
 }
 
 /** True when the person's intake is complete (enrollmentService asks). */
-async function isIntakeComplete(personId, world) {
-  const i = await Intake.findOne({ world, person: personId }).select("status");
+async function isIntakeComplete(personId) {
+  const i = await Intake.findOne({ person: personId }).select("status");
   return i?.status === "complete";
 }
 
 /** Find-or-create the record (staff opened it, e.g. a walk-in). */
-async function ensureIntake({ person, world, source = "staff", by }) {
-  let intake = await Intake.findOne({ world, person: person._id });
+async function ensureIntake({ person, source = "staff", by }) {
+  let intake = await Intake.findOne({ person: person._id });
   if (intake) return intake;
-  intake = new Intake({ world, person: person._id, source, documents: freshDocuments() });
+  intake = new Intake({ person: person._id, source, documents: freshDocuments() });
   if (source === "staff") intake.log.push({ action: "note", by, note: "נפתח תיק קליטה" });
   await intake.save();
   return intake;
@@ -330,7 +331,7 @@ async function ensureIntake({ person, world, source = "staff", by }) {
  * chosen program at Interested (reopened when it was closed), and the
  * intake record with its personal link (good for LANDING_LINK_HOURS).
  */
-async function submitLanding({ world, body = {} }) {
+async function submitLanding({ body = {} }) {
   if (body.website) throw AppError.of("SPAM_REJECTED", 400); // honeypot
   const firstName = clean(body.firstName, 60);
   const lastName = clean(body.lastName, 60);
@@ -348,7 +349,7 @@ async function submitLanding({ world, body = {} }) {
   const prefs = body.preferences || {};
   const wantSubjects = (Array.isArray(prefs.subjects) ? prefs.subjects : []).map(String).filter((s) => /^[a-f\d]{24}$/i.test(s));
   const subjects = wantSubjects.length
-    ? (await Subject.find({ _id: { $in: wantSubjects }, world }).select("_id")).map((s) => s._id)
+    ? (await Subject.find({ _id: { $in: wantSubjects } }).select("_id")).map((s) => s._id)
     : [];
   const categories = [...new Set((Array.isArray(prefs.categories) ? prefs.categories : []).filter((c) => EVENT_CATEGORY_KEYS.includes(c)))];
   const days = [...new Set((Array.isArray(prefs.days) ? prefs.days : []).map(Number).filter((d) => d >= 0 && d <= 6))];
@@ -366,11 +367,11 @@ async function submitLanding({ world, body = {} }) {
   };
 
   // 1 · the human - never twice
-  let person = await findPerson({ world, phone, email });
+  let person = await findPerson({ phone, email });
   const personExisted = !!person;
   if (!person) {
     person = await Person.create({
-      world, firstName, lastName, phone,
+      firstName, lastName, phone,
       ...(email && { email }),
       ...(birthDate && { birthDate }),
       ...(gender && { gender }),
@@ -403,7 +404,7 @@ async function submitLanding({ world, body = {} }) {
     } else if (!profile.active) {
       Object.assign(profile, fields);
       await profile.save();
-      await reopenProfile({ profile, world, by: LANDING_ACTOR, note: "נרשם/ה מחדש דרך דף הנחיתה" });
+      await reopenProfile({ profile, by: LANDING_ACTOR, note: "נרשם/ה מחדש דרך דף הנחיתה" });
       results.push({ kind, reopened: true });
     } else {
       // Already in the program - merge the preferences, touch nothing else.
@@ -421,9 +422,9 @@ async function submitLanding({ world, body = {} }) {
   }
 
   // 3 · the intake record + personal link (alive for a day; a re-submission renews it)
-  let intake = await Intake.findOne({ world, person: person._id });
+  let intake = await Intake.findOne({ person: person._id });
   const resubmitted = !!intake;
-  if (!intake) intake = new Intake({ world, person: person._id, source: "landing", documents: freshDocuments() });
+  if (!intake) intake = new Intake({ person: person._id, source: "landing", documents: freshDocuments() });
   const now = new Date();
   intake.landing = {
     ...(intake.landing?.toObject?.() || intake.landing || {}),
@@ -472,7 +473,6 @@ async function createUploadLink({ intake, minutes, docs, by, token, note }) {
   const t = typeof token === "string" && /^[\w-]{16,64}$/.test(token) ? token : crypto.randomBytes(18).toString("base64url");
   const keys = [...new Set((Array.isArray(docs) ? docs : []).filter((k) => DOC_BY_KEY[k]))];
   const link = await UploadLink.create({
-    world: intake.world,
     intake: intake._id,
     token: t,
     minutes: m,
@@ -493,17 +493,17 @@ const linksOf = (intake) => UploadLink.find({ intake: intake._id }).sort({ creat
  * What a public token opens: a temporary link (while it lives), else the
  * landing page's personal link (while it lives). → { intake, person, link }
  */
-async function resolveToken({ world, token }) {
+async function resolveToken({ token }) {
   const t = String(token || "");
   if (!/^[\w-]{12,64}$/.test(t)) throw AppError.of("INTAKE_LINK_INVALID", 404);
-  const link = await UploadLink.findOne({ token: t, world });
+  const link = await UploadLink.findOne({ token: t });
   let intake;
   if (link) {
     if (!link.isLive()) throw AppError.of("INTAKE_LINK_EXPIRED", 410);
-    intake = await Intake.findOne({ _id: link.intake, world });
+    intake = await Intake.findOne({ _id: link.intake });
     if (!intake) throw AppError.of("INTAKE_LINK_INVALID", 404);
   } else {
-    intake = await Intake.findOne({ "landing.token": t, world });
+    intake = await Intake.findOne({ "landing.token": t });
     if (!intake) throw AppError.of("INTAKE_LINK_INVALID", 404);
     if (intake.landing?.linkExpiresAt && intake.landing.linkExpiresAt.getTime() < Date.now()) throw AppError.of("INTAKE_LINK_EXPIRED", 410);
   }
@@ -541,7 +541,7 @@ async function uploadDocument({ intake, key, fileName, mime, data, thumb, by, st
   await removeFile(intake, d);
   const name = clean(fileName, 120) || `${key}.${ext}`;
   const thumbBuf = parseThumb(thumb);
-  const stored = await StoredFile.create({ world: intake.world, name, mime: kind.mime, size: buffer.length, data: buffer, ...(thumbBuf && { thumb: thumbBuf }) });
+  const stored = await StoredFile.create({ name, mime: kind.mime, size: buffer.length, data: buffer, ...(thumbBuf && { thumb: thumbBuf }) });
   const now = new Date();
   d.file = { name, stored: stored._id, storedName: undefined, mime: kind.mime, size: buffer.length, thumb: !!thumbBuf, uploadedAt: now, by: staff ? by : "student" };
   d.note = undefined;
@@ -638,7 +638,7 @@ async function signWaiver({ intake, by, signedAt, explained, parties, witness, g
   await intake.save();
 
   const waiver = await Waiver.create({
-    world: intake.world, intake: intake._id, person: intake.person,
+    intake: intake._id, person: intake.person,
     signedAt: when, validUntil: row.validUntil, by, explained: true,
     parties: list, witness: w, guardian: g,
     signatures: { student: studentSig, witness: witnessSig, guardian: guardianSig || undefined },
@@ -650,7 +650,7 @@ async function signWaiver({ intake, by, signedAt, explained, parties, witness, g
   ];
   if (g) lines.push(`אפוטרופוס: ${[g.firstName, g.lastName].filter(Boolean).join(" ")}${g.relation ? ` (${g.relation})` : ""}`);
   const activity = await activities.addActivity({
-    world: intake.world, person: intake.person, kind: "waiver", at: when, by,
+    person: intake.person, kind: "waiver", at: when, by,
     title: "ויתור סודיות נחתם", body: lines.join("\n"), skipRequired: true,
   });
   waiver.activity = activity._id;
@@ -659,7 +659,7 @@ async function signWaiver({ intake, by, signedAt, explained, parties, witness, g
 }
 
 /** The latest signed waiver of a file (without the signature bytes), or null. */
-const waiverOf = (intake) => Waiver.findOne({ world: intake.world, intake: intake._id }).sort({ signedAt: -1 });
+const waiverOf = (intake) => Waiver.findOne({ intake: intake._id }).sort({ signedAt: -1 });
 
 /** A student pulls back their own (not yet confirmed) upload. */
 async function removeStudentDocument({ intake, key }) {
@@ -764,7 +764,6 @@ async function setScreening({ intake, eligibility, interests, calledAt, by, note
   intake.log.push({ action: "screening", at, by, note: `שיחה ראשונית${parts.length ? ` · ${parts.join(" · ")}` : ""}` });
   await intake.save();
   const activity = await activities.addActivity({
-    world: intake.world,
     person: intake.person,
     kind: "firstCall",
     at,
@@ -877,7 +876,6 @@ async function markDone({ intake, at, by, waiverSigned, summary, fields }) {
   intake.log.push({ action: "done", at: when, by, note: open.length ? `בוצע אינטייק · עוד חסר: ${open.join(", ")}` : "בוצע אינטייק" });
   const out = await settle(intake, by);
   const activity = await activities.addActivity({
-    world: intake.world,
     person: intake.person,
     kind: "intake",
     at: when,

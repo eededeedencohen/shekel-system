@@ -8,11 +8,10 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, DIARY_KINDS } = require("../utils/domain");
+const { DIARY_KINDS } = require("../utils/domain");
 
 const diaryEntrySchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     /** The staff account's id (StaffAccount) - the diary is theirs alone. */
     owner: { type: String, required: true, index: true },
     /** "2026-10-19" - a calendar day, no time zone games. */
@@ -32,6 +31,6 @@ const diaryEntrySchema = new mongoose.Schema(
   { timestamps: true, collection: "diaryEntries" }
 );
 
-diaryEntrySchema.index({ world: 1, owner: 1, date: 1 });
+diaryEntrySchema.index({ owner: 1, date: 1 });
 
 module.exports = mongoose.model("DiaryEntry", diaryEntrySchema);

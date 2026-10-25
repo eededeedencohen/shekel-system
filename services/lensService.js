@@ -66,11 +66,11 @@ function cycleCond(lens) {
 const cycleInLens = (lens, cycle) => lens.all || (lens.hostelsOnly ? !!cycle?.hostel : lens.collegeOnly ? !cycle?.hostel : false);
 
 /** Ids of the people who hold - or once held - any of these tags. */
-async function holdersOf(world, keys) {
-  const map = await tags.tagMap(world);
+async function holdersOf(keys) {
+  const map = await tags.tagMap();
   const ids = keys.map((k) => map.get(k)?._id).filter(Boolean);
   if (!ids.length) return [];
-  return PersonTag.distinct("person", { world, tag: { $in: ids } });
+  return PersonTag.distinct("person", { tag: { $in: ids } });
 }
 
 /**
@@ -80,27 +80,27 @@ async function holdersOf(world, keys) {
  * from the profiles (`role` / `kinds`), and an older teacher may carry no
  * `teacher` tag at all - so a role is read from both.
  */
-const roleHolders = (world, kinds) => Profile.distinct("person", { world, kind: { $in: kinds } });
+const roleHolders = (kinds) => Profile.distinct("person", { kind: { $in: kinds } });
 
 /** The people of a lens as a Set of id strings (null = everyone). */
-async function personIdsOf(world, lens) {
+async function personIdsOf(lens) {
   if (lens.all) return null;
   if (lens.cultureOnly) {
-    const [tagged, staff] = await Promise.all([holdersOf(world, ["culture", "cultureStaff"]), roleHolders(world, ["ManagerCulture"])]);
+    const [tagged, staff] = await Promise.all([holdersOf(["culture", "cultureStaff"]), roleHolders(["ManagerCulture"])]);
     return new Set(strs([...tagged, ...staff]));
   }
   if (lens.collegeOnly) {
-    const [tagged, teachers] = await Promise.all([holdersOf(world, ["college", "teacher"]), roleHolders(world, ["Teacher"])]);
+    const [tagged, teachers] = await Promise.all([holdersOf(["college", "teacher"]), roleHolders(["Teacher"])]);
     return new Set(strs([...tagged, ...teachers]));
   }
   // the hostels: the tagged, the hostel managers, the teachers, whoever lives in a hostel, whoever sits in a hostel cycle
   const [tagged, staff, residents, hostelCycles] = await Promise.all([
-    holdersOf(world, ["hostels", "hostelManager", "teacher"]),
-    roleHolders(world, ["Teacher", "ManagerHostel"]),
-    Profile.distinct("person", { world, kind: "StudentCollege", "residence.hostel": { $ne: null } }),
-    Cycle.distinct("_id", { world, hostel: { $ne: null } }),
+    holdersOf(["hostels", "hostelManager", "teacher"]),
+    roleHolders(["Teacher", "ManagerHostel"]),
+    Profile.distinct("person", { kind: "StudentCollege", "residence.hostel": { $ne: null } }),
+    Cycle.distinct("_id", { hostel: { $ne: null } }),
   ]);
-  const members = hostelCycles.length ? await Enrollment.distinct("student", { world, cycle: { $in: hostelCycles } }) : [];
+  const members = hostelCycles.length ? await Enrollment.distinct("student", { cycle: { $in: hostelCycles } }) : [];
   return new Set(strs([...tagged, ...staff, ...residents, ...members]));
 }
 
@@ -112,20 +112,18 @@ async function personIdsOf(world, lens) {
 function scopeOf(req) {
   if (req._lensScope) return req._lensScope;
   const lens = lensOf(req.actor);
-  const world = req.world;
   let people = null;
   let cycles = null;
   const scope = {
     lens,
-    world,
     people() {
       if (lens.all) return Promise.resolve(null);
-      if (!people) people = personIdsOf(world, lens);
+      if (!people) people = personIdsOf(lens);
       return people;
     },
     cycles() {
       if (lens.all) return Promise.resolve(null);
-      if (!cycles) cycles = Cycle.distinct("_id", { world, ...cycleCond(lens) }).then(strs);
+      if (!cycles) cycles = Cycle.distinct("_id", cycleCond(lens)).then(strs);
       return cycles;
     },
     async cycleSet() {
@@ -208,16 +206,16 @@ const outOfScope = () => AppError.of("OUT_OF_SCOPE", 403);
 async function assertPerson(req, id) {
   const ids = await scopeOf(req).people();
   if (!ids || id == null || !isId(id) || ids.has(String(id))) return;
-  const exists = await Person.exists({ _id: id, world: req.world });
+  const exists = await Person.exists({ _id: id });
   if (!exists) throw AppError.of("NOT_FOUND", 404, "אדם");
   throw outOfScope();
 }
 
 /** The cycle must be on the lens's side (403), and exist (404). */
 async function assertCycle(req, id) {
-  const { lens, world } = scopeOf(req);
+  const { lens } = scopeOf(req);
   if (lens.all || id == null || !isId(id)) return;
-  const cycle = await Cycle.findOne({ _id: id, world }).select("hostel").lean();
+  const cycle = await Cycle.findOne({ _id: id }).select("hostel").lean();
   if (!cycle) throw AppError.of("NOT_FOUND", 404, "מחזור");
   if (!cycleInLens(lens, cycle)) throw outOfScope();
 }
@@ -288,13 +286,13 @@ const guardCycle = guardParam((id) => ({ cycle: id }));
 /** `:id` is a record of `Model` with a `person` field. */
 const guardByPerson = (Model) =>
   guardParam(async (id, req) => {
-    const row = await Model.findOne({ _id: id, world: req.world }).select("person").lean();
+    const row = await Model.findOne({ _id: id }).select("person").lean();
     return row && { person: row.person };
   });
 /** `:id` is a record of `Model` with a `cycle` field. */
 const guardByCycle = (Model) =>
   guardParam(async (id, req) => {
-    const row = await Model.findOne({ _id: id, world: req.world }).select("cycle").lean();
+    const row = await Model.findOne({ _id: id }).select("cycle").lean();
     return row && { cycle: row.cycle };
   });
 

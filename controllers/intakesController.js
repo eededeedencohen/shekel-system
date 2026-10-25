@@ -25,13 +25,13 @@ const PERSON_POP = { path: "person", select: "firstName lastName phone email gen
 const SUBJECT_POP = { path: "landing.preferences.subjects", select: "name category" };
 
 async function load(req) {
-  const doc = await Intake.findOne({ _id: req.params.id, world: req.world });
+  const doc = await Intake.findOne({ _id: req.params.id });
   if (!doc) throw AppError.of("NOT_FOUND", 404, "תיק קליטה");
   return doc;
 }
 const populated = (doc) => Intake.findById(doc._id).populate([PERSON_POP, SUBJECT_POP]);
 const personOf = async (req, id) => {
-  const person = await Person.findOne({ _id: id, world: req.world, deletedAt: null });
+  const person = await Person.findOne({ _id: id, deletedAt: null });
   if (!person) throw AppError.of("NOT_FOUND", 404, "אדם");
   await lens.assertPerson(req, person._id); // the acting persona's own people (lensService)
   return person;
@@ -39,7 +39,7 @@ const personOf = async (req, id) => {
 
 /** GET /api/intakes?status=&person= */
 exports.getIntakes = catchAsync(async (req, res) => {
-  const filter = { world: req.world };
+  const filter = {};
   if (req.query.status) filter.status = { $in: req.query.status.split(",") };
   if (req.query.person) filter.person = req.query.person;
   await lens.narrowByPerson(req, filter, "person"); // the files of the lens's people only
@@ -55,7 +55,7 @@ exports.getIntake = catchAsync(async (req, res) => {
 
 /** GET /api/intakes/person/:personId - 404 when the person has no record. */
 exports.getByPerson = catchAsync(async (req, res, next) => {
-  const doc = await Intake.findOne({ world: req.world, person: req.params.personId }).populate([PERSON_POP, SUBJECT_POP]);
+  const doc = await Intake.findOne({ person: req.params.personId }).populate([PERSON_POP, SUBJECT_POP]);
   if (!doc) return next(AppError.of("NOT_FOUND", 404, "תיק קליטה"));
   res.status(200).json({ status: "success", data: { intake: doc } });
 });
@@ -63,14 +63,14 @@ exports.getByPerson = catchAsync(async (req, res, next) => {
 /** POST /api/intakes/open - { person, by }: open a record for a walk-in. */
 exports.openIntake = catchAsync(async (req, res) => {
   const person = await personOf(req, req.body.person);
-  const doc = await intake.ensureIntake({ person, world: req.world, source: "staff", by: req.body.by });
+  const doc = await intake.ensureIntake({ person, source: "staff", by: req.body.by });
   res.status(201).json({ status: "success", data: { intake: await populated(doc) } });
 });
 
 /** POST /api/intakes/schedule - { person, at, by, note } (find-or-create + schedule). */
 exports.scheduleForPerson = catchAsync(async (req, res) => {
   const person = await personOf(req, req.body.person);
-  const doc = await intake.ensureIntake({ person, world: req.world, source: "staff", by: req.body.by });
+  const doc = await intake.ensureIntake({ person, source: "staff", by: req.body.by });
   const { moved } = await intake.schedule({ intake: doc, at: req.body.at, by: req.body.by, note: req.body.note });
   res.status(200).json({ status: "success", data: { intake: await populated(doc), moved } });
 });
@@ -81,7 +81,7 @@ exports.scheduleForPerson = catchAsync(async (req, res) => {
  */
 exports.screenPerson = catchAsync(async (req, res) => {
   const person = await personOf(req, req.body.person);
-  const doc = await intake.ensureIntake({ person, world: req.world, source: "staff", by: req.body.by });
+  const doc = await intake.ensureIntake({ person, source: "staff", by: req.body.by });
   const { activity } = await intake.setScreening({
     intake: doc,
     eligibility: req.body.eligibility,

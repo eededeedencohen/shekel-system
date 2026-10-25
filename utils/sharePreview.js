@@ -139,15 +139,14 @@ function safeDecode(s) {
 
 /**
  * A record's own words, when the URL points at one (event, course, hostel,
- * book) - looked up in `world` (crawlers carry no header, so the real
- * world; `?world=test` works like everywhere else). Failures fall back to
- * the section's static text: a preview must never break a page.
+ * book). Failures fall back to the section's static text: a preview must
+ * never break a page.
  */
-async function enrich(preview, world = "real") {
+async function enrich(preview) {
   const { params } = preview;
   try {
     if (params.event) {
-      const ev = await Event.findOne({ _id: params.event, world }).lean();
+      const ev = await Event.findById(params.event).lean();
       if (ev) {
         const d = new Date(ev.date);
         const when = `${fmtDay(d)}, ${fmtDate(d)} · ${fmtTime(d)}${ev.endTime ? `-${ev.endTime}` : ""}`;
@@ -156,7 +155,7 @@ async function enrich(preview, world = "real") {
       }
     }
     if (params.cycle) {
-      const ci = await Cycle.findOne({ _id: params.cycle, world }).populate("subject", "name").populate("hostel", "name kind").lean();
+      const ci = await Cycle.findById(params.cycle).populate("subject", "name").populate("hostel", "name kind").lean();
       if (ci) {
         const name = ci.subject?.name || "קורס";
         const slots = (ci.schedule || []).map((s) => `יום ${DAY_NAMES[s.day] || ""} ${s.start}-${s.end}`.trim());
@@ -167,14 +166,14 @@ async function enrich(preview, world = "real") {
     if (params.hostel) {
       // the page is addressed by id now; the old links carried the name
       const byId = /^[0-9a-f]{24}$/i.test(params.hostel);
-      const h = await Hostel.findOne({ ...(byId ? { _id: params.hostel } : { name: params.hostel }), world }).lean();
+      const h = await Hostel.findOne(byId ? { _id: params.hostel } : { name: params.hostel }).lean();
       if (h) return { ...preview, title: `${houseTitle(h)} · שק״ל`, description: `סקירה, לוח שעות וקורסים והסטודנטים של ${h.kind === "community" ? "הקהילה" : "ההוסטל"}.` };
     }
     if (params.book) {
-      const b = await Book.findOne({ _id: params.book, world, deletedAt: null }).lean();
+      const b = await Book.findOne({ _id: params.book, deletedAt: null }).lean();
       if (b) return { ...preview, title: `${b.title} · הספרייה`, description: clip([b.author, b.summary].filter(Boolean).join(" - ") || STATIC.library.description) };
     }
-    // a link's token says where it lives (no world in a link; utils/tokenWorld) - and nothing personal: the month and the program, never the teacher
+    // a link is its token alone - and nothing personal: the month and the program, never the teacher
     if (params.invoiceToken) {
       const r = await InvoiceRequest.findOne({ token: params.invoiceToken }).populate("round", "month program").lean();
       if (r?.round) {

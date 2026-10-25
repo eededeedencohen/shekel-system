@@ -8,11 +8,10 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, PERSON_DOCUMENT_KIND_KEYS } = require("../utils/domain");
+const { PERSON_DOCUMENT_KIND_KEYS } = require("../utils/domain");
 
 const personDocumentSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     person: { type: mongoose.Schema.Types.ObjectId, ref: "Person", required: true, index: true },
     kind: { type: String, enum: PERSON_DOCUMENT_KIND_KEYS, required: true, default: "other" },
     /** What the staff called it ("סילבוס תשפ״ז"); the kind's label when empty. */
@@ -30,6 +29,6 @@ const personDocumentSchema = new mongoose.Schema(
   { timestamps: true, collection: "personDocuments" }
 );
 
-personDocumentSchema.index({ world: 1, person: 1, uploadedAt: -1 });
+personDocumentSchema.index({ person: 1, uploadedAt: -1 });
 
 module.exports = mongoose.model("PersonDocument", personDocumentSchema);

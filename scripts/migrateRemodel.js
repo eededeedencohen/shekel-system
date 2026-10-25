@@ -74,12 +74,10 @@ const CATEGORY_MAP = {
   "כישורי חיים": "lifeSkills",
   "בעלי חיים": "animals",
   "אירועים": "events",
-  "סוג פוקימון": "pokemon",
 };
 
 const APP_ROLES = ["Student", "Teacher", "Admin"];
-const worldOf = (ds) => (ds === "pokemon" || ds === "test" ? ds : "real");
-const norm = (s) => String(s || "").trim().replace(/\s+/g, " ");
+const norm =(s) => String(s || "").trim().replace(/\s+/g, " ");
 /** Subject-name normalization: מוסיקה/מוזיקה drift + role/venue prefixes. */
 const subjNorm = (s) =>
   norm(s)
@@ -180,7 +178,6 @@ function matchHostelPlace(raw) {
   /* ================= 2 · hostels ================= */
   const hostelDocs = HOSTELS.map((name) => ({
     _id: new ObjectId(),
-    world: "real",
     name,
     active: true,
     createdAt: now,
@@ -195,7 +192,6 @@ function matchHostelPlace(raw) {
     if (key === "other" && b.category) unmappedCategories.push({ subject: b.name, category: b.category });
     return {
       _id: b._id, // ASSERTED below - every cycle.subject ref depends on this
-      world: worldOf(b.dataset),
       name: norm(b.name),
       category: key,
       importAliases: [],
@@ -208,81 +204,27 @@ function matchHostelPlace(raw) {
   for (const s of subjectDocs) {
     if (!SUBJECT_CATEGORY_KEYS.includes(s.category)) throw new Error(`bad category key ${s.category}`);
   }
-  // Resolver: (world, raw string) → subject _id.
-  //
-  // Demo worlds (test/pokemon) were seeded on the REAL taxonomy - but in
-  // the new model subjects are per-world ({world,name} unique) and cycles
-  // must ref a subject of their own world. So, exactly like rooms, demo
-  // worlds get CLONES of the real subjects they use, created on demand.
-  const subjByKey = new Map(); // `${world}|${subjNorm(name)}` → _id
-  for (const s of subjectDocs) subjByKey.set(`${s.world}|${subjNorm(s.name)}`, s._id);
+  // Resolver: raw string → subject _id (by name, by senzey course-name
+  // alias, or by the manual map).
+  const subjByKey = new Map(); // subjNorm(name) → _id
+  for (const s of subjectDocs) subjByKey.set(subjNorm(s.name), s._id);
   const subjectDocByIdStr = new Map(subjectDocs.map((s) => [String(s._id), s]));
-  const extraSubjectDocs = []; // demo-world clones + demo-only demand subjects
-  const cloneIdByKey = new Map(); // `${world}|${realIdStr}` → clone _id
-  function subjectIdForWorld(world, realId) {
-    const real = subjectDocByIdStr.get(String(realId));
-    if (!real) return null;
-    if (real.world === world) return real._id;
-    const key = `${world}|${real._id}`;
-    if (!cloneIdByKey.has(key)) {
-      const doc = {
-        _id: new ObjectId(),
-        world,
-        name: real.name,
-        category: real.category,
-        importAliases: [],
-        active: true,
-        createdAt: now,
-        updatedAt: now,
-      };
-      extraSubjectDocs.push(doc);
-      cloneIdByKey.set(key, doc._id);
-      subjByKey.set(`${world}|${subjNorm(real.name)}`, doc._id);
-    }
-    return cloneIdByKey.get(key);
-  }
-  const createdDemoSubjects = [];
-  const aliasByKey = new Map(); // senzey course-name → REAL base id
+  const aliasByKey = new Map(); // senzey course-name → base id
   for (const c of courses) {
     if (!c.baseCourse) continue;
-    const w = worldOf(c.dataset);
     const alias = norm(c.courseName);
     if (!alias) continue;
-    aliasByKey.set(`${w}|${subjNorm(alias)}`, c.baseCourse);
-    if (w === "real") {
-      const subj = subjectDocByIdStr.get(String(c.baseCourse));
-      if (subj && !subj.importAliases.includes(alias) && alias !== subj.name) subj.importAliases.push(alias);
-    }
+    aliasByKey.set(subjNorm(alias), c.baseCourse);
+    const subj = subjectDocByIdStr.get(String(c.baseCourse));
+    if (subj && !subj.importAliases.includes(alias) && alias !== subj.name) subj.importAliases.push(alias);
   }
-  function resolveSubject(world, raw) {
+  function resolveSubject(raw) {
     const n = subjNorm(raw);
     if (!n) return null;
-    if (subjByKey.has(`${world}|${n}`)) return subjByKey.get(`${world}|${n}`);
-    if (aliasByKey.has(`${world}|${n}`)) return subjectIdForWorld(world, aliasByKey.get(`${world}|${n}`));
+    if (subjByKey.has(n)) return subjByKey.get(n);
+    if (aliasByKey.has(n)) return aliasByKey.get(n);
     const manual = manualMap.subjects && manualMap.subjects[norm(raw)];
-    if (manual && subjByKey.has(`${world}|${subjNorm(manual)}`)) return subjByKey.get(`${world}|${subjNorm(manual)}`);
-    if (world !== "real") {
-      // borrow from the real taxonomy → clone into this world
-      const realHit =
-        subjByKey.get(`real|${n}`) || (manual && subjByKey.get(`real|${subjNorm(manual)}`));
-      if (realHit) return subjectIdForWorld(world, realHit);
-      // genuinely demo-only vocabulary (e.g. the 4 course-less pokemon
-      // types - real demand demo data) → create in that world
-      const doc = {
-        _id: new ObjectId(),
-        world,
-        name: norm(raw),
-        category: world === "pokemon" ? "pokemon" : "other",
-        importAliases: [],
-        active: true,
-        createdAt: now,
-        updatedAt: now,
-      };
-      extraSubjectDocs.push(doc);
-      subjByKey.set(`${world}|${n}`, doc._id);
-      createdDemoSubjects.push({ world, name: doc.name });
-      return doc._id;
-    }
+    if (manual && subjByKey.has(subjNorm(manual))) return subjByKey.get(subjNorm(manual));
     return null;
   }
 
@@ -290,23 +232,21 @@ function matchHostelPlace(raw) {
   // The old rooms collection is empty and no ObjectId room ref exists in the
   // data (verified: 0 defaultRoom, 0 actualRoom) - rooms are born from the
   // location.room / requiredRooms strings of non-hostel cycles.
-  const roomIdByKey = new Map(); // `${world}|${name}` → _id
+  const roomIdByKey = new Map(); // name → _id
   const roomDocs = [];
-  function ensureRoom(world, rawName) {
+  function ensureRoom(rawName) {
     const name = norm(rawName);
     if (!name || name === "הוסטלים" || name === "חיצוני") return null; // placeholders, not rooms
-    const key = `${world}|${name}`;
-    if (!roomIdByKey.has(key)) {
-      const doc = { _id: new ObjectId(), world, name, active: true, createdAt: now, updatedAt: now };
+    if (!roomIdByKey.has(name)) {
+      const doc = { _id: new ObjectId(), name, active: true, createdAt: now, updatedAt: now };
       roomDocs.push(doc);
-      roomIdByKey.set(key, doc._id);
+      roomIdByKey.set(name, doc._id);
     }
-    return roomIdByKey.get(key);
+    return roomIdByKey.get(name);
   }
   for (const ci of cis) {
-    const world = worldOf(courseById.get(String(ci.course)).dataset);
-    if (ci.location?.room && ci.location?.site !== "hostel") ensureRoom(world, ci.location.room);
-    for (const r of ci.matching?.requiredRooms || []) ensureRoom(world, r);
+    if (ci.location?.room && ci.location?.site !== "hostel") ensureRoom(ci.location.room);
+    for (const r of ci.matching?.requiredRooms || []) ensureRoom(r);
   }
 
   /* ================= 5 · people (User._id PRESERVED) ================= */
@@ -327,10 +267,8 @@ function matchHostelPlace(raw) {
   const peopleDocs = [];
   for (const u of users) {
     if (!APP_ROLES.includes(u.role)) continue; // foreign app docs stay in `users`
-    const world = worldOf(u.dataset);
     const p = {
       _id: u._id,
-      world,
       role: u.role,
       firstName: u.firstName,
       lastName: u.lastName || "",
@@ -356,21 +294,18 @@ function matchHostelPlace(raw) {
       const misses = [];
       if (t) {
         for (const raw of t.subjects || []) {
-          const id = resolveSubject(world, raw);
+          const id = resolveSubject(raw);
           if (id) subjIds.add(String(id));
           else if (norm(raw)) misses.push(norm(raw));
         }
         for (const courseId of t.canTeachCourses || []) {
           const c = courseById.get(String(courseId));
-          if (c?.baseCourse) {
-            const id = subjectIdForWorld(world, c.baseCourse);
-            if (id) subjIds.add(String(id));
-          }
+          if (c?.baseCourse && subjectDocByIdStr.has(String(c.baseCourse))) subjIds.add(String(c.baseCourse));
         }
         // The singular free-text `subject` ("מורה למוזיקה ופסנתר") is a
         // display label - consult it only when nothing else resolved.
         if (!subjIds.size && t.subject) {
-          const id = resolveSubject(world, t.subject);
+          const id = resolveSubject(t.subject);
           if (id) subjIds.add(String(id));
           else if (norm(t.subject)) misses.push(norm(t.subject));
         }
@@ -381,7 +316,7 @@ function matchHostelPlace(raw) {
       p.subjects = [...subjIds].map((id) => new ObjectId(id));
       if (misses.length) {
         p.import = { unmatchedSubjects: misses };
-        unmatchedTeacherSubjects.push({ teacher: `${u.firstName} ${u.lastName || ""}`, world, raw: misses });
+        unmatchedTeacherSubjects.push({ teacher: `${u.firstName} ${u.lastName || ""}`, raw: misses });
       }
     }
 
@@ -398,7 +333,7 @@ function matchHostelPlace(raw) {
         const interests = [];
         const misses = [];
         for (const raw of s.matching?.interests || []) {
-          const id = resolveSubject(world, raw);
+          const id = resolveSubject(raw);
           if (id) interests.push(id);
           else if (norm(raw)) misses.push(norm(raw));
         }
@@ -407,7 +342,7 @@ function matchHostelPlace(raw) {
           ...(s.matching?.groupPreference && { groupPreference: s.matching.groupPreference }),
           interests,
         };
-        if (misses.length) unmatchedInterests.push({ student: `${u.firstName} ${u.lastName || ""}`, world, raw: misses });
+        if (misses.length) unmatchedInterests.push({ student: `${u.firstName} ${u.lastName || ""}`, raw: misses });
         if (s.framework) {
           const h = matchHostelFramework(s.framework);
           p.residence = { ...(h && { hostel: hostelIdByName.get(h) }), label: norm(s.framework) };
@@ -441,12 +376,11 @@ function matchHostelPlace(raw) {
   const cycleById = new Map();
   for (const ci of cis) {
     const course = courseById.get(String(ci.course));
-    const world = worldOf(course.dataset);
     const loc = ci.location || {};
 
     // -- single schedule source: weeklySchedule ∪ per-enrolment triples --
     const slotRoom =
-      loc.site !== "hostel" && loc.room ? roomIdByKey.get(`${world}|${norm(loc.room)}`) || null : null;
+      loc.site !== "hostel" && loc.room ? roomIdByKey.get(norm(loc.room)) || null : null;
     const slots = [];
     const slotKey = (d, s2, e) => `${d}|${s2}|${e}`;
     const seen = new Set();
@@ -488,7 +422,7 @@ function matchHostelPlace(raw) {
     const reqIds = [];
     const reqMisses = [];
     for (const raw of ci.matching?.requiredRooms || []) {
-      const id = roomIdByKey.get(`${world}|${norm(raw)}`);
+      const id = roomIdByKey.get(norm(raw));
       if (id) reqIds.push(id);
       else reqMisses.push(norm(raw));
     }
@@ -497,8 +431,7 @@ function matchHostelPlace(raw) {
     const m = ci.matching || {};
     const doc = {
       _id: ci._id,
-      world,
-      subject: subjectIdForWorld(world, course.baseCourse),
+      subject: course.baseCourse,
       teacher: ci.mainTeacher || null,
       status: ci.status || "Active",
       startDate: ci.startDate,
@@ -520,7 +453,7 @@ function matchHostelPlace(raw) {
         ...(course.courseId && { senzeyCourseId: course.courseId }),
         ...(course.courseName && { senzeyName: course.courseName }),
         ...(course.courseCategory && { senzeyCategory: course.courseCategory }),
-        ...(loc.site !== "hostel" && loc.room && !roomIdByKey.get(`${world}|${norm(loc.room)}`) && { roomLabel: norm(loc.room) }),
+        ...(loc.site !== "hostel" && loc.room && !roomIdByKey.get(norm(loc.room)) && { roomLabel: norm(loc.room) }),
         ...(reqMisses.length && { unmatchedRequiredRooms: reqMisses }),
       },
       createdAt: ci.createdAt || now,
@@ -531,8 +464,6 @@ function matchHostelPlace(raw) {
   }
   report("hostel-strings-unmatched", unmatchedHostelStrings);
   report("requiredrooms-unmatched", unmatchedRequiredRooms);
-  report("subjects-cloned-for-demo-worlds", extraSubjectDocs.filter((s) => !createdDemoSubjects.some((c) => c.world === s.world && c.name === s.name)).map((s) => ({ world: s.world, name: s.name })));
-  report("subjects-created-for-demo-worlds", createdDemoSubjects);
 
   /* ================= 7 · enrollments ================= */
   const enrollmentDocs = [];
@@ -561,7 +492,6 @@ function matchHostelPlace(raw) {
         _id: new ObjectId(),
         cycle: ci._id,
         student: row.student,
-        world: cyc.world,
         status,
         slotId,
         joinedAt,
@@ -603,7 +533,6 @@ function matchHostelPlace(raw) {
       _id: new ObjectId(),
       cycle: cyc._id,
       student: s.user,
-      world: cyc.world,
       status: "reserved",
       slotId: null,
       reservedAt: rc.reservedAt || now,
@@ -637,7 +566,6 @@ function matchHostelPlace(raw) {
       teacher: l.actualTeacher || null,
       room: null, // verified: zero actualRoom refs exist in the data
       source,
-      world: cyc ? cyc.world : "real",
       attendance: (l.attendanceRecords || []).map((r) => ({
         _id: r._id || new ObjectId(),
         student: r.student,
@@ -659,14 +587,10 @@ function matchHostelPlace(raw) {
   }
 
   /* ================= 9 · verify (reconciliation formulas) ================= */
-  const allSubjectDocs = [...subjectDocs, ...extraSubjectDocs];
-  const allSubjectIds = new Set(allSubjectDocs.map((s) => String(s._id)));
+  const allSubjectIds = new Set(subjectDocs.map((s) => String(s._id)));
   const verify = {
     people: { expected: users.length - foreignUsers.length, actual: peopleDocs.length },
-    subjects: {
-      expected: basecourses.length + extraSubjectDocs.length,
-      actual: allSubjectDocs.length,
-    },
+    subjects: { expected: basecourses.length, actual: subjectDocs.length },
     cycles: { expected: cis.length, actual: cycleDocs.length },
     enrollments: {
       expected: counts.enrolledRows - dedupedEnrollments.length + reservationsMigrated,
@@ -681,11 +605,6 @@ function matchHostelPlace(raw) {
     everySlotIdResolves: enrollmentDocs.every(
       (e) => !e.slotId || cycleById.get(String(e.cycle)).schedule.some((s) => String(s._id) === String(e.slotId))
     ),
-    zeroMissingWorld:
-      peopleDocs.every((p) => p.world) &&
-      cycleDocs.every((c) => c.world) &&
-      enrollmentDocs.every((e) => e.world) &&
-      lessonDocs.every((l) => l.world),
   };
   report("verify", verify);
   const verifyOk =
@@ -706,42 +625,42 @@ function matchHostelPlace(raw) {
       for (const t of targets) if (collNames.includes(t)) await db.collection(t).drop();
       const ins = async (name, docs) => docs.length && (await db.collection(name).insertMany(docs));
       await ins("hostels", hostelDocs);
-      await ins("subjects", allSubjectDocs);
+      await ins("subjects", subjectDocs);
       await ins("rooms_v2", roomDocs);
       await ins("people", peopleDocs);
       await ins("cycles", cycleDocs);
       await ins("enrollments", enrollmentDocs);
       await ins("lessons_v2", lessonDocs);
       console.log(
-        `\n✅ built: people ${peopleDocs.length} · subjects ${allSubjectDocs.length} · cycles ${cycleDocs.length} · ` +
+        `\n✅ built: people ${peopleDocs.length} · subjects ${subjectDocs.length} · cycles ${cycleDocs.length} · ` +
           `enrollments ${enrollmentDocs.length} · lessons_v2 ${lessonDocs.length} · rooms_v2 ${roomDocs.length} · hostels ${hostelDocs.length}`
       );
 
       // Indexes - identical specs to the Mongoose schemas.
       const ix = (name, keys, opts) => db.collection(name).createIndex(keys, opts || {});
-      await ix("people", { world: 1, role: 1 });
-      await ix("people", { world: 1, email: 1 }, { unique: true, partialFilterExpression: { email: { $exists: true } } });
-      await ix("people", { world: 1, senzeyId: 1 }, { unique: true, partialFilterExpression: { senzeyId: { $exists: true } } });
-      await ix("people", { world: 1, "pipeline.stage": 1, "pipeline.since": 1 });
-      await ix("people", { world: 1, "matching.interests": 1 });
-      await ix("people", { world: 1, subjects: 1 });
-      await ix("subjects", { world: 1, name: 1 }, { unique: true });
-      await ix("subjects", { world: 1, category: 1 });
-      await ix("cycles", { world: 1, status: 1 });
-      await ix("cycles", { world: 1, subject: 1 });
-      await ix("cycles", { world: 1, teacher: 1 });
-      await ix("cycles", { world: 1, hostel: 1 });
-      await ix("cycles", { world: 1, "import.senzeyCourseId": 1 }, { unique: true, partialFilterExpression: { "import.senzeyCourseId": { $exists: true } } });
+      await ix("people", { role: 1 });
+      await ix("people", { email: 1 }, { unique: true, partialFilterExpression: { email: { $exists: true } } });
+      await ix("people", { senzeyId: 1 }, { unique: true, partialFilterExpression: { senzeyId: { $exists: true } } });
+      await ix("people", { "pipeline.stage": 1, "pipeline.since": 1 });
+      await ix("people", { "matching.interests": 1 });
+      await ix("people", { subjects: 1 });
+      await ix("subjects", { name: 1 }, { unique: true });
+      await ix("subjects", { category: 1 });
+      await ix("cycles", { status: 1 });
+      await ix("cycles", { subject: 1 });
+      await ix("cycles", { teacher: 1 });
+      await ix("cycles", { hostel: 1 });
+      await ix("cycles", { "import.senzeyCourseId": 1 }, { unique: true, partialFilterExpression: { "import.senzeyCourseId": { $exists: true } } });
       await ix("enrollments", { cycle: 1, student: 1 }, { unique: true });
       await ix("enrollments", { student: 1, status: 1 });
       await ix("enrollments", { cycle: 1, status: 1 });
-      await ix("enrollments", { world: 1, status: 1 });
+      await ix("enrollments", { status: 1 });
       await ix("lessons_v2", { cycle: 1, date: 1 }, { unique: true, partialFilterExpression: { source: "live" } });
       await ix("lessons_v2", { cycle: 1, source: 1, date: 1 });
       await ix("lessons_v2", { "attendance.student": 1, date: -1 });
-      await ix("lessons_v2", { world: 1, date: 1 });
-      await ix("rooms_v2", { world: 1, name: 1 }, { unique: true });
-      await ix("hostels", { world: 1, name: 1 }, { unique: true });
+      await ix("lessons_v2", { date: 1 });
+      await ix("rooms_v2", { name: 1 }, { unique: true });
+      await ix("hostels", { name: 1 }, { unique: true });
       console.log("✅ indexes created");
     }
   }

@@ -10,7 +10,6 @@
  *
  * Usage:
  *   node scripts/backfillProfileLog.js --dry
- *   node scripts/backfillProfileLog.js --world=real
  *   node scripts/backfillProfileLog.js
  */
 
@@ -19,18 +18,16 @@ const mongoose = require("mongoose");
 const connectDB = require("../config/db");
 
 const DRY = process.argv.includes("--dry");
-const worldArg = (process.argv.find((a) => a.startsWith("--world=")) || "").split("=")[1];
 
 async function main() {
   await connectDB();
   const profiles = mongoose.connection.db.collection("profiles");
   const filter = { $or: [{ log: { $exists: false } }, { log: { $size: 0 } }] };
-  if (worldArg) filter.world = worldArg;
 
-  const todo = await profiles.find(filter).project({ _id: 1, world: 1, kind: 1, active: 1, createdAt: 1, updatedAt: 1 }).toArray();
-  const byWorld = {};
-  for (const p of todo) byWorld[p.world] = (byWorld[p.world] || 0) + 1;
-  console.log(`profiles without a lifecycle log: ${todo.length}`, byWorld);
+  const todo = await profiles.find(filter).project({ _id: 1, kind: 1, active: 1, createdAt: 1, updatedAt: 1 }).toArray();
+  const byKind = {};
+  for (const p of todo) byKind[p.kind] = (byKind[p.kind] || 0) + 1;
+  console.log(`profiles without a lifecycle log: ${todo.length}`, byKind);
   if (DRY) {
     console.log("dry run - nothing written.");
   } else {

@@ -8,7 +8,7 @@
  * מומש?) - so the grant is embedded: `grant: null` = still in stock.
  *
  * Invariants (service + schema):
- *  - number unique per world.
+ *  - number unique.
  *  - grant.by must hold an ACTIVE ManagerCulture profile; grant.student an
  *    active StudentCulture profile (cultureService).
  *  - a granted voucher cannot be granted again; a redeemed one cannot be
@@ -16,7 +16,6 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS } = require("../utils/domain");
 
 const grantSchema = new mongoose.Schema(
   {
@@ -33,7 +32,6 @@ const grantSchema = new mongoose.Schema(
 
 const voucherSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     /** Where the voucher is good for - "סינמה סיטי", "קפה גרג". */
     name: { type: String, required: [true, "שם השובר הוא חובה"], trim: true },
     number: { type: String, required: [true, "מספר שובר הוא חובה"], trim: true },
@@ -56,7 +54,7 @@ const voucherSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-voucherSchema.index({ world: 1, number: 1 }, { unique: true });
-voucherSchema.index({ world: 1, "grant.student": 1 });
+voucherSchema.index({ number: 1 }, { unique: true });
+voucherSchema.index({ "grant.student": 1 });
 
 module.exports = mongoose.model("Voucher", voucherSchema);

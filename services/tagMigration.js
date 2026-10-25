@@ -2,9 +2,9 @@
  * @file Tag migration - the old profiles → personTags / cycleTags
  * @module services/tagMigration
  *
- * Additive and idempotent: run it as often as you like, on any world. It
- * never touches profiles, people or cycles - the old code keeps working
- * while the new tables fill up.
+ * Additive and idempotent: run it as often as you like. It never touches
+ * profiles, people or cycles - the old code keeps working while the new
+ * tables fill up.
  *
  * What a person gets:
  *  - the tags of every profile kind they ever held (KIND_TAGS), open when
@@ -28,14 +28,14 @@ const tags = require("./tagService");
 
 const LIVE = ["reserved", "active"];
 
-async function migrateWorld(world, { dry = false, log = () => {} } = {}) {
-  const catalog = dry ? await tags.tagMap(world) : await tags.ensureCatalog(world);
+async function migrateTags({ dry = false, log = () => {} } = {}) {
+  const catalog = dry ? await tags.tagMap() : await tags.ensureCatalog();
   const tagId = (key) => catalog.get(key)._id;
 
   const [profiles, cycles, enrollments] = await Promise.all([
-    Profile.find({ world }).lean(),
-    Cycle.find({ world }).select("_id hostel").lean(),
-    Enrollment.find({ world }).select("student cycle status joinedAt reservedAt").lean(),
+    Profile.find().lean(),
+    Cycle.find().select("_id hostel").lean(),
+    Enrollment.find().select("student cycle status joinedAt reservedAt").lean(),
   ]);
   const hostelCycles = new Set(cycles.filter((c) => c.hostel).map((c) => String(c._id)));
   const liveHostelSeat = new Set();
@@ -75,7 +75,7 @@ async function migrateWorld(world, { dry = false, log = () => {} } = {}) {
       if (key === "college" && active && liveHostelSeat.has(pid) && !anyCollegeSeat.has(pid)) {
         hostelOnly++;
         // a hostels student, not a college one - an open college row (written beside the profile) closes
-        if (!dry) await tags.take({ world, personId: pid, key: "college", by: "מערכת", note: "לומד/ת רק בקורסים של הוסטל" });
+        if (!dry) await tags.take({ personId: pid, key: "college", by: "מערכת", note: "לומד/ת רק בקורסים של הוסטל" });
         continue;
       }
       const events =
@@ -109,7 +109,7 @@ async function migrateWorld(world, { dry = false, log = () => {} } = {}) {
       }
       let row = existing;
       if (!existing) {
-        row = await PersonTag.create({ world, person: pid, tag: tagId(key), since: w.since || new Date(), until: w.until });
+        row = await PersonTag.create({ person: pid, tag: tagId(key), since: w.since || new Date(), until: w.until });
         stats.inserted++;
       } else if (String(existing.until || "") !== String(w.until || "")) {
         await PersonTag.updateOne({ _id: existing._id }, { $set: { until: w.until } });
@@ -119,7 +119,7 @@ async function migrateWorld(world, { dry = false, log = () => {} } = {}) {
       for (const ev of events) {
         const had = await PersonTagEvent.exists({ personTag: row._id, event: ev.event, at: ev.at });
         if (had) continue;
-        await PersonTagEvent.create({ world, personTag: row._id, ...ev });
+        await PersonTagEvent.create({ personTag: row._id, ...ev });
         stats.events++;
       }
     }
@@ -127,13 +127,13 @@ async function migrateWorld(world, { dry = false, log = () => {} } = {}) {
 
   for (const c of cycles) {
     stats.cycleRows++;
-    if (!dry) await tags.setCycleProgram({ world, cycleId: c._id, key: c.hostel ? "hostels" : "college" });
+    if (!dry) await tags.setCycleProgram({ cycleId: c._id, key: c.hostel ? "hostels" : "college" });
   }
   // a cycle tag whose cycle is gone
-  if (!dry) await CycleTag.deleteMany({ world, cycle: { $nin: cycles.map((c) => c._id) } });
+  if (!dry) await CycleTag.deleteMany({ cycle: { $nin: cycles.map((c) => c._id) } });
 
-  log(`[${world}] people ${stats.people} · tag rows ${stats.rows} (new ${stats.inserted}, changed ${stats.updated}) · events ${stats.events} · cycles ${stats.cycles} · hostel-only students kept out of college: ${stats.hostelOnly}${dry ? " (dry)" : ""}`);
+  log(`people ${stats.people} · tag rows ${stats.rows} (new ${stats.inserted}, changed ${stats.updated}) · events ${stats.events} · cycles ${stats.cycles} · hostel-only students kept out of college: ${stats.hostelOnly}${dry ? " (dry)" : ""}`);
   return stats;
 }
 
-module.exports = { migrateWorld };
+module.exports = { migrateTags };

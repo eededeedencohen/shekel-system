@@ -14,7 +14,7 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, HOSTEL_KIND_KEYS, HOSTEL_CONTACT_ROLE_KEYS } = require("../utils/domain");
+const { HOSTEL_KIND_KEYS, HOSTEL_CONTACT_ROLE_KEYS } = require("../utils/domain");
 
 /**
  * One of the house's own people (שמרית, 2026-10-14: "בכל הוסטל אמור להיות
@@ -34,7 +34,6 @@ const contactSchema = new mongoose.Schema(
 
 const hostelSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     name: { type: String, required: [true, "שם הוסטל הוא חובה"], trim: true },
     active: { type: Boolean, default: true },
     /** הוסטל (people live there) or קהילה (independent housing: they come to the framework; not a hostel for the Ministry report). */
@@ -66,9 +65,9 @@ const hostelSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-hostelSchema.index({ world: 1, name: 1 }, { unique: true });
+hostelSchema.index({ name: 1 }, { unique: true });
 
-/** The fields a PUT may change (`world` never; `name` must stay non-empty). */
+/** The fields a PUT may change (`name` must stay non-empty). */
 hostelSchema.statics.EDITABLE = ["name", "active", "kind", "contacts", "address", "city", "phone", "email", "contact", "notes", "approvals", "since"];
 
 module.exports = mongoose.model("Hostel", hostelSchema);

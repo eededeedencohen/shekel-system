@@ -13,11 +13,10 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, INTAKE_DOCUMENT_KEYS } = require("../utils/domain");
+const { INTAKE_DOCUMENT_KEYS } = require("../utils/domain");
 
 const uploadLinkSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     intake: { type: mongoose.Schema.Types.ObjectId, ref: "Intake", required: true, index: true },
     token: { type: String, required: true, trim: true, unique: true },
     expiresAt: { type: Date, required: true },
@@ -32,7 +31,7 @@ const uploadLinkSchema = new mongoose.Schema(
   { timestamps: true, collection: "uploadLinks" }
 );
 
-uploadLinkSchema.index({ world: 1, intake: 1, expiresAt: -1 });
+uploadLinkSchema.index({ intake: 1, expiresAt: -1 });
 
 /** Still open right now? */
 uploadLinkSchema.methods.isLive = function () {

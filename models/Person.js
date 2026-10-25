@@ -15,25 +15,16 @@
  * not move identity.
  *
  * Invariants that live HERE, not in controllers:
- *  - `world` is immutable and enum-checked (set from middleware, never body).
  *  - availability is the ONE home for weekly windows (shared TimeRange).
  *  - People are soft-deleted (deletedAt) - never hard-deleted while
  *    enrollments/lessons reference them.
  */
 
 const mongoose = require("mongoose");
-const { WORLDS } = require("../utils/domain");
 const { timeRangeSchema } = require("./schemas/timeRange");
 
 const personSchema = new mongoose.Schema(
   {
-    world: {
-      type: String,
-      enum: WORLDS,
-      required: true,
-      default: "real",
-      immutable: true,
-    },
     firstName: {
       type: String,
       required: [true, "חובה להזין שם פרטי"],
@@ -41,7 +32,7 @@ const personSchema = new mongoose.Schema(
     },
     lastName: { type: String, default: "", trim: true },
     /**
-     * OPTIONAL - unique per world when present (partial index). Doubles as
+     * OPTIONAL - unique when present (partial index). Doubles as
      * the future login identifier.
      */
     email: {
@@ -94,11 +85,11 @@ const personSchema = new mongoose.Schema(
 );
 
 personSchema.index(
-  { world: 1, email: 1 },
+  { email: 1 },
   { unique: true, partialFilterExpression: { email: { $exists: true } } }
 );
 personSchema.index(
-  { world: 1, senzeyId: 1 },
+  { senzeyId: 1 },
   { unique: true, partialFilterExpression: { senzeyId: { $exists: true } } }
 );
 

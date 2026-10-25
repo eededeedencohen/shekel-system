@@ -4,9 +4,7 @@
  *
  * Everything under /api/public is reachable WITHOUT a user: the options
  * the page needs to render, the submission itself, and the documents
- * page behind a link. The world comes from the X-Dataset header like
- * every other route (the page passes `?world=` through), so a demo world
- * can exercise the whole flow without touching real people.
+ * page behind a link.
  *
  * A token opens either a temporary upload link the coordinator made
  * (models/UploadLink - alive for the minutes she picked) or the landing
@@ -38,8 +36,8 @@ const intake = require("../services/intakeService");
 /** GET /api/public/join/options - everything the page renders from. */
 exports.joinOptions = catchAsync(async (req, res) => {
   const [subjects, hostels] = await Promise.all([
-    Subject.find({ world: req.world, active: { $ne: false } }).select("name category").sort({ name: 1 }).lean(),
-    Hostel.find({ world: req.world, active: { $ne: false } }).select("name kind").sort({ name: 1 }).lean(),
+    Subject.find({ active: { $ne: false } }).select("name category").sort({ name: 1 }).lean(),
+    Hostel.find({ active: { $ne: false } }).select("name kind").sort({ name: 1 }).lean(),
   ]);
   // "הוסטל ליבא" / "קהילת בית אחווה" - a house named by its kind
   const hostelNames = hostels.length ? hostels.map((h) => `${h.kind === "community" ? "קהילת" : "הוסטל"} ${h.name}`) : HOSTELS.map((h) => `הוסטל ${h}`);
@@ -47,7 +45,6 @@ exports.joinOptions = catchAsync(async (req, res) => {
     status: "success",
     data: {
       options: {
-        world: req.world,
         programs: PROGRAMS,
         subjects,
         subjectCategories: SUBJECT_CATEGORIES,
@@ -65,7 +62,7 @@ exports.joinOptions = catchAsync(async (req, res) => {
 
 /** POST /api/public/join - the submission. */
 exports.join = catchAsync(async (req, res) => {
-  const out = await intake.submitLanding({ world: req.world, body: req.body || {} });
+  const out = await intake.submitLanding({ body: req.body || {} });
   res.status(201).json({
     status: "success",
     data: {
@@ -81,22 +78,22 @@ exports.join = catchAsync(async (req, res) => {
 
 /** GET /api/public/join/:token - the documents page behind a link. */
 exports.viewByToken = catchAsync(async (req, res) => {
-  const { intake: doc, person, link } = await intake.resolveToken({ world: req.world, token: req.params.token });
-  res.status(200).json({ status: "success", data: { view: { ...intake.publicView(doc, person, link), world: req.world } } });
+  const { intake: doc, person, link } = await intake.resolveToken({ token: req.params.token });
+  res.status(200).json({ status: "success", data: { view: intake.publicView(doc, person, link) } });
 });
 
 /** POST /api/public/join/:token/documents - { key, fileName, mime, data(base64) } */
 exports.uploadByToken = catchAsync(async (req, res) => {
-  const { intake: doc, person, link } = await intake.resolveToken({ world: req.world, token: req.params.token });
+  const { intake: doc, person, link } = await intake.resolveToken({ token: req.params.token });
   const { key, fileName, mime, data, thumb } = req.body || {};
   if (!key || !data) throw AppError.of("MISSING_FIELDS", 400, "key, data");
   const { intake: saved } = await intake.uploadDocument({ intake: doc, key, fileName, mime, data, thumb, staff: false, link });
-  res.status(200).json({ status: "success", data: { view: { ...intake.publicView(saved, person, link), world: req.world } } });
+  res.status(200).json({ status: "success", data: { view: intake.publicView(saved, person, link) } });
 });
 
 /** The document row a link may show (a temporary link can be narrowed to some documents). */
 async function rowForLink(req) {
-  const { intake: doc, link } = await intake.resolveToken({ world: req.world, token: req.params.token });
+  const { intake: doc, link } = await intake.resolveToken({ token: req.params.token });
   const key = req.params.key;
   if (link?.docs?.length && !link.docs.includes(key)) throw AppError.of("NOT_FOUND", 404, "קובץ");
   return { doc, row: (doc.documents || []).find((d) => d.key === key) };
@@ -126,8 +123,8 @@ exports.thumbByToken = catchAsync(async (req, res) => {
 
 /** DELETE /api/public/join/:token/documents/:key - pull back an unconfirmed upload. */
 exports.removeByToken = catchAsync(async (req, res) => {
-  const { intake: doc, person, link } = await intake.resolveToken({ world: req.world, token: req.params.token });
+  const { intake: doc, person, link } = await intake.resolveToken({ token: req.params.token });
   const out = await intake.removeStudentDocument({ intake: doc, key: req.params.key });
   const saved = out.intake || out;
-  res.status(200).json({ status: "success", data: { view: { ...intake.publicView(saved, person, link), world: req.world } } });
+  res.status(200).json({ status: "success", data: { view: intake.publicView(saved, person, link) } });
 });

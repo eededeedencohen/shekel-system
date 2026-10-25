@@ -14,11 +14,10 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, PROFILE_EVENT_KEYS } = require("../utils/domain");
+const { PROFILE_EVENT_KEYS } = require("../utils/domain");
 
 const personTagSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     person: { type: mongoose.Schema.Types.ObjectId, ref: "Person", required: true, immutable: true },
     tag: { type: mongoose.Schema.Types.ObjectId, ref: "Tag", required: true, immutable: true },
     since: { type: Date, default: Date.now },
@@ -27,11 +26,10 @@ const personTagSchema = new mongoose.Schema(
   { timestamps: true, collection: "personTags" }
 );
 personTagSchema.index({ person: 1, tag: 1 }, { unique: true });
-personTagSchema.index({ world: 1, tag: 1, until: 1 });
+personTagSchema.index({ tag: 1, until: 1 });
 
 const personTagEventSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     personTag: { type: mongoose.Schema.Types.ObjectId, ref: "PersonTag", required: true },
     event: { type: String, enum: PROFILE_EVENT_KEYS, required: true },
     at: { type: Date, default: Date.now },

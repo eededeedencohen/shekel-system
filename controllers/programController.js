@@ -28,31 +28,30 @@ exports.transferProgram = catchAsync(async (req, res, next) => {
   const { from, to, by, note, stage, at } = req.body;
   if (!from || !to) return next(AppError.of("MISSING_FIELDS", 400, "from, to"));
   lens.assertProfileKind(req, to); // the destination must be a program the persona has (lensService)
-  const { effects } = await transfer({ personId: req.params.id, world: req.world, from, to, by, note, stage, at });
+  const { effects } = await transfer({ personId: req.params.id, from, to, by, note, stage, at });
   await respondWithPerson(res, req.params.id, { effects });
 });
 
 exports.getProgramTimeline = catchAsync(async (req, res, next) => {
-  const person = await Person.findOne({ _id: req.params.id, world: req.world });
+  const person = await Person.findOne({ _id: req.params.id });
   if (!person) return next(AppError.of("NOT_FOUND", 404, "אדם"));
   const timeline = await programTimeline(person._id);
   res.status(200).json({ status: "success", data: timeline });
 });
 
 exports.closeProfile = catchAsync(async (req, res, next) => {
-  const profile = await Profile.findOne({ _id: req.params.id, world: req.world });
+  const profile = await Profile.findOne({ _id: req.params.id });
   if (!profile) return next(AppError.of("NOT_FOUND", 404, "פרופיל"));
-  const { effects } = await closeProfile({ profile, world: req.world, by: req.body.by, note: req.body.note, at: req.body.at });
+  const { effects } = await closeProfile({ profile, by: req.body.by, note: req.body.note, at: req.body.at });
   await respondWithPerson(res, profile.person, { effects });
 });
 
 /** The budget-side leave report: closes the program and writes the "דיווח עזיבה" activity. */
 exports.leaveProgram = catchAsync(async (req, res, next) => {
-  const profile = await Profile.findOne({ _id: req.params.id, world: req.world });
+  const profile = await Profile.findOne({ _id: req.params.id });
   if (!profile) return next(AppError.of("NOT_FOUND", 404, "פרופיל"));
   const { effects, activity } = await leaveProgram({
     profile,
-    world: req.world,
     by: req.body.by,
     leftAt: req.body.leftAt,
     reason: req.body.reason,
@@ -63,8 +62,8 @@ exports.leaveProgram = catchAsync(async (req, res, next) => {
 });
 
 exports.reopenProfile = catchAsync(async (req, res, next) => {
-  const profile = await Profile.findOne({ _id: req.params.id, world: req.world });
+  const profile = await Profile.findOne({ _id: req.params.id });
   if (!profile) return next(AppError.of("NOT_FOUND", 404, "פרופיל"));
-  await reopenProfile({ profile, world: req.world, by: req.body.by, note: req.body.note, stage: req.body.stage, at: req.body.at });
+  await reopenProfile({ profile, by: req.body.by, note: req.body.note, stage: req.body.stage, at: req.body.at });
   await respondWithPerson(res, profile.person);
 });

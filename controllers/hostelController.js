@@ -55,23 +55,23 @@ function pickDetails(body) {
 }
 
 exports.getHostels = catchAsync(async (req, res) => {
-  const hostels = await Hostel.find({ world: req.world }).sort({ name: 1 });
+  const hostels = await Hostel.find().sort({ name: 1 });
   res.status(200).json({ status: "success", results: hostels.length, data: { hostels } });
 });
 
 exports.getHostel = catchAsync(async (req, res, next) => {
-  const hostel = await Hostel.findOne({ _id: req.params.id, world: req.world });
+  const hostel = await Hostel.findOne({ _id: req.params.id });
   if (!hostel) return next(AppError.of("NOT_FOUND", 404, "הוסטל"));
   res.status(200).json({ status: "success", data: { hostel } });
 });
 
 exports.createHostel = catchAsync(async (req, res) => {
-  const hostel = await Hostel.create({ ...pickDetails(req.body), name: req.body.name, world: req.world });
+  const hostel = await Hostel.create({ ...pickDetails(req.body), name: req.body.name });
   res.status(201).json({ status: "success", data: { hostel } });
 });
 
 exports.updateHostel = catchAsync(async (req, res, next) => {
-  const hostel = await Hostel.findOne({ _id: req.params.id, world: req.world });
+  const hostel = await Hostel.findOne({ _id: req.params.id });
   if (!hostel) return next(AppError.of("NOT_FOUND", 404, "הוסטל"));
   const patch = pickDetails(req.body);
   if ("name" in patch && !String(patch.name || "").trim()) {
@@ -83,7 +83,7 @@ exports.updateHostel = catchAsync(async (req, res, next) => {
 });
 
 exports.deleteHostel = catchAsync(async (req, res, next) => {
-  const hostel = await Hostel.findOne({ _id: req.params.id, world: req.world });
+  const hostel = await Hostel.findOne({ _id: req.params.id });
   if (!hostel) return next(AppError.of("NOT_FOUND", 404, "הוסטל"));
   const [tracks, venues, residents, managers] = await Promise.all([
     Cycle.countDocuments({ hostel: hostel._id }),

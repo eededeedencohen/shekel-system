@@ -49,7 +49,7 @@ const schema = new mongoose.Schema({
 });
 
 applyStudentCore(schema);
-schema.index({ world: 1, "matching.interests": 1 });
-schema.index({ world: 1, "residence.hostel": 1 });
+schema.index({ "matching.interests": 1 });
+schema.index({ "residence.hostel": 1 });
 
 module.exports = Profile.discriminator("StudentCollege", schema);

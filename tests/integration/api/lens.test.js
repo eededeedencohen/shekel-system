@@ -33,16 +33,16 @@ const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
 const ids = (rows) => rows.map((r) => String(r._id));
 
 /**
- * One world with everyone in it:
+ * One cast with everyone in it:
  *   A  a college student            C  a culture student         T  a teacher (shared)
  *   H  a college student in the hostels (the hostels tag)        S  culture staff
  *   M  a hostel manager              X  a college cycle of T      Y  a hostel cycle of T
  *   eA A sits in X, eH H sits in Y;  lX / lY one lesson each
  */
-async function world() {
+async function cast() {
   const hostel = await makeHostel();
   const [A, H, C, T, S] = await Promise.all([makeStudent(), makeStudent(), makeCultureStudent(), makeTeacher(), makeCultureStaff()]);
-  await tags.give({ world: "real", personId: H._id, key: "hostels", by: "בדיקה" });
+  await tags.give({ personId: H._id, key: "hostels", by: "בדיקה" });
   const { person: M } = await createPersonWithProfile("ManagerHostel", { firstName: "מנהל", lastName: "הוסטל", email: `hm_${Date.now()}@test.local`, hostels: [hostel._id] }, { trusted: true });
   const X = await makeCycle({ teacher: T._id });
   const Y = await makeCycle({ teacher: T._id, hostel: hostel._id });
@@ -59,7 +59,7 @@ describe("the lens - a persona's own rows and nothing of another program's", () 
   beforeEach(async () => {
     await ensureSeedAccounts();
     for (const u of ["eden", "hagai", "yetav", "tamar", "shiran"]) c[u] = await signIn(u);
-    w = await world();
+    w = await cast();
   });
   const get = (user, path) => request(app).get(path).set("Cookie", c[user]);
   const expectIds = (res, has, not) => {
@@ -145,8 +145,8 @@ describe("the lens - a persona's own rows and nothing of another program's", () 
     expect((await get("hagai", `/api/intakes/${iC._id}`)).status).toBe(403);
     expect((await get("shiran", `/api/intakes/${iC._id}`)).status).toBe(200);
 
-    const rowA = await activities.addActivity({ world: "real", person: A._id, kind: "update", by: "בדיקה", body: "א", skipRequired: true });
-    const rowC = await activities.addActivity({ world: "real", person: C._id, kind: "update", by: "בדיקה", body: "ג", skipRequired: true });
+    const rowA = await activities.addActivity({ person: A._id, kind: "update", by: "בדיקה", body: "א", skipRequired: true });
+    const rowC = await activities.addActivity({ person: C._id, kind: "update", by: "בדיקה", body: "ג", skipRequired: true });
     expectIds(await get("hagai", "/api/activities"), [rowA], [rowC]);
     expectIds(await get("shiran", "/api/activities"), [rowC], [rowA]);
     expectIds(await get("yetav", "/api/activities"), [rowA, rowC], []);
@@ -159,7 +159,7 @@ describe("the lens - a persona's own rows and nothing of another program's", () 
 
   it("invoices: a teacher's invoice shows on the side its lessons are on", async () => {
     const { T, lX, lY } = w;
-    const inv = await invoices.createInvoice({ world: "real", teacherId: T._id, lessonIds: [lX._id], imageData: PNG, by: "בדיקה" });
+    const inv = await invoices.createInvoice({ teacherId: T._id, lessonIds: [lX._id], imageData: PNG, by: "בדיקה" });
     expect(ids((await get("hagai", "/api/invoices")).body.data.invoices)).toContain(String(inv._id));
     expect(ids((await get("tamar", "/api/invoices")).body.data.invoices)).not.toContain(String(inv._id));
     expect((await get("tamar", `/api/invoices/${inv._id}`)).status).toBe(403);

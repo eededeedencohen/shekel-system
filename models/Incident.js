@@ -11,11 +11,10 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, INCIDENT_PRIMARY_KEYS } = require("../utils/domain");
+const { INCIDENT_PRIMARY_KEYS } = require("../utils/domain");
 
 const incidentSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     person: { type: mongoose.Schema.Types.ObjectId, ref: "Person", required: true, index: true },
     /** When it happened - date AND time. */
     at: { type: Date, required: true },
@@ -40,6 +39,6 @@ const incidentSchema = new mongoose.Schema(
   { timestamps: true, collection: "incidents" }
 );
 
-incidentSchema.index({ world: 1, at: -1 });
+incidentSchema.index({ at: -1 });
 
 module.exports = mongoose.model("Incident", incidentSchema);

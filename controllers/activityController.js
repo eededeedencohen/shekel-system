@@ -6,9 +6,9 @@
  *   POST   /                       { person*, kind*, at, by, title, body, fields, program }
  *   PATCH  /:id                    { at, title, body, fields, by }
  *   DELETE /:id
- *   GET    /templates              every kind's template of the world (stored or default)
+ *   GET    /templates              every kind's template (stored or default)
  *   GET    /templates/:kind
- *   PUT    /templates/:kind        { title, body, fields[], by } - the world's own version
+ *   PUT    /templates/:kind        { title, body, fields[], by } - the stored version
  *   DELETE /templates/:kind        back to the default
  *
  * Every rule lives in services/activityService.
@@ -21,7 +21,7 @@ const lens = require("../services/lensService");
 exports.getActivities = catchAsync(async (req, res) => {
   // the rows of the acting persona's people only (lensService)
   const persons = await lens.scopeOf(req).people();
-  const rows = await activities.listActivities({ world: req.world, person: req.query.person, kind: req.query.kind, persons });
+  const rows = await activities.listActivities({ person: req.query.person, kind: req.query.kind, persons });
   res.status(200).json({ status: "success", results: rows.length, data: { activities: rows } });
 });
 
@@ -29,7 +29,6 @@ exports.createActivity = catchAsync(async (req, res) => {
   const b = req.body || {};
   await lens.assertPerson(req, b.person); // on one of the persona's own people
   const activity = await activities.addActivity({
-    world: req.world,
     person: b.person,
     kind: b.kind,
     at: b.at,
@@ -44,32 +43,32 @@ exports.createActivity = catchAsync(async (req, res) => {
 
 exports.updateActivity = catchAsync(async (req, res) => {
   const b = req.body || {};
-  const activity = await activities.updateActivity({ world: req.world, id: req.params.id, at: b.at, title: b.title, body: b.body, fields: b.fields, by: b.by });
+  const activity = await activities.updateActivity({ id: req.params.id, at: b.at, title: b.title, body: b.body, fields: b.fields, by: b.by });
   res.status(200).json({ status: "success", data: { activity } });
 });
 
 exports.deleteActivity = catchAsync(async (req, res) => {
-  await activities.removeActivity({ world: req.world, id: req.params.id });
+  await activities.removeActivity({ id: req.params.id });
   res.status(204).json({ status: "success", data: null });
 });
 
 exports.getTemplates = catchAsync(async (req, res) => {
-  const templates = await activities.templatesOf(req.world);
+  const templates = await activities.templatesOf();
   res.status(200).json({ status: "success", results: templates.length, data: { templates } });
 });
 
 exports.getTemplate = catchAsync(async (req, res) => {
-  const template = await activities.templateOf(req.world, req.params.kind);
+  const template = await activities.templateOf(req.params.kind);
   res.status(200).json({ status: "success", data: { template } });
 });
 
 exports.saveTemplate = catchAsync(async (req, res) => {
   const b = req.body || {};
-  const template = await activities.saveTemplate({ world: req.world, kind: req.params.kind, title: b.title, body: b.body, fields: b.fields, by: b.by });
+  const template = await activities.saveTemplate({ kind: req.params.kind, title: b.title, body: b.body, fields: b.fields, by: b.by });
   res.status(200).json({ status: "success", data: { template } });
 });
 
 exports.resetTemplate = catchAsync(async (req, res) => {
-  const template = await activities.resetTemplate({ world: req.world, kind: req.params.kind });
+  const template = await activities.resetTemplate({ kind: req.params.kind });
   res.status(200).json({ status: "success", data: { template } });
 });

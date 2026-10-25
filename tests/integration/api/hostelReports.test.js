@@ -26,13 +26,13 @@ async function houseMonth() {
   const subject = await makeSubject({ name: "כלבנות" });
   const teacher = await makeTeacher({ firstName: "תומר", lastName: "דורון" });
   const cycle = await makeCycle({ subject: subject._id, teacher: teacher._id, hostel: hostel._id, startDate: new Date("2026-01-01"), endDate: new Date("2027-07-31"), schedule: [{ day: 1, start: "10:00", end: "11:00" }] });
-  await tags.setCycleProgram({ world: "real", cycleId: cycle._id, key: "hostels" });
+  await tags.setCycleProgram({ cycleId: cycle._id, key: "hostels" });
   const c2 = await makeCycle({ teacher: teacher._id, hostel: community._id, startDate: new Date("2026-01-01"), endDate: new Date("2027-07-31"), schedule: [{ day: 3, start: "17:00", end: "18:00" }] });
-  await tags.setCycleProgram({ world: "real", cycleId: c2._id, key: "hostels" });
+  await tags.setCycleProgram({ cycleId: c2._id, key: "hostels" });
   const residents = [];
   for (const [f, l] of [["ליטבין", "סבטלנה"], ["אסתר", "כהן"], ["ניצה", "פרסי"]]) {
     const s = await makeStudent({ firstName: f, lastName: l, residence: { hostel: hostel._id, since: new Date("2026-01-01") } });
-    await tags.give({ world: "real", personId: s._id, key: "hostels" });
+    await tags.give({ personId: s._id, key: "hostels" });
     await request(app).post("/api/enrollments").send({ cycle: cycle._id, student: s._id });
     residents.push(s);
   }
@@ -140,8 +140,8 @@ describe("the hostel's attendance draft", () => {
     expect(resolved.extras[0].resolvedAt).toBeTruthy();
     const newcomer = await Person.findById(resolved.extras[0].person._id);
     expect(newcomer.firstName).toBe("דייר");
-    expect(await tags.holds(newcomer._id, "real", "hostels")).toBe(true);
-    expect(await tags.holds(newcomer._id, "real", "college")).toBe(false);
+    expect(await tags.holds(newcomer._id, "hostels")).toBe(true);
+    expect(await tags.holds(newcomer._id, "college")).toBe(false);
     const prof = await Profile.findOne({ person: newcomer._id, kind: "StudentCollege" });
     expect(String(prof.residence.hostel)).toBe(String(hostel._id));
     expect(await Enrollment.exists({ cycle: cycle._id, student: newcomer._id, status: "active" })).toBeTruthy();
@@ -192,7 +192,7 @@ describe("the hostel's attendance draft", () => {
 
     // after the opening: a second course on Thursdays, and the first course moves to Tuesdays (as her table did to יוגה at אופק)
     const extra = await makeCycle({ teacher: teacher._id, hostel: hostel._id, startDate: new Date("2026-01-01"), endDate: new Date("2027-07-31"), schedule: [{ day: 4, start: "14:00", end: "15:00" }] });
-    await tags.setCycleProgram({ world: "real", cycleId: extra._id, key: "hostels" });
+    await tags.setCycleProgram({ cycleId: extra._id, key: "hostels" });
     await Cycle.updateOne({ _id: cycle._id }, { schedule: [{ day: 2, start: "10:00", end: "11:00" }] });
 
     const report = (await request(app).get(`/api/hostel-reports/${opened._id}`)).body.data.report;
@@ -244,7 +244,7 @@ describe("the Ministry of Health's month", () => {
     // a house that is a hostel AND holds a supportive community (her "מצפה רעות הוסטל וקהילה תומכת") is a hostel for the Ministry
     const mixed = await makeHostel({ name: "מצפה רעות", kind: "both", approvals: 12 });
     const c3 = await makeCycle({ hostel: mixed._id, startDate: new Date("2026-01-01"), endDate: new Date("2027-07-31"), schedule: [{ day: 0, start: "16:00", end: "17:00" }] });
-    await tags.setCycleProgram({ world: "real", cycleId: c3._id, key: "hostels" });
+    await tags.setCycleProgram({ cycleId: c3._id, key: "hostels" });
     expect((await request(app).put(`/api/hostels/${mixed._id}`).send({ kind: "wizard" })).body.code).toBe("HOSTEL_KIND_INVALID");
     const res = await request(app).get(`/api/hostel-reports/ministry?month=${month}`);
     expect(res.status).toBe(200);

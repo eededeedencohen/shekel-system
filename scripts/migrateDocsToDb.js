@@ -3,7 +3,7 @@
  * @module scripts/migrateDocsToDb
  *
  * Until 2026-10-07 every intake document was a file under
- * UPLOAD_DIR/<world>/<intakeId>/ - and Render wipes that disk on every
+ * UPLOAD_DIR/real/<intakeId>/ (the legacy layout) - and Render wipes that disk on every
  * deploy (flagged to Eden 2026-09-22). This copies every file that still
  * exists on the disk into StoredFile (`files`), points the document row
  * at it (`file.stored`) and clears `file.storedName`. A row whose disk
@@ -36,19 +36,19 @@ const DELETE = process.argv.includes("--delete");
       const p = intakeService.documentPath(rec, row);
       if (!p || !fs.existsSync(p)) {
         missing++;
-        console.log(`✗ ${rec.world} · ${rec._id} · ${row.key} · the file is gone from the disk (${row.file.storedName})`);
+        console.log(`✗ ${rec._id} · ${row.key} · the file is gone from the disk (${row.file.storedName})`);
         continue;
       }
       const data = fs.readFileSync(p);
       if (!DRY) {
-        const stored = await StoredFile.create({ world: rec.world, name: row.file.name || row.file.storedName, mime: row.file.mime, size: data.length, data });
+        const stored = await StoredFile.create({ name: row.file.name || row.file.storedName, mime: row.file.mime, size: data.length, data });
         row.file.stored = stored._id;
         row.file.storedName = undefined;
         touched = true;
         if (DELETE) fs.unlinkSync(p);
       }
       copied++;
-      console.log(`✓ ${rec.world} · ${rec._id} · ${row.key} · ${data.length} bytes${DRY ? " (dry)" : ""}`);
+      console.log(`✓ ${rec._id} · ${row.key} · ${data.length} bytes${DRY ? " (dry)" : ""}`);
     }
     if (touched) {
       rec.markModified("documents");

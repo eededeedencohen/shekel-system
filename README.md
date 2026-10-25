@@ -34,8 +34,6 @@ git add client-dist && git commit -m "client build" && git push
 
 ```bash
 npm test                              # Jest + Supertest על Mongo בזיכרון
-node scripts/seedTestData.js          # עולם הטסט (world:"test")
-node scripts/seedPokemon.js           # עולם הפוקימון
 node scripts/backupJson.js            # גיבוי EJSON של כל האוספים (ל-backups/, לא ב-git)
 ```
 

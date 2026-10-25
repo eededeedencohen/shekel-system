@@ -2,8 +2,7 @@
  * חשבוניות של מורים - a picture + the lessons written on it. The rules:
  * at least one lesson, only the teacher's own lessons (the cycle's teacher
  * or the substitute written on the lesson), a lesson billed once, the
- * picture validated and served back, removal frees the lessons, worlds
- * stay apart.
+ * picture validated and served back, removal frees the lessons.
  */
 
 const request = require("supertest");
@@ -17,18 +16,15 @@ const PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPh
 const IMAGE = `data:image/png;base64,${PNG_B64}`;
 
 /** A teacher with a cycle and `n` lessons of it. */
-async function teacherWithLessons(n = 2, world = "real") {
-  const teacher = await makeTeacher({ world });
-  const cycle = await makeCycle({ teacher: teacher._id, world });
+async function teacherWithLessons(n = 2) {
+  const teacher = await makeTeacher();
+  const cycle = await makeCycle({ teacher: teacher._id });
   const lessons = [];
-  for (let i = 0; i < n; i++) lessons.push(await makeLesson({ cycle: cycle._id, world, date: new Date(`2026-03-${10 + i}T00:00:00.000Z`) }));
+  for (let i = 0; i < n; i++) lessons.push(await makeLesson({ cycle: cycle._id, date: new Date(`2026-03-${10 + i}T00:00:00.000Z`) }));
   return { teacher, cycle, lessons };
 }
 
-const post = (body, world) => {
-  const r = request(app).post("/api/invoices").send(body);
-  return world ? r.set("X-Dataset", world) : r;
-};
+const post = (body) => request(app).post("/api/invoices").send(body);
 
 describe("POST /api/invoices", () => {
   it("creates an invoice: the picture is stored, the lessons are rows, the answer carries them", async () => {
@@ -139,18 +135,6 @@ describe("reading invoices", () => {
     expect(byId[String(lessons[0]._id)]).toBe(a._id);
     expect(byId[String(lessons[1]._id)]).toBe(b._id);
     expect(byId[String(lessons[2]._id)]).toBeNull();
-  });
-
-  it("keeps worlds apart", async () => {
-    const t = await teacherWithLessons(1, "test");
-    const res = await post({ teacher: t.teacher._id, lessons: [t.lessons[0]._id], imageData: IMAGE }, "test");
-    expect(res.status).toBe(201);
-    expect((await request(app).get(`/api/invoices?teacher=${t.teacher._id}`)).body.data.invoices).toHaveLength(0);
-    expect((await request(app).get(`/api/invoices/${res.body.data.invoice._id}`)).status).toBe(404);
-    expect((await request(app).get(`/api/invoices/${res.body.data.invoice._id}`).set("X-Dataset", "test")).status).toBe(200);
-    // a lesson of the real world cannot be billed from the test world
-    const real = await teacherWithLessons(1);
-    expect((await post({ teacher: real.teacher._id, lessons: [real.lessons[0]._id], imageData: IMAGE }, "test")).status).toBe(400);
   });
 });
 

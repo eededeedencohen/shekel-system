@@ -1,6 +1,6 @@
 /**
  * @file personDocumentController - a person's own papers (a teacher's
- * syllabus), under /api/people/:id/documents; the world-wide list for the
+ * syllabus), under /api/people/:id/documents; the full list for the
  * client's slice under /api/people/documents (the lens narrows it).
  * @module controllers/personDocumentController
  */
@@ -15,29 +15,29 @@ const by = (req) => req.actor?.name || req.account?.name || "";
 
 exports.listAll = catchAsync(async (req, res) => {
   const persons = await lens.scopeOf(req).people();
-  const documents = await docs.list({ world: req.world, persons });
+  const documents = await docs.list({ persons });
   res.status(200).json({ status: "success", results: documents.length, data: { documents } });
 });
 
 exports.listOfPerson = catchAsync(async (req, res) => {
-  const documents = await docs.list({ world: req.world, personId: req.params.id });
+  const documents = await docs.list({ personId: req.params.id });
   res.status(200).json({ status: "success", results: documents.length, data: { documents } });
 });
 
 exports.add = catchAsync(async (req, res) => {
   const { kind, label, fileName, mime, data, thumb, note } = req.body || {};
   if (!data) throw AppError.of("MISSING_FIELDS", 400, "data");
-  const document = await docs.add({ world: req.world, personId: req.params.id, kind, label, fileName, mime, data, thumb, note, by: by(req) });
+  const document = await docs.add({ personId: req.params.id, kind, label, fileName, mime, data, thumb, note, by: by(req) });
   res.status(201).json({ status: "success", data: { document } });
 });
 
 exports.remove = catchAsync(async (req, res) => {
-  await docs.remove({ world: req.world, personId: req.params.id, docId: req.params.docId });
+  await docs.remove({ personId: req.params.id, docId: req.params.docId });
   res.status(204).json({ status: "success", data: null });
 });
 
 exports.file = catchAsync(async (req, res) => {
-  const doc = await docs.load({ world: req.world, personId: req.params.id, docId: req.params.docId });
+  const doc = await docs.load({ personId: req.params.id, docId: req.params.docId });
   if (notModified(req, res, `${doc.file}-${new Date(doc.uploadedAt).getTime()}`)) return;
   const file = await docs.fileOf(doc);
   if (!file) throw AppError.of("NOT_FOUND", 404, "קובץ");
@@ -48,7 +48,7 @@ exports.file = catchAsync(async (req, res) => {
 });
 
 exports.thumb = catchAsync(async (req, res) => {
-  const doc = await docs.load({ world: req.world, personId: req.params.id, docId: req.params.docId });
+  const doc = await docs.load({ personId: req.params.id, docId: req.params.docId });
   if (notModified(req, res, `${doc.file}-${new Date(doc.uploadedAt).getTime()}-thumb`)) return;
   const thumb = await docs.thumbOf(doc);
   if (!thumb) throw AppError.of("NOT_FOUND", 404, "תמונה מוקטנת");

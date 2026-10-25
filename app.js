@@ -21,7 +21,6 @@ const compression = require("compression");
 
 const AppError = require("./utils/AppError");
 const globalErrorHandler = require("./controllers/errorController");
-const { WORLDS } = require("./utils/domain");
 const share = require("./utils/sharePreview");
 const { authenticate, requireSuper, requireFamily } = require("./utils/auth");
 
@@ -41,22 +40,6 @@ app.use(cors());
 // the air plus a 2.4MB bundle after every deploy; repeated shapes squeeze five to eight times.
 app.use(compression());
 app.use(express.json({ limit: "16mb" }));
-
-// World scoping (the demo-data switch): the client sends `X-Dataset`
-// ("real" | "pokemon" | "test"); anything else means the real world.
-// EVERY query is filtered by req.world and every create is stamped with it
-// server-side - `world` is never accepted from a request body (stripped
-// here so no handler has to remember).
-app.use((req, res, next) => {
-  // `?world=` is the header's stand-in for plain links the browser opens
-  // without custom headers (a stored document in a new tab).
-  const w = req.get("x-dataset") || (req.method === "GET" ? req.query.world : undefined);
-  req.world = WORLDS.includes(w) ? w : "real";
-  if (req.body && typeof req.body === "object" && "world" in req.body) {
-    delete req.body.world;
-  }
-  next();
-});
 
 // Request logging - colourised "dev" format. Enabled only in development;
 // kept off for production (use combined+file there) and tests (keeps Jest
@@ -157,7 +140,7 @@ if (fs.existsSync(INDEX_HTML)) {
   app.get(/^(?!\/api(?:\/|$)).*/, async (req, res, next) => {
     try {
       if (indexHtml === null || process.env.NODE_ENV === "development") indexHtml = fs.readFileSync(INDEX_HTML, "utf8");
-      const preview = await share.enrich(share.previewFor(req.path, req.query), req.world);
+      const preview = await share.enrich(share.previewFor(req.path, req.query));
       res.set("Cache-Control", "no-cache");
       res.type("html").send(share.injectPreview(indexHtml, preview, share.requestUrls(req)));
     } catch (err) {

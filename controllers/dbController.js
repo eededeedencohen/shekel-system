@@ -20,9 +20,7 @@
  *                                  it + every INCOMING reference: who, from
  *                                  which collection and path, points here.
  *
- * Deliberately ignores the X-Dataset demo scoping - this is the raw-truth
- * view, demo worlds included (each row's `dataset` tag is visible as-is).
- * Read-only by design: no write endpoint exists here.
+ * The raw-truth view. Read-only by design: no write endpoint exists here.
  */
 
 const mongoose = require("mongoose");

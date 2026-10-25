@@ -19,7 +19,7 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, ENROLLMENT_STATUSES } = require("../utils/domain");
+const { ENROLLMENT_STATUSES } = require("../utils/domain");
 
 const enrollmentSchema = new mongoose.Schema(
   {
@@ -33,9 +33,6 @@ const enrollmentSchema = new mongoose.Schema(
       ref: "Person",
       required: [true, "שיבוץ חייב סטודנט"],
     },
-    /** Write-once, copied from the cycle by the service (WORLD_MISMATCH is
-     *  rejected there) - a declared denormalized copy, for indexing. */
-    world: { type: String, enum: WORLDS, required: true, immutable: true },
     status: {
       type: String,
       enum: ENROLLMENT_STATUSES, // reserved | active | completed | left
@@ -65,7 +62,7 @@ const enrollmentSchema = new mongoose.Schema(
 enrollmentSchema.index({ cycle: 1, student: 1 }, { unique: true });
 enrollmentSchema.index({ student: 1, status: 1 });
 enrollmentSchema.index({ cycle: 1, status: 1 });
-enrollmentSchema.index({ world: 1, status: 1 });
+enrollmentSchema.index({ status: 1 });
 
 enrollmentSchema.pre("validate", function (next) {
   if (this.joinedAt && this.leftAt && this.leftAt < this.joinedAt) {

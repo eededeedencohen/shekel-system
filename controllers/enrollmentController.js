@@ -2,9 +2,8 @@
  * @file Enrollment controller - membership records (roster / seats / holds)
  * @module controllers/enrollmentController
  *
- * All writes delegate to services/enrollmentService - capacity, world
- * isolation, slot validation and pipeline auto-advance live there and only
- * there. The unique {cycle,student} index backstops everything.
+ * All writes delegate to services/enrollmentService - capacity, slot
+ * validation and pipeline auto-advance live there and only there. The unique {cycle,student} index backstops everything.
  */
 
 const Enrollment = require("../models/Enrollment");
@@ -20,7 +19,7 @@ const STUDENT_POP = { path: "student", select: "firstName lastName avatar birthD
 
 /** GET /api/enrollments?cycle=&student=&status= */
 exports.getEnrollments = catchAsync(async (req, res) => {
-  const filter = { world: req.world };
+  const filter = {};
   if (req.query.cycle) filter.cycle = req.query.cycle;
   if (req.query.student) filter.student = req.query.student;
   if (req.query.status) filter.status = { $in: req.query.status.split(",") };
@@ -42,7 +41,6 @@ exports.createEnrollment = catchAsync(async (req, res) => {
   const enrollment = await enroll({
     cycleId: req.body.cycle,
     studentId: req.body.student,
-    world: req.world,
     status: req.body.status || "active",
     slotId: req.body.slotId || null,
     note: req.body.note,
@@ -61,7 +59,7 @@ exports.createEnrollment = catchAsync(async (req, res) => {
  */
 exports.enrollResidents = catchAsync(async (req, res) => {
   await lens.assertCycle(req, req.body.cycle);
-  const result = await enrollResidents({ cycleId: req.body.cycle, world: req.world, createdBy: req.body.createdBy });
+  const result = await enrollResidents({ cycleId: req.body.cycle, createdBy: req.body.createdBy });
   const docs = [];
   for (const e of result.created) {
     await e.populate(STUDENT_POP);
@@ -80,7 +78,6 @@ exports.enrollResidents = catchAsync(async (req, res) => {
 exports.patchEnrollment = catchAsync(async (req, res) => {
   const enrollment = await updateStatus({
     enrollmentId: req.params.id,
-    world: req.world,
     status: req.body.status,
     leftAt: req.body.leftAt,
     joinedAt: req.body.joinedAt,
@@ -94,7 +91,7 @@ exports.patchEnrollment = catchAsync(async (req, res) => {
 
 /** DELETE /api/enrollments/:id - remove a wrong record outright. */
 exports.deleteEnrollment = catchAsync(async (req, res, next) => {
-  const enrollment = await Enrollment.findOneAndDelete({ _id: req.params.id, world: req.world });
+  const enrollment = await Enrollment.findOneAndDelete({ _id: req.params.id });
   if (!enrollment) return next(AppError.of("NOT_FOUND", 404, "שיבוץ"));
   res.status(204).json({ status: "success", data: null });
 });

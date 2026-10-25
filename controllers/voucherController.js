@@ -18,7 +18,7 @@ const POP = [
 
 /** GET /api/vouchers?student=&available=true&redeemed=false */
 exports.getVouchers = catchAsync(async (req, res) => {
-  const filter = { world: req.world };
+  const filter = {};
   if (req.query.student) filter["grant.student"] = req.query.student;
   if (req.query.available === "true") filter.grant = null;
   if (req.query.redeemed === "true") filter["grant.redeemed"] = true;
@@ -28,7 +28,7 @@ exports.getVouchers = catchAsync(async (req, res) => {
 });
 
 exports.getVoucherById = catchAsync(async (req, res, next) => {
-  const voucher = await Voucher.findOne({ _id: req.params.id, world: req.world }).populate(POP);
+  const voucher = await Voucher.findById(req.params.id).populate(POP);
   if (!voucher) return next(AppError.of("NOT_FOUND", 404, "שובר"));
   res.status(200).json({ status: "success", data: { voucher } });
 });
@@ -36,13 +36,13 @@ exports.getVoucherById = catchAsync(async (req, res, next) => {
 /** POST /api/vouchers - body { by*, name*, number*, balance|initialValue, expiresAt?, notes?, + the picture: imageData(+imageThumb, imageName) | imageUrl | imageFrom } */
 exports.createVoucher = catchAsync(async (req, res, next) => {
   if (!req.body.name || !req.body.number) return next(AppError.of("MISSING_FIELDS", 400, "name, number"));
-  const voucher = await culture.createVoucher({ world: req.world, by: req.body.by, data: req.body });
+  const voucher = await culture.createVoucher({ by: req.body.by, data: req.body });
   res.status(201).json({ status: "success", data: { voucher } });
 });
 
 /** PUT /api/vouchers/:id - body { by*, …fields } */
 exports.updateVoucher = catchAsync(async (req, res) => {
-  const voucher = await culture.updateVoucher({ voucherId: req.params.id, world: req.world, by: req.body.by, data: req.body });
+  const voucher = await culture.updateVoucher({ voucherId: req.params.id, by: req.body.by, data: req.body });
   res.status(200).json({ status: "success", data: { voucher } });
 });
 
@@ -50,20 +50,20 @@ exports.updateVoucher = catchAsync(async (req, res) => {
 exports.grantVoucher = catchAsync(async (req, res, next) => {
   if (!req.body.student) return next(AppError.of("MISSING_FIELDS", 400, "student"));
   const voucher = await culture.grantVoucher({
-    voucherId: req.params.id, world: req.world, by: req.body.by, studentId: req.body.student, note: req.body.note,
+    voucherId: req.params.id, by: req.body.by, studentId: req.body.student, note: req.body.note,
   });
   res.status(200).json({ status: "success", data: { voucher: await voucher.populate(POP) } });
 });
 
 /** POST /api/vouchers/:id/redeem - body { by* } */
 exports.redeemVoucher = catchAsync(async (req, res) => {
-  const voucher = await culture.redeemVoucher({ voucherId: req.params.id, world: req.world, by: req.body.by });
+  const voucher = await culture.redeemVoucher({ voucherId: req.params.id, by: req.body.by });
   res.status(200).json({ status: "success", data: { voucher: await voucher.populate(POP) } });
 });
 
 /** POST /api/vouchers/:id/revoke - body { by* } - un-redeemed grants only */
 exports.revokeGrant = catchAsync(async (req, res) => {
-  const voucher = await culture.revokeGrant({ voucherId: req.params.id, world: req.world, by: req.body.by });
+  const voucher = await culture.revokeGrant({ voucherId: req.params.id, by: req.body.by });
   res.status(200).json({ status: "success", data: { voucher } });
 });
 
@@ -88,9 +88,9 @@ exports.fetchImage = catchAsync(async (req, res, next) => {
   res.type(got.mime).send(got.buffer);
 });
 
-/** GET /api/vouchers/:id/image[?thumb=1] - the picture of the place (a plain link: the world rides on ?world=) */
+/** GET /api/vouchers/:id/image[?thumb=1] - the picture of the place (a plain link) */
 exports.getImage = catchAsync(async (req, res, next) => {
-  const got = await culture.voucherImageOf(req.params.id, req.world, req.query.thumb === "1");
+  const got = await culture.voucherImageOf(req.params.id, req.query.thumb === "1");
   if (!got) return next(AppError.of("NOT_FOUND", 404, "תמונת השובר"));
   if (notModified(req, res, got.tag)) return;
   res.type(got.mime).send(got.data);
@@ -98,12 +98,12 @@ exports.getImage = catchAsync(async (req, res, next) => {
 
 /** PATCH /api/vouchers/:id/image - body { by*, imageData(+imageThumb, imageName) | imageUrl | imageFrom | remove: true } */
 exports.setImage = catchAsync(async (req, res) => {
-  const voucher = await culture.setVoucherImage({ voucherId: req.params.id, world: req.world, by: req.body.by, data: req.body });
+  const voucher = await culture.setVoucherImage({ voucherId: req.params.id, by: req.body.by, data: req.body });
   res.status(200).json({ status: "success", data: { voucher: await voucher.populate(POP) } });
 });
 
 /** DELETE /api/vouchers/:id?by= - never-granted vouchers only */
 exports.deleteVoucher = catchAsync(async (req, res) => {
-  await culture.deleteVoucher({ voucherId: req.params.id, world: req.world, by: req.query.by || req.body?.by });
+  await culture.deleteVoucher({ voucherId: req.params.id, by: req.query.by || req.body?.by });
   res.status(204).json({ status: "success", data: null });
 });

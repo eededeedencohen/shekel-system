@@ -8,7 +8,7 @@ const {
   categoryOfTitle, displayTitle, locationOf, defaultStart, buildDataset, pseudonym, isPseudonym, UMBRELLA_ID, INTEREST_ID,
 } = require("../../../scripts/lib/senzeyCulture");
 
-describe("pseudonym - the test world never carries a real name", () => {
+describe("pseudonym - a stand-in never carries a real name", () => {
   it("is deterministic, gender-matched, and steps to a letter on collision", () => {
     const used = new Set();
     const a = pseudonym({ key: "111", gender: "female" }, used);

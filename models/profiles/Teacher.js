@@ -16,6 +16,6 @@ const schema = new mongoose.Schema({
   },
 });
 
-schema.index({ world: 1, subjects: 1 });
+schema.index({ subjects: 1 });
 
 module.exports = Profile.discriminator("Teacher", schema);

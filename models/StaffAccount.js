@@ -4,8 +4,7 @@
  *
  * Eden (2026-10-12): "מעכשיו שיהיה סיסמאות למשתמשים". One row per person on
  * the staff; `kind` is what the app shows them (the client's PersonaContext
- * lens - super / manager / social / hostels / culture). Accounts are not
- * per world: one sign-in, then the topbar picks the data world.
+ * lens - super / manager / social / hostels / culture).
  *
  * NOT the `users` collection - that one belongs to Eden's other projects on
  * the same Atlas database and is never touched.

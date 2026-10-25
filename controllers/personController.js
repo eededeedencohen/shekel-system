@@ -63,7 +63,7 @@ async function profilesByPerson(people) {
 
 /** GET /api/people?kind=&role=&stage=&includeDeleted= */
 exports.getPeople = catchAsync(async (req, res) => {
-  const filter = { world: req.world };
+  const filter = {};
   if (req.query.includeDeleted !== "true") filter.deletedAt = null;
 
   // kind/role/stage all narrow through the profiles collection.
@@ -74,7 +74,7 @@ exports.getPeople = catchAsync(async (req, res) => {
     res.set("X-Deprecated", "role-api");
   }
   if (kinds || req.query.stage) {
-    const pf = { world: req.world, active: true };
+    const pf = { active: true };
     if (kinds) pf.kind = { $in: kinds };
     if (req.query.stage) {
       pf["pipeline.stage"] = { $in: req.query.stage.split(",") };
@@ -89,13 +89,13 @@ exports.getPeople = catchAsync(async (req, res) => {
 
   const people = await Person.find(filter).sort({ firstName: 1, lastName: 1 });
   const map = await profilesByPerson(people);
-  const flat = await attachPersonTags(req.world, people.map((p) => flattenPerson(p, map.get(String(p._id)) || [])));
+  const flat = await attachPersonTags(people.map((p) => flattenPerson(p, map.get(String(p._id)) || [])));
   res.status(200).json({ status: "success", results: flat.length, data: { people: flat } });
 });
 
 /** GET /api/people/:id - identity + all its profiles (flattened compat). */
 exports.getPersonById = catchAsync(async (req, res, next) => {
-  const person = await Person.findOne({ _id: req.params.id, world: req.world });
+  const person = await Person.findOne({ _id: req.params.id });
   if (!person) return next(AppError.of("NOT_FOUND", 404, "אדם"));
   const profiles = await profilesOf(person._id, { includeInactive: true }).populate([
     { path: "matching.interests", select: "name category" },
@@ -104,7 +104,7 @@ exports.getPersonById = catchAsync(async (req, res, next) => {
     { path: "residence.hostel", select: "name" },
     { path: "hostels", select: "name" },
   ]);
-  res.status(200).json({ status: "success", data: { person: await attachPersonTags(req.world, flattenPerson(person, profiles)) } });
+  res.status(200).json({ status: "success", data: { person: await attachPersonTags(flattenPerson(person, profiles)) } });
 });
 
 /**
@@ -119,7 +119,7 @@ exports.createPerson = catchAsync(async (req, res, next) => {
     if (!KINDS_BY_ROLE[req.body.role]) return next(AppError.of("INVALID_KIND", 400, req.body.role));
     lens.assertProfileKind(req, KINDS_BY_ROLE[req.body.role][0]);
   }
-  const person = await Person.create({ ...pickIdentity(req.body), world: req.world });
+  const person = await Person.create(pickIdentity(req.body));
 
   let profile = null;
   if (req.body.profile?.kind) {
@@ -131,17 +131,17 @@ exports.createPerson = catchAsync(async (req, res, next) => {
   }
   res.status(201).json({
     status: "success",
-    data: { person: await attachPersonTags(req.world, flattenPerson(person, profile ? [profile] : [])) },
+    data: { person: await attachPersonTags(flattenPerson(person, profile ? [profile] : [])) },
   });
 });
 
 /**
- * PUT /api/people/:id - identity merge (never world/auth/deletedAt).
+ * PUT /api/people/:id - identity merge (never auth/deletedAt).
  * COMPAT: leftover flat profile fields are routed to the person's primary
  * profile when exactly one active profile exists.
  */
 exports.updatePerson = catchAsync(async (req, res, next) => {
-  const person = await Person.findOne({ _id: req.params.id, world: req.world });
+  const person = await Person.findOne({ _id: req.params.id });
   if (!person) return next(AppError.of("NOT_FOUND", 404, "אדם"));
   const { identity, profile: leftovers } = splitBody(req.body);
   Object.assign(person, identity);
@@ -153,12 +153,12 @@ exports.updatePerson = catchAsync(async (req, res, next) => {
     Object.assign(profiles[0], leftovers);
     await profiles[0].save();
   }
-  res.status(200).json({ status: "success", data: { person: await attachPersonTags(req.world, flattenPerson(person, profiles)) } });
+  res.status(200).json({ status: "success", data: { person: await attachPersonTags(flattenPerson(person, profiles)) } });
 });
 
 /** DELETE /api/people/:id - soft delete, always (profiles stay, inert). */
 exports.deletePerson = catchAsync(async (req, res, next) => {
-  const person = await Person.findOne({ _id: req.params.id, world: req.world });
+  const person = await Person.findOne({ _id: req.params.id });
   if (!person) return next(AppError.of("NOT_FOUND", 404, "אדם"));
   person.deletedAt = new Date();
   await person.save();
@@ -209,7 +209,7 @@ function checkAvailability(incoming, existing, actor) {
 }
 
 exports.updateAvailability = catchAsync(async (req, res, next) => {
-  const person = await Person.findOne({ _id: req.params.id, world: req.world });
+  const person = await Person.findOne({ _id: req.params.id });
   if (!person) return next(AppError.of("NOT_FOUND", 404, "אדם"));
   if (Array.isArray(req.body.availability)) {
     const incoming = req.body.availability.map((w) => ({
@@ -234,13 +234,13 @@ exports.updateAvailability = catchAsync(async (req, res, next) => {
       await teacher.save();
     }
   }
-  res.status(200).json({ status: "success", data: { person: await attachPersonTags(req.world, flattenPerson(person, profiles)) } });
+  res.status(200).json({ status: "success", data: { person: await attachPersonTags(flattenPerson(person, profiles)) } });
 });
 
 /** GET /api/people/:id/enrollments - the person's memberships (as student). */
 exports.getPersonEnrollments = catchAsync(async (req, res) => {
   // the memberships on the lens's side only (a hostels coordinator sees the hostel seats, a manager the college's)
-  const filter = await lens.narrowByCycle(req, { student: req.params.id, world: req.world });
+  const filter = await lens.narrowByCycle(req, { student: req.params.id });
   const enrollments = await Enrollment.find(filter)
     .populate({
       path: "cycle",

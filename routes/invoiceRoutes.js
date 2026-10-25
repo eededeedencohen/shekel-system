@@ -18,7 +18,7 @@ router.param("id", async (req, res, next, id) => {
   try {
     const scope = lens.scopeOf(req);
     if (scope.lens.all) return next();
-    const invoice = await invoices.getInvoice({ world: req.world, invoiceId: id }); // 404 when there is none
+    const invoice = await invoices.getInvoice({ invoiceId: id }); // 404 when there is none
     if (!invoices.visibleTo(invoice, await scope.people(), await scope.cycleSet())) return next(AppError.of("OUT_OF_SCOPE", 403));
     return next();
   } catch (e) {

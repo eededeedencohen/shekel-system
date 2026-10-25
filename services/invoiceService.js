@@ -64,19 +64,18 @@ function parseThumb(dataUrl) {
 const teacherOfLesson = (lesson, cycleById) => String(lesson.teacher || cycleById.get(String(lesson.cycle))?.teacher || "");
 
 /**
- * The lessons `teacherId` taught in `world` - those a new invoice may
- * name. Each carries `invoice` (the id, or null) so a picker can grey out
- * the billed ones. Newest first.
+ * The lessons `teacherId` taught - those a new invoice may name. Each
+ * carries `invoice` (the id, or null) so a picker can grey out the billed
+ * ones. Newest first.
  */
-async function lessonsOfTeacher({ world, teacherId, limit = 400, cycleIds = null }) {
+async function lessonsOfTeacher({ teacherId, limit = 400, cycleIds = null }) {
   if (!isId(teacherId)) throw AppError.of("NOT_FOUND", 404, "מורה");
   // `cycleIds` (a Set, from the lens) keeps the lessons on the persona's side only
   const inLens = (ids) => (cycleIds ? ids.filter((id) => cycleIds.has(String(id))) : ids);
-  const cycles = await Cycle.find({ world, teacher: teacherId }).select("_id").lean();
+  const cycles = await Cycle.find({ teacher: teacherId }).select("_id").lean();
   const own = inLens(cycles.map((c) => c._id));
   const substituted = cycleIds ? { teacher: teacherId, cycle: { $in: [...cycleIds].map((id) => new mongoose.Types.ObjectId(id)) } } : { teacher: teacherId };
   const lessons = await Lesson.find({
-    world,
     source: "live",
     $or: [substituted, { cycle: { $in: own }, teacher: null }],
   })
@@ -89,11 +88,11 @@ async function lessonsOfTeacher({ world, teacherId, limit = 400, cycleIds = null
   return lessons.map((l) => ({ _id: l._id, cycle: l.cycle, date: l.date, invoice: invoiceByLesson.get(String(l._id)) || null }));
 }
 
-/** The lessons that may go on an invoice of this teacher: exist, in the world, taught by them - and, under a lens, on its side. */
-async function assertLessonsOfTeacher({ world, teacherId, lessonIds, cycleIds = null }) {
+/** The lessons that may go on an invoice of this teacher: exist, taught by them - and, under a lens, on its side. */
+async function assertLessonsOfTeacher({ teacherId, lessonIds, cycleIds = null }) {
   const ids = uniq(lessonIds).filter(isId);
   if (!ids.length) throw AppError.of("INVOICE_NO_LESSONS", 400);
-  const lessons = await Lesson.find({ _id: { $in: ids }, world, source: "live" }).select("_id cycle teacher").lean();
+  const lessons = await Lesson.find({ _id: { $in: ids }, source: "live" }).select("_id cycle teacher").lean();
   if (lessons.length !== ids.length) throw AppError.of("NOT_FOUND", 404, "שיעור");
   const cycleById = new Map((await Cycle.find({ _id: { $in: lessons.map((l) => l.cycle) } }).select("_id teacher").lean()).map((c) => [String(c._id), c]));
   if (lessons.some((l) => teacherOfLesson(l, cycleById) !== String(teacherId))) throw AppError.of("INVOICE_LESSON_NOT_TEACHERS", 400);
@@ -114,9 +113,9 @@ function visibleTo(invoice, people, cycleIds) {
   return true;
 }
 
-async function assertTeacher({ world, teacherId }) {
+async function assertTeacher({ teacherId }) {
   if (!isId(teacherId)) throw AppError.of("NOT_FOUND", 404, "מורה");
-  const person = await Person.findOne({ _id: teacherId, world, deletedAt: null }).select("_id").lean();
+  const person = await Person.findOne({ _id: teacherId, deletedAt: null }).select("_id").lean();
   const profile = person && (await Profile.findOne({ person: teacherId, kind: "Teacher", active: true }).select("_id").lean());
   if (!profile) throw AppError.of("INVOICE_NOT_A_TEACHER", 400);
 }
@@ -128,7 +127,7 @@ async function assertTeacher({ world, teacherId }) {
  * only the super admin changes or deletes it (decision 1 of the state
  * machine, 2026-10-22).
  */
-async function shape(world, invoices) {
+async function shape(invoices) {
   const ids = invoices.map((i) => i._id);
   const requestIds = [...new Set(invoices.map((i) => i.request).filter(Boolean).map(String))];
   const [rows, files, requests] = await Promise.all([
@@ -152,7 +151,6 @@ async function shape(world, invoices) {
   }
   return invoices.map((i) => ({
     _id: i._id,
-    world,
     teacher: i.teacher,
     file: fileById.get(String(i.file)) || null,
     uploadedAt: i.uploadedAt,
@@ -166,24 +164,24 @@ async function shape(world, invoices) {
   }));
 }
 
-async function listInvoices({ world, teacherId, people = null, cycleIds = null }) {
-  const filter = { world };
+async function listInvoices({ teacherId, people = null, cycleIds = null }) {
+  const filter = {};
   if (teacherId) filter.teacher = isId(teacherId) ? teacherId : null;
   if (people) filter.teacher = teacherId ? (people.has(String(teacherId)) ? filter.teacher : null) : { $in: [...people].map((id) => new mongoose.Types.ObjectId(id)) };
   const invoices = await Invoice.find(filter).sort({ uploadedAt: -1 }).lean();
-  const shaped = await shape(world, invoices);
+  const shaped = await shape(invoices);
   return cycleIds ? shaped.filter((i) => visibleTo(i, null, cycleIds)) : shaped;
 }
 
-async function loadInvoice(world, invoiceId) {
-  const invoice = isId(invoiceId) && (await Invoice.findOne({ _id: invoiceId, world }));
+async function loadInvoice(invoiceId) {
+  const invoice = isId(invoiceId) && (await Invoice.findOne({ _id: invoiceId }));
   if (!invoice) throw AppError.of("NOT_FOUND", 404, "חשבונית");
   return invoice;
 }
 
-async function getInvoice({ world, invoiceId }) {
-  const invoice = await loadInvoice(world, invoiceId);
-  return (await shape(world, [invoice.toObject()]))[0];
+async function getInvoice({ invoiceId }) {
+  const invoice = await loadInvoice(invoiceId);
+  return (await shape([invoice.toObject()]))[0];
 }
 
 /**
@@ -191,9 +189,9 @@ async function getInvoice({ world, invoiceId }) {
  * uploader rendered - an image without one answers with itself, a PDF
  * without one is not found (the page shows the PDF glyph).
  */
-async function imageOf({ world, invoiceId, thumb = false }) {
-  const invoice = await loadInvoice(world, invoiceId);
-  const file = await StoredFile.findOne({ _id: invoice.file, world });
+async function imageOf({ invoiceId, thumb = false }) {
+  const invoice = await loadInvoice(invoiceId);
+  const file = await StoredFile.findOne({ _id: invoice.file });
   if (!file) throw AppError.of("NOT_FOUND", 404, "קובץ החשבונית");
   if (!thumb) return file;
   if (file.thumb?.length) return { _id: file._id, updatedAt: file.updatedAt, mime: "image/jpeg", data: file.thumb };
@@ -208,9 +206,9 @@ const billedTwice = (e) => (e && e.code === 11000 ? AppError.of("INVOICE_LESSON_
  * A new invoice: { teacherId, lessonIds, imageData (data URL of an image or
  * a PDF), imageName, thumb (data URL of a small JPEG, optional), by, note }.
  */
-async function createInvoice({ world, teacherId, lessonIds, imageData, imageName, thumb, by, note, cycleIds = null, requestId = null }) {
-  await assertTeacher({ world, teacherId });
-  const ids = await assertLessonsOfTeacher({ world, teacherId, lessonIds, cycleIds });
+async function createInvoice({ teacherId, lessonIds, imageData, imageName, thumb, by, note, cycleIds = null, requestId = null }) {
+  await assertTeacher({ teacherId });
+  const ids = await assertLessonsOfTeacher({ teacherId, lessonIds, cycleIds });
   const image = parseImage(imageData);
   const thumbBuf = parseThumb(thumb);
   const invoiceId = await withTxn(async (session) => {
@@ -218,11 +216,11 @@ async function createInvoice({ world, teacherId, lessonIds, imageData, imageName
     let fileId = null;
     let newId = null;
     try {
-      const [file] = await StoredFile.create([{ world, name: imageName || undefined, mime: image.mime, size: image.buffer.length, data: image.buffer, ...(thumbBuf && { thumb: thumbBuf }) }], opts);
+      const [file] = await StoredFile.create([{ name: imageName || undefined, mime: image.mime, size: image.buffer.length, data: image.buffer, ...(thumbBuf && { thumb: thumbBuf }) }], opts);
       fileId = file._id;
-      const [invoice] = await Invoice.create([{ world, teacher: teacherId, file: file._id, uploadedBy: by, note: note || undefined, request: requestId || null }], opts);
+      const [invoice] = await Invoice.create([{ teacher: teacherId, file: file._id, uploadedBy: by, note: note || undefined, request: requestId || null }], opts);
       newId = invoice._id;
-      await InvoiceLesson.insertMany(ids.map((lesson) => ({ world, invoice: invoice._id, lesson })), { ...opts, ordered: true });
+      await InvoiceLesson.insertMany(ids.map((lesson) => ({ invoice: invoice._id, lesson })), { ...opts, ordered: true });
       return invoice._id;
     } catch (e) {
       // no transaction (tests): take back what was written before the refusal
@@ -234,14 +232,14 @@ async function createInvoice({ world, teacherId, lessonIds, imageData, imageName
       throw billedTwice(e);
     }
   });
-  return getInvoice({ world, invoiceId });
+  return getInvoice({ invoiceId });
 }
 
 /** Replace the lessons of an invoice (still at least one) and/or its note. */
-async function updateInvoice({ world, invoiceId, lessonIds, note, cycleIds = null }) {
-  const invoice = await loadInvoice(world, invoiceId);
+async function updateInvoice({ invoiceId, lessonIds, note, cycleIds = null }) {
+  const invoice = await loadInvoice(invoiceId);
   if (lessonIds !== undefined) {
-    const ids = await assertLessonsOfTeacher({ world, teacherId: invoice.teacher, lessonIds, cycleIds });
+    const ids = await assertLessonsOfTeacher({ teacherId: invoice.teacher, lessonIds, cycleIds });
     await withTxn(async (session) => {
       const opts = session ? { session } : {};
       const current = (await InvoiceLesson.find({ invoice: invoice._id }).select("lesson").session(session || null)).map((r) => String(r.lesson));
@@ -249,9 +247,9 @@ async function updateInvoice({ world, invoiceId, lessonIds, note, cycleIds = nul
       const added = ids.filter((id) => !current.includes(id));
       if (gone.length) await InvoiceLesson.deleteMany({ invoice: invoice._id, lesson: { $in: gone } }, opts);
       try {
-        if (added.length) await InvoiceLesson.insertMany(added.map((lesson) => ({ world, invoice: invoice._id, lesson })), { ...opts, ordered: true });
+        if (added.length) await InvoiceLesson.insertMany(added.map((lesson) => ({ invoice: invoice._id, lesson })), { ...opts, ordered: true });
       } catch (e) {
-        if (!session && gone.length) await InvoiceLesson.insertMany(gone.map((lesson) => ({ world, invoice: invoice._id, lesson })));
+        if (!session && gone.length) await InvoiceLesson.insertMany(gone.map((lesson) => ({ invoice: invoice._id, lesson })));
         throw billedTwice(e);
       }
     });
@@ -260,12 +258,12 @@ async function updateInvoice({ world, invoiceId, lessonIds, note, cycleIds = nul
     invoice.note = note ? String(note).trim() : undefined;
     await invoice.save();
   }
-  return getInvoice({ world, invoiceId });
+  return getInvoice({ invoiceId });
 }
 
 /** Remove an invoice: its lesson rows and its picture go with it. */
-async function deleteInvoice({ world, invoiceId }) {
-  const invoice = await loadInvoice(world, invoiceId);
+async function deleteInvoice({ invoiceId }) {
+  const invoice = await loadInvoice(invoiceId);
   await withTxn(async (session) => {
     const opts = session ? { session } : {};
     await InvoiceLesson.deleteMany({ invoice: invoice._id }, opts);

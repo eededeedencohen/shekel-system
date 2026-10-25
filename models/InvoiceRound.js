@@ -11,11 +11,10 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, INVOICE_ROUND_PROGRAMS } = require("../utils/domain");
+const { INVOICE_ROUND_PROGRAMS } = require("../utils/domain");
 
 const invoiceRoundSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     /** "2026-10" */
     month: { type: String, required: true, match: /^\d{4}-(0[1-9]|1[0-2])$/ },
     program: { type: String, enum: INVOICE_ROUND_PROGRAMS, required: true, default: "hostels" },
@@ -30,6 +29,6 @@ const invoiceRoundSchema = new mongoose.Schema(
   { timestamps: true, collection: "invoiceRounds" }
 );
 
-invoiceRoundSchema.index({ world: 1, program: 1, month: 1 }, { unique: true });
+invoiceRoundSchema.index({ program: 1, month: 1 }, { unique: true });
 
 module.exports = mongoose.model("InvoiceRound", invoiceRoundSchema);

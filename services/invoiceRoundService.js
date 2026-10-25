@@ -113,12 +113,11 @@ function plannedSessions(cycle, month) {
 const programCond = (program) => (program === "hostels" ? { hostel: { $ne: null } } : { hostel: null });
 
 /** The live cycles of the program in the month, with a teacher. */
-async function cyclesOfMonth({ world, program, month }) {
+async function cyclesOfMonth({ program, month }) {
   const [y, m] = month.split("-").map(Number);
   const start = new Date(Date.UTC(y, m - 1, 1) - DAY_MS); // a day of slack on both ends: local midnights
   const end = new Date(Date.UTC(y, m, 0) + 2 * DAY_MS);
   return Cycle.find({
-    world,
     ...programCond(program),
     status: { $ne: "Cancelled" },
     teacher: { $ne: null },
@@ -128,12 +127,12 @@ async function cyclesOfMonth({ world, program, month }) {
 }
 
 /** Link the sessions that already have a lesson row (reported, or made by an earlier link). */
-async function attachLessons(world, sessions) {
+async function attachLessons(sessions) {
   const open = sessions.filter((s) => !s.lesson);
   if (!open.length) return;
   const cycleIds = [...new Set(open.map((s) => String(s.cycle)))];
   const dates = [...new Set(open.map((s) => s.date.toISOString()))].map((d) => new Date(d));
-  const lessons = await Lesson.find({ world, source: "live", cycle: { $in: cycleIds }, date: { $in: dates } })
+  const lessons = await Lesson.find({ source: "live", cycle: { $in: cycleIds }, date: { $in: dates } })
     .select("_id cycle date")
     .lean();
   const byKey = new Map(lessons.map((l) => [`${l.cycle}|${l.date.toISOString()}`, l._id]));
@@ -159,24 +158,24 @@ function sessionsByTeacher(cycles, month) {
 
 const linkExpiry = () => new Date(Date.now() + INVOICE_LINK_DAYS * DAY_MS);
 
-async function openRound({ world, month, program = "hostels", by }) {
+async function openRound({ month, program = "hostels", by }) {
   if (!MONTH_RE.test(String(month || ""))) throw AppError.of("INVOICE_ROUND_MONTH", 400);
   if (!INVOICE_ROUND_PROGRAMS.includes(program)) throw AppError.of("INVOICE_ROUND_PROGRAM", 400);
-  if (await InvoiceRound.exists({ world, month, program })) throw AppError.of("INVOICE_ROUND_EXISTS", 409);
-  const byTeacher = sessionsByTeacher(await cyclesOfMonth({ world, program, month }), month);
+  if (await InvoiceRound.exists({ month, program })) throw AppError.of("INVOICE_ROUND_EXISTS", 409);
+  const byTeacher = sessionsByTeacher(await cyclesOfMonth({ program, month }), month);
   if (!byTeacher.size) throw AppError.of("INVOICE_ROUND_NO_TEACHERS", 400);
   const expiresAt = linkExpiry();
   const requests = [];
   for (const [teacher, sessions] of byTeacher) {
-    await attachLessons(world, sessions);
-    requests.push({ world, teacher, token: makeToken(), expiresAt, sessions });
+    await attachLessons(sessions);
+    requests.push({ teacher, token: makeToken(), expiresAt, sessions });
   }
   // the round and its requests as one unit (decision 11): a crash halfway leaves no half-opened month behind
   const roundId = await withTxn(async (session) => {
     const opts = session ? { session } : {};
     let id = null;
     try {
-      const [round] = await InvoiceRound.create([{ world, month, program, openedBy: clean(by, 80) }], opts);
+      const [round] = await InvoiceRound.create([{ month, program, openedBy: clean(by, 80) }], opts);
       id = round._id;
       await InvoiceRequest.insertMany(requests.map((r) => ({ ...r, round: round._id })), { ...opts, ordered: true });
       return round._id;
@@ -188,19 +187,19 @@ async function openRound({ world, month, program = "hostels", by }) {
       throw e;
     }
   });
-  return roundView(await loadRound({ world, roundId }));
+  return roundView(await loadRound({ roundId }));
 }
 
 /* ───────────────────────── reading ───────────────────────── */
 
-async function loadRound({ world, roundId }) {
-  const round = isId(roundId) && (await InvoiceRound.findOne({ _id: roundId, world }));
+async function loadRound({ roundId }) {
+  const round = isId(roundId) && (await InvoiceRound.findOne({ _id: roundId }));
   if (!round) throw AppError.of("NOT_FOUND", 404, "סבב חשבוניות");
   return round;
 }
 
-async function loadRequest({ world, roundId, requestId }) {
-  const r = isId(requestId) && (await InvoiceRequest.findOne({ _id: requestId, world, ...(roundId && { round: roundId }) }));
+async function loadRequest({ roundId, requestId }) {
+  const r = isId(requestId) && (await InvoiceRequest.findOne({ _id: requestId, ...(roundId && { round: roundId }) }));
   if (!r) throw AppError.of("NOT_FOUND", 404, "קישור של מורה");
   return r;
 }
@@ -221,8 +220,8 @@ function statusOf(r, invoiceCount) {
  * the house's own word from its monthly draft (held / not held), and the
  * invoice it sits on.
  */
-async function factsOf(world, requests) {
-  for (const r of requests) await attachLessons(world, r.sessions);
+async function factsOf(requests) {
+  for (const r of requests) await attachLessons(r.sessions);
   const requestIds = new Set(requests.map((r) => String(r._id)));
   const cycleIds = [...new Set(requests.flatMap((r) => r.sessions.map((s) => String(s.cycle))))];
   const lessonIds = [...new Set(requests.flatMap((r) => r.sessions.map((s) => s.lesson && String(s.lesson)).filter(Boolean)))];
@@ -230,16 +229,16 @@ async function factsOf(world, requests) {
   const [cycles, lessons, invs, billed, drafts] = await Promise.all([
     Cycle.find({ _id: { $in: cycleIds } }).select("subject hostel schedule").populate("subject", "name").populate("hostel", "name kind").lean(),
     Lesson.find({ _id: { $in: lessonIds } }).select("_id attendance teacher").lean(),
-    Invoice.find({ world, request: { $in: requests.map((r) => r._id) } }).sort({ uploadedAt: -1 }).lean(),
+    Invoice.find({ request: { $in: requests.map((r) => r._id) } }).sort({ uploadedAt: -1 }).lean(),
     InvoiceLesson.find({ lesson: { $in: lessonIds } }).select("lesson invoice").lean(),
-    cycleIds.length ? HostelReport.find({ world, month: { $in: months }, "sessions.cycle": { $in: cycleIds } }).select("sessions.cycle sessions.date sessions.state").lean() : [],
+    cycleIds.length ? HostelReport.find({ month: { $in: months }, "sessions.cycle": { $in: cycleIds } }).select("sessions.cycle sessions.date sessions.state").lean() : [],
   ]);
   // an invoice that sits on the month's lessons without having come through a link - uploaded from the teacher's
   // file, or before the month opened - is the request's too (decision 7); a substitute's invoice is not
   const byLink = new Set(invs.map((i) => String(i._id)));
   const extraIds = [...new Set(billed.map((b) => String(b.invoice)).filter((id) => !byLink.has(id)))];
-  const extra = extraIds.length ? await Invoice.find({ _id: { $in: extraIds }, world }).lean() : [];
-  const shaped = await invoices.shape(world, [...invs, ...extra]);
+  const extra = extraIds.length ? await Invoice.find({ _id: { $in: extraIds } }).lean() : [];
+  const shaped = await invoices.shape([...invs, ...extra]);
   const requestOfLesson = new Map();
   const teacherOfRequest = new Map(requests.map((r) => [String(r._id), String(r.teacher)]));
   for (const r of requests) for (const s of r.sessions) if (s.lesson) requestOfLesson.set(String(s.lesson), String(r._id));
@@ -353,7 +352,7 @@ function requestView(r, facts, teacher, rate = null) {
 /** The staff shape of a round: the month, its requests with everything derived, and the totals. */
 async function roundView(round) {
   const requests = await InvoiceRequest.find({ round: round._id }).lean();
-  const facts = await factsOf(round.world, requests);
+  const facts = await factsOf(requests);
   const teacherIds = requests.map((r) => r.teacher);
   const [teachers, profiles] = await Promise.all([
     Person.find({ _id: { $in: teacherIds } }).select("firstName lastName gender phone").lean(),
@@ -372,7 +371,6 @@ async function roundView(round) {
   }
   return {
     _id: round._id,
-    world: round.world,
     month: round.month,
     monthLabel: monthLabel(round.month),
     dueAt: dueOf(round.month),
@@ -388,8 +386,8 @@ async function roundView(round) {
 }
 
 /** Every round of the programs the lens may see, newest month first. */
-async function listRounds({ world, programs = null }) {
-  const filter = { world };
+async function listRounds({ programs = null }) {
+  const filter = {};
   if (programs) filter.program = { $in: programs };
   const rounds = await InvoiceRound.find(filter).sort({ month: -1, program: 1 });
   const out = [];
@@ -397,36 +395,36 @@ async function listRounds({ world, programs = null }) {
   return out;
 }
 
-async function getRound({ world, roundId }) {
-  return roundView(await loadRound({ world, roundId }));
+async function getRound({ roundId }) {
+  return roundView(await loadRound({ roundId }));
 }
 
 /* ───────────────────────── the coordinator's moves ───────────────────────── */
 
 /** She sent the link (by WhatsApp, outside the app) - noted with her name. */
-async function markSent({ world, roundId, requestId, by }) {
-  const r = await loadRequest({ world, roundId, requestId });
+async function markSent({ roundId, requestId, by }) {
+  const r = await loadRequest({ roundId, requestId });
   r.sentAt = new Date();
   r.sentBy = clean(by, 80);
   await r.save();
-  return getRound({ world, roundId });
+  return getRound({ roundId });
 }
 
 /** The link open again for `days` from now (the same address - a message already sent keeps working). */
-async function renew({ world, roundId, requestId, days }) {
-  const r = await loadRequest({ world, roundId, requestId });
+async function renew({ roundId, requestId, days }) {
+  const r = await loadRequest({ roundId, requestId });
   const n = Number(days) > 0 ? Math.min(Number(days), 90) : INVOICE_LINK_DAYS;
   r.expiresAt = new Date(Date.now() + n * DAY_MS);
   await r.save();
-  return getRound({ world, roundId });
+  return getRound({ roundId });
 }
 
 /** The teacher pressed סיימתי too soon - the coordinator opens it back. */
-async function reopen({ world, roundId, requestId }) {
-  const r = await loadRequest({ world, roundId, requestId });
+async function reopen({ roundId, requestId }) {
+  const r = await loadRequest({ roundId, requestId });
   r.completedAt = undefined;
   await r.save();
-  return getRound({ world, roundId });
+  return getRound({ roundId });
 }
 
 /**
@@ -434,8 +432,8 @@ async function reopen({ world, roundId, requestId }) {
  * The mail closes the teachers' links (decision 2: what went out stays what
  * it is); taking the mail back opens them for another three weeks.
  */
-async function setMail({ world, roundId, sent, by }) {
-  const round = await loadRound({ world, roundId });
+async function setMail({ roundId, sent, by }) {
+  const round = await loadRound({ roundId });
   round.mail = sent ? { sentAt: new Date(), sentBy: clean(by, 80) } : {};
   await round.save();
   await InvoiceRequest.updateMany({ round: round._id }, { $set: { expiresAt: sent ? new Date() : linkExpiry() } });
@@ -447,25 +445,25 @@ async function setMail({ world, roundId, sent, by }) {
  * in it. After an invoice of a link went (the staff's delete), a finished
  * request with no invoice and no note opens again. Answers whether it did.
  */
-async function settleAfterDelete({ world, requestId }) {
-  const r = isId(requestId) && (await InvoiceRequest.findOne({ _id: requestId, world }));
+async function settleAfterDelete({ requestId }) {
+  const r = isId(requestId) && (await InvoiceRequest.findOne({ _id: requestId }));
   if (!r || !r.completedAt || r.note) return false;
-  if (await Invoice.exists({ world, request: r._id })) return false;
+  if (await Invoice.exists({ request: r._id })) return false;
   r.completedAt = undefined;
   await r.save();
   return true;
 }
 
-async function setNote({ world, roundId, note }) {
-  const round = await loadRound({ world, roundId });
+async function setNote({ roundId, note }) {
+  const round = await loadRound({ roundId });
   round.note = clean(note, 1000);
   await round.save();
   return roundView(round);
 }
 
 /** A round opened by mistake: gone with its requests - unless an invoice came through one of them. */
-async function deleteRound({ world, roundId }) {
-  const round = await loadRound({ world, roundId });
+async function deleteRound({ roundId }) {
+  const round = await loadRound({ roundId });
   const requests = await InvoiceRequest.find({ round: round._id }).select("_id").lean();
   if (await Invoice.exists({ request: { $in: requests.map((r) => r._id) } })) throw AppError.of("INVOICE_ROUND_HAS_INVOICES", 409);
   await InvoiceRequest.deleteMany({ round: round._id });
@@ -475,10 +473,10 @@ async function deleteRound({ world, roundId }) {
 /* ───────────────────────── the teacher's side (behind the link) ───────────────────────── */
 
 /** The request behind a token; an expired link answers 410 - unless `readWhenDone` and the teacher finished (decision 12: the summary stays readable). */
-async function resolveToken({ world, token, readWhenDone = false }) {
+async function resolveToken({ token, readWhenDone = false }) {
   const t = String(token || "");
   if (!/^[\w-]{12,64}$/.test(t)) throw AppError.of("INVOICE_LINK_INVALID", 404);
-  const r = await InvoiceRequest.findOne({ world, token: t });
+  const r = await InvoiceRequest.findOne({ token: t });
   if (!r) throw AppError.of("INVOICE_LINK_INVALID", 404);
   if (!r.linkLive() && !(readWhenDone && r.completedAt)) throw AppError.of("INVOICE_LINK_EXPIRED", 410);
   return r;
@@ -502,7 +500,7 @@ async function noteOpened(r) {
 /** What the teacher's page reads: their month, their sessions, their invoices - nothing of anyone else. */
 async function publicView(r) {
   const [round, teacher] = await Promise.all([InvoiceRound.findById(r.round).lean(), Person.findById(r.teacher).select("firstName lastName gender").lean()]);
-  const facts = await factsOf(r.world, [r]);
+  const facts = await factsOf([r]);
   const sessions = r.sessions.map((s) => sessionView(s, facts, r.teacher));
   const groups = new Map();
   for (const s of sessions) {
@@ -549,10 +547,10 @@ const assertOpen = (r) => {
  * invoice is refused.
  */
 /** A session that remembers a lesson row that is gone (deleted since) forgets it - case 19 of the state machine; answers how many. */
-async function healLessons(world, sessions) {
+async function healLessons(sessions) {
   const ids = sessions.map((s) => s.lesson).filter(Boolean);
   if (!ids.length) return 0;
-  const alive = new Set((await Lesson.find({ _id: { $in: ids }, world }).select("_id").lean()).map((l) => String(l._id)));
+  const alive = new Set((await Lesson.find({ _id: { $in: ids } }).select("_id").lean()).map((l) => String(l._id)));
   let n = 0;
   for (const s of sessions) {
     if (!s.lesson || alive.has(String(s.lesson))) continue;
@@ -568,8 +566,8 @@ async function addInvoice(r, { imageData, imageName, thumb, sessionIds }) {
   if (!wanted.size) throw AppError.of("INVOICE_NO_SESSIONS", 400);
   const covered = r.sessions.filter((s) => wanted.has(String(s._id)));
   if (covered.length !== wanted.size) throw AppError.of("INVOICE_SESSION_UNKNOWN", 400);
-  await healLessons(r.world, covered);
-  await attachLessons(r.world, covered);
+  await healLessons(covered);
+  await attachLessons(covered);
   // a session someone else taught (the substitute written on its lesson) is theirs to bill, from their file (decision 6)
   const subbed = await Lesson.exists({ _id: { $in: covered.map((s) => s.lesson).filter(Boolean) }, teacher: { $nin: [null, r.teacher] } });
   if (subbed) throw AppError.of("INVOICE_SESSION_SUBSTITUTE", 400);
@@ -577,7 +575,7 @@ async function addInvoice(r, { imageData, imageName, thumb, sessionIds }) {
     if (s.lesson) continue;
     const lesson = await Lesson.findOneAndUpdate(
       { cycle: s.cycle, date: s.date, source: "live" },
-      { $setOnInsert: { world: r.world, attendance: [] } },
+      { $setOnInsert: { attendance: [] } },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
     s.lesson = lesson._id;
@@ -590,7 +588,6 @@ async function addInvoice(r, { imageData, imageName, thumb, sessionIds }) {
   const already = await InvoiceLesson.exists({ lesson: { $in: lessonIds } });
   if (already) throw AppError.of("INVOICE_LESSON_BILLED", 400);
   await invoices.createInvoice({
-    world: r.world,
     teacherId: r.teacher,
     lessonIds,
     imageData,
@@ -606,10 +603,10 @@ async function addInvoice(r, { imageData, imageName, thumb, sessionIds }) {
 /** The teacher takes an invoice back - only one that came through this link, while the month is open. */
 async function removeInvoice(r, invoiceId) {
   assertOpen(r);
-  const inv = isId(invoiceId) && (await Invoice.findOne({ _id: invoiceId, world: r.world }).select("request").lean());
+  const inv = isId(invoiceId) && (await Invoice.findOne({ _id: invoiceId }).select("request").lean());
   if (!inv) throw AppError.of("NOT_FOUND", 404, "חשבונית");
   if (String(inv.request) !== String(r._id)) throw AppError.of("INVOICE_NOT_YOURS", 403);
-  await invoices.deleteInvoice({ world: r.world, invoiceId });
+  await invoices.deleteInvoice({ invoiceId });
   return r;
 }
 
@@ -617,7 +614,7 @@ async function removeInvoice(r, invoiceId) {
 async function complete(r, { note } = {}) {
   assertOpen(r);
   const text = note !== undefined ? clean(note, 1000) : r.note;
-  if (!text && !(await Invoice.exists({ world: r.world, request: r._id }))) throw AppError.of("INVOICE_DONE_EMPTY", 400);
+  if (!text && !(await Invoice.exists({ request: r._id }))) throw AppError.of("INVOICE_DONE_EMPTY", 400);
   r.completedAt = new Date();
   if (note !== undefined) r.note = text;
   await r.save();
@@ -626,14 +623,14 @@ async function complete(r, { note } = {}) {
 
 /** The file of an invoice of this request (`thumb`: its small JPEG): one that came through the link, or the teacher's own on the month's lessons. */
 async function imageOf(r, invoiceId, thumb = false) {
-  const inv = isId(invoiceId) && (await Invoice.findOne({ _id: invoiceId, world: r.world }).select("request teacher").lean());
+  const inv = isId(invoiceId) && (await Invoice.findOne({ _id: invoiceId }).select("request teacher").lean());
   if (!inv) throw AppError.of("NOT_FOUND", 404, "חשבונית");
-  await attachLessons(r.world, r.sessions); // the month's lesson rows the request has not noted yet (never saved here)
+  await attachLessons(r.sessions); // the month's lesson rows the request has not noted yet (never saved here)
   const mine =
     String(inv.request) === String(r._id) ||
     (String(inv.teacher) === String(r.teacher) && (await InvoiceLesson.exists({ invoice: inv._id, lesson: { $in: r.sessions.map((s) => s.lesson).filter(Boolean) } })));
   if (!mine) throw AppError.of("NOT_FOUND", 404, "חשבונית");
-  return invoices.imageOf({ world: r.world, invoiceId, thumb });
+  return invoices.imageOf({ invoiceId, thumb });
 }
 
 /* ───────────────────────── the super admin's corrections (the state machine, section 08) ─────────────────────────
@@ -644,13 +641,13 @@ async function imageOf(r, invoiceId, thumb = false) {
  *   4. a request never stays "הושלם" with nothing in it (settleAfterDelete);
  *   5. every action says what it did, in numbers, and leaves a line in `adminActions`. */
 
-/** Rule 3: `sessions[].lesson` naming a lesson row that is gone → null, on the world's requests and the houses' drafts. */
-async function clearDeadLessonPointers(world, lessonIds) {
+/** Rule 3: `sessions[].lesson` naming a lesson row that is gone → null, on every request and the houses' drafts. */
+async function clearDeadLessonPointers(lessonIds) {
   const ids = lessonIds.map((id) => new mongoose.Types.ObjectId(String(id)));
   if (!ids.length) return 0;
   const [a, b] = await Promise.all([
-    InvoiceRequest.updateMany({ world, "sessions.lesson": { $in: ids } }, { $set: { "sessions.$[s].lesson": null } }, { arrayFilters: [{ "s.lesson": { $in: ids } }] }),
-    HostelReport.updateMany({ world, "sessions.lesson": { $in: ids } }, { $set: { "sessions.$[s].lesson": null } }, { arrayFilters: [{ "s.lesson": { $in: ids } }] }),
+    InvoiceRequest.updateMany({ "sessions.lesson": { $in: ids } }, { $set: { "sessions.$[s].lesson": null } }, { arrayFilters: [{ "s.lesson": { $in: ids } }] }),
+    HostelReport.updateMany({ "sessions.lesson": { $in: ids } }, { $set: { "sessions.$[s].lesson": null } }, { arrayFilters: [{ "s.lesson": { $in: ids } }] }),
   ]);
   return (a.modifiedCount || 0) + (b.modifiedCount || 0);
 }
@@ -660,37 +657,37 @@ async function clearDeadLessonPointers(world, lessonIds) {
  * attendance, no substitute or room written on them, no invoice row left, no house draft pointing at them. The
  * rest are the attendance's now and stay. Answers how many went.
  */
-async function dropBareLessons(world, lessonIds) {
+async function dropBareLessons(lessonIds) {
   const ids = [...new Set(lessonIds.filter(Boolean).map(String))];
   if (!ids.length) return 0;
   const [stillBilled, inDrafts] = await Promise.all([
     InvoiceLesson.find({ lesson: { $in: ids } }).select("lesson").lean(),
-    HostelReport.find({ world, "sessions.lesson": { $in: ids } }).select("sessions.lesson").lean(),
+    HostelReport.find({ "sessions.lesson": { $in: ids } }).select("sessions.lesson").lean(),
   ]);
   const keep = new Set(stillBilled.map((b) => String(b.lesson)));
   for (const d of inDrafts) for (const s of d.sessions || []) if (s.lesson) keep.add(String(s.lesson));
   const free = ids.filter((id) => !keep.has(id));
   if (!free.length) return 0;
-  const bare = await Lesson.find({ _id: { $in: free }, world, source: "live", attendance: { $size: 0 }, teacher: null, room: null }).select("_id").lean();
+  const bare = await Lesson.find({ _id: { $in: free }, source: "live", attendance: { $size: 0 }, teacher: null, room: null }).select("_id").lean();
   if (!bare.length) return 0;
   const gone = bare.map((l) => l._id);
   await Lesson.deleteMany({ _id: { $in: gone } });
-  await clearDeadLessonPointers(world, gone);
+  await clearDeadLessonPointers(gone);
   return gone.length;
 }
 
 /** Rule 1 on every invoice that came through one link: answers { invoices, rows } (one file per invoice). */
-async function deleteInvoicesOf(world, requestId) {
-  const invs = await Invoice.find({ world, request: requestId }).select("_id").lean();
+async function deleteInvoicesOf(requestId) {
+  const invs = await Invoice.find({ request: requestId }).select("_id").lean();
   if (!invs.length) return { invoices: 0, rows: 0 };
   const rows = await InvoiceLesson.countDocuments({ invoice: { $in: invs.map((i) => i._id) } });
-  for (const i of invs) await invoices.deleteInvoice({ world, invoiceId: i._id });
+  for (const i of invs) await invoices.deleteInvoice({ invoiceId: i._id });
   return { invoices: invs.length, rows };
 }
 
 /** B: the teacher's link as if nothing happened - the invoices gone, the finish and the opening forgotten, three weeks open again; the token kept or rotated (decision 3). */
 async function resetRequest(r, { rotateToken = false } = {}) {
-  const gone = await deleteInvoicesOf(r.world, r._id);
+  const gone = await deleteInvoicesOf(r._id);
   r.completedAt = undefined;
   r.note = undefined;
   r.openedAt = undefined;
@@ -704,9 +701,9 @@ async function resetRequest(r, { rotateToken = false } = {}) {
 /** D: the month's sessions from the live schedule again; a session already on an invoice stays as it is, even off the schedule (same cycle and day = same lesson row). */
 async function rebuildSessions(r) {
   const round = await InvoiceRound.findById(r.round).lean();
-  const cycles = (await cyclesOfMonth({ world: r.world, program: round.program, month: round.month })).filter((c) => String(c.teacher) === String(r.teacher));
+  const cycles = (await cyclesOfMonth({ program: round.program, month: round.month })).filter((c) => String(c.teacher) === String(r.teacher));
   const fresh = cycles.flatMap((c) => plannedSessions(c, round.month));
-  await attachLessons(r.world, fresh);
+  await attachLessons(fresh);
   const billed = new Set((await InvoiceLesson.find({ lesson: { $in: r.sessions.map((s) => s.lesson).filter(Boolean) } }).select("lesson").lean()).map((b) => String(b.lesson)));
   const keyOf = (s) => `${s.cycle}|${new Date(s.date).toISOString()}`;
   const kept = r.sessions.filter((s) => s.lesson && billed.has(String(s.lesson))).map((s) => s.toObject());
@@ -719,28 +716,28 @@ async function rebuildSessions(r) {
 
 /** E: a request for every teacher of the month who has none yet (a course or a teacher that came after the opening). Answers how many. */
 async function syncRequests(round) {
-  const byTeacher = sessionsByTeacher(await cyclesOfMonth({ world: round.world, program: round.program, month: round.month }), round.month);
+  const byTeacher = sessionsByTeacher(await cyclesOfMonth({ program: round.program, month: round.month }), round.month);
   const have = new Set((await InvoiceRequest.find({ round: round._id }).select("teacher").lean()).map((r) => String(r.teacher)));
   const expiresAt = linkExpiry();
   let n = 0;
   for (const [teacher, sessions] of byTeacher) {
     if (have.has(teacher)) continue;
-    await attachLessons(round.world, sessions);
-    await InvoiceRequest.create({ world: round.world, round: round._id, teacher, token: makeToken(), expiresAt, sessions });
+    await attachLessons(sessions);
+    await InvoiceRequest.create({ round: round._id, teacher, token: makeToken(), expiresAt, sessions });
     n++;
   }
   return n;
 }
 
 /**
- * H: what points at nothing, in the whole world. Invoice rows without their invoice or their lesson, pointers to
+ * H: what points at nothing, anywhere. Invoice rows without their invoice or their lesson, pointers to
  * lesson rows that are gone, invoices without their file or without a single row. With `dryRun` it only counts;
  * otherwise the rows and the pointers are fixed, and the invoices are listed for the super admin to delete on purpose.
  */
-async function orphanSweep({ world, dryRun }) {
-  const rows = await InvoiceLesson.find({ world }).select("invoice lesson").lean();
+async function orphanSweep({ dryRun }) {
+  const rows = await InvoiceLesson.find().select("invoice lesson").lean();
   const [invs, lessons] = await Promise.all([
-    Invoice.find({ world }).select("_id file teacher uploadedAt request").lean(),
+    Invoice.find().select("_id file teacher uploadedAt request").lean(),
     Lesson.find({ _id: { $in: [...new Set(rows.map((r) => String(r.lesson)))] } }).select("_id").lean(),
   ]);
   const invSet = new Set(invs.map((i) => String(i._id)));
@@ -749,8 +746,8 @@ async function orphanSweep({ world, dryRun }) {
   const rowsWithoutLesson = rows.filter((r) => invSet.has(String(r.invoice)) && !lessonSet.has(String(r.lesson)));
   // ($ne: null on an array path would skip a request whose OTHER sessions have no lesson yet)
   const [reqs, drafts] = await Promise.all([
-    InvoiceRequest.find({ world, "sessions.lesson": { $type: "objectId" } }).select("sessions.lesson").lean(),
-    HostelReport.find({ world, "sessions.lesson": { $type: "objectId" } }).select("sessions.lesson").lean(),
+    InvoiceRequest.find({ "sessions.lesson": { $type: "objectId" } }).select("sessions.lesson").lean(),
+    HostelReport.find({ "sessions.lesson": { $type: "objectId" } }).select("sessions.lesson").lean(),
   ]);
   const pointed = [...reqs, ...drafts].flatMap((d) => (d.sessions || []).map((s) => s.lesson && String(s.lesson)).filter(Boolean));
   const pointedIds = [...new Set(pointed)];
@@ -772,7 +769,7 @@ async function orphanSweep({ world, dryRun }) {
   if (!dryRun) {
     const goneRows = [...rowsWithoutInvoice, ...rowsWithoutLesson].map((r) => r._id);
     if (goneRows.length) await InvoiceLesson.deleteMany({ _id: { $in: goneRows } });
-    if (deadIds.length) await clearDeadLessonPointers(world, deadIds);
+    if (deadIds.length) await clearDeadLessonPointers(deadIds);
     report.fixed = true;
   }
   return report;
@@ -794,10 +791,9 @@ const teacherLabel = async (id) => {
  *   requestsSync                                E
  *   roundReset      { rotateToken }             F
  *   roundDelete     { force }                   G: with force the invoices go too; without, today's delete (409 with invoices)
- *   orphanSweep     { dryRun }                  H: the world's orphans counted (dryRun) or fixed
+ *   orphanSweep     { dryRun }                  H: the orphans counted (dryRun) or fixed
  */
 async function adminAction(round, { action, invoice, request, rotateToken, force, dryRun } = {}, actor) {
-  const world = round.world;
   const did = { invoices: 0, files: 0, invoiceLessons: 0, lessons: 0, requests: 0, reopened: 0 };
   const targets = [{ kind: "round", id: String(round._id), label: `${monthLabel(round.month)} · ${INVOICE_ROUND_PROGRAM_LABELS[round.program]}` }];
   const took = (gone) => {
@@ -808,7 +804,7 @@ async function adminAction(round, { action, invoice, request, rotateToken, force
   let alive = true;
   switch (action) {
     case "invoiceDelete": {
-      const inv = isId(invoice) && (await Invoice.findOne({ _id: invoice, world }).select("request teacher").lean());
+      const inv = isId(invoice) && (await Invoice.findOne({ _id: invoice }).select("request teacher").lean());
       if (!inv) throw AppError.of("NOT_FOUND", 404, "חשבונית");
       // of this round: through one of its links, or on one of its lessons
       const reqs = await InvoiceRequest.find({ round: round._id }).select("_id sessions.lesson").lean();
@@ -816,33 +812,33 @@ async function adminAction(round, { action, invoice, request, rotateToken, force
       const ofRound = reqs.some((r) => String(r._id) === String(inv.request)) || (await InvoiceLesson.exists({ invoice: inv._id, lesson: { $in: lessonIds } }));
       if (!ofRound) throw AppError.of("NOT_FOUND", 404, "חשבונית");
       did.invoiceLessons = await InvoiceLesson.countDocuments({ invoice: inv._id });
-      await invoices.deleteInvoice({ world, invoiceId: inv._id });
+      await invoices.deleteInvoice({ invoiceId: inv._id });
       did.invoices = 1;
       did.files = 1;
-      if (inv.request && (await settleAfterDelete({ world, requestId: inv.request }))) did.reopened = 1;
+      if (inv.request && (await settleAfterDelete({ requestId: inv.request }))) did.reopened = 1;
       targets.push({ kind: "invoice", id: String(inv._id), label: await teacherLabel(inv.teacher) });
       break;
     }
     case "requestReset": {
-      const r = await loadRequest({ world, roundId: round._id, requestId: request });
+      const r = await loadRequest({ roundId: round._id, requestId: request });
       took(await resetRequest(r, { rotateToken: !!rotateToken }));
       did.requests = 1;
       targets.push({ kind: "request", id: String(r._id), label: await teacherLabel(r.teacher) });
       break;
     }
     case "requestRemove": {
-      const r = await loadRequest({ world, roundId: round._id, requestId: request });
-      if (!force && (await Invoice.exists({ world, request: r._id }))) throw AppError.of("INVOICE_REQUEST_HAS_INVOICES", 409);
-      took(await deleteInvoicesOf(world, r._id));
+      const r = await loadRequest({ roundId: round._id, requestId: request });
+      if (!force && (await Invoice.exists({ request: r._id }))) throw AppError.of("INVOICE_REQUEST_HAS_INVOICES", 409);
+      took(await deleteInvoicesOf(r._id));
       const lessonIds = r.sessions.map((s) => s.lesson).filter(Boolean);
       await InvoiceRequest.deleteOne({ _id: r._id });
       did.requests = 1;
-      did.lessons = await dropBareLessons(world, lessonIds);
+      did.lessons = await dropBareLessons(lessonIds);
       targets.push({ kind: "request", id: String(r._id), label: await teacherLabel(r.teacher) });
       break;
     }
     case "sessionsRebuild": {
-      const r = await loadRequest({ world, roundId: round._id, requestId: request });
+      const r = await loadRequest({ roundId: round._id, requestId: request });
       Object.assign(did, await rebuildSessions(r));
       targets.push({ kind: "request", id: String(r._id), label: await teacherLabel(r.teacher) });
       break;
@@ -862,25 +858,25 @@ async function adminAction(round, { action, invoice, request, rotateToken, force
     case "roundDelete": {
       if (!force) {
         did.requests = await InvoiceRequest.countDocuments({ round: round._id });
-        await deleteRound({ world, roundId: round._id });
+        await deleteRound({ roundId: round._id });
       } else {
         const reqs = await InvoiceRequest.find({ round: round._id }).select("_id sessions.lesson").lean();
-        for (const r of reqs) took(await deleteInvoicesOf(world, r._id));
+        for (const r of reqs) took(await deleteInvoicesOf(r._id));
         did.requests = (await InvoiceRequest.deleteMany({ round: round._id })).deletedCount || 0;
         await InvoiceRound.deleteOne({ _id: round._id });
-        did.lessons = await dropBareLessons(world, reqs.flatMap((r) => r.sessions.map((s) => s.lesson).filter(Boolean)));
+        did.lessons = await dropBareLessons(reqs.flatMap((r) => r.sessions.map((s) => s.lesson).filter(Boolean)));
       }
       alive = false;
       break;
     }
     case "orphanSweep":
-      did.sweep = await orphanSweep({ world, dryRun: !!dryRun });
+      did.sweep = await orphanSweep({ dryRun: !!dryRun });
       break;
     default:
       throw AppError.of("INVOICE_ADMIN_ACTION", 400, String(action || ""));
   }
-  await AdminAction.create({ world, actor: { id: actor?._id || null, name: actor?.name || "", kind: actor?.kind || "" }, family: "invoices", action, targets, did });
-  return { round: alive ? await roundView(await loadRound({ world, roundId: round._id })) : null, did };
+  await AdminAction.create({ actor: { id: actor?._id || null, name: actor?.name || "", kind: actor?.kind || "" }, family: "invoices", action, targets, did });
+  return { round: alive ? await roundView(await loadRound({ roundId: round._id })) : null, did };
 }
 
 module.exports = {

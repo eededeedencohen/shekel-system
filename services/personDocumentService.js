@@ -31,17 +31,17 @@ const view = (d) => {
   return { ...o, file: String(o.file) };
 };
 
-/** Every document of the world (the client's slice), or of one person; newest first. */
-async function list({ world, personId = null, persons = null }) {
-  const filter = { world };
+/** Every document (the client's slice), or of one person; newest first. */
+async function list({ personId = null, persons = null }) {
+  const filter = {};
   if (personId) filter.person = personId;
   else if (persons) filter.person = { $in: [...persons] };
   const docs = await PersonDocument.find(filter).sort({ uploadedAt: -1 }).lean();
   return docs.map(view);
 }
 
-async function add({ world, personId, kind, label, fileName, mime, data, thumb, by, note }) {
-  const person = await Person.findOne({ _id: personId, world, deletedAt: null }).select("_id").lean();
+async function add({ personId, kind, label, fileName, mime, data, thumb, by, note }) {
+  const person = await Person.findOne({ _id: personId, deletedAt: null }).select("_id").lean();
   if (!person) throw AppError.of("NOT_FOUND", 404, "אדם");
   const k = PERSON_DOCUMENT_KIND_KEYS.includes(kind) ? kind : "other";
   const fk = fileKind(mime, fileName);
@@ -49,9 +49,8 @@ async function add({ world, personId, kind, label, fileName, mime, data, thumb, 
   if (!fk || buffer.length === 0 || buffer.length > MAX_FILE_BYTES) throw AppError.of("PERSON_DOCUMENT_INVALID", 400);
   const thumbBuf = parseThumb(thumb);
   const name = clean(fileName, 120) || `${k}.${fk.ext}`;
-  const stored = await StoredFile.create({ world, name, mime: fk.mime, size: buffer.length, data: buffer, ...(thumbBuf && { thumb: thumbBuf }) });
+  const stored = await StoredFile.create({ name, mime: fk.mime, size: buffer.length, data: buffer, ...(thumbBuf && { thumb: thumbBuf }) });
   const doc = await PersonDocument.create({
-    world,
     person: personId,
     kind: k,
     label: clean(label, 120),
@@ -66,14 +65,14 @@ async function add({ world, personId, kind, label, fileName, mime, data, thumb, 
   return view(doc);
 }
 
-async function load({ world, personId, docId }) {
-  const doc = await PersonDocument.findOne({ _id: docId, world, ...(personId && { person: personId }) });
+async function load({ personId, docId }) {
+  const doc = await PersonDocument.findOne({ _id: docId, ...(personId && { person: personId }) });
   if (!doc) throw AppError.of("NOT_FOUND", 404, "מסמך");
   return doc;
 }
 
-async function remove({ world, personId, docId }) {
-  const doc = await load({ world, personId, docId });
+async function remove({ personId, docId }) {
+  const doc = await load({ personId, docId });
   await StoredFile.deleteOne({ _id: doc.file });
   await PersonDocument.deleteOne({ _id: doc._id });
 }

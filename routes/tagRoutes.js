@@ -1,5 +1,5 @@
 /**
- * @file Tag routes - /api/tags: the catalog of belongings of a world
+ * @file Tag routes - /api/tags: the catalog of belongings
  * @module routes/tagRoutes
  */
 
@@ -19,7 +19,7 @@ router.param("id", lens.guardPerson);
 router.get(
   "/",
   catchAsync(async (req, res) => {
-    const data = await tags.catalog(req.world);
+    const data = await tags.catalog();
     res.status(200).json({ status: "success", data });
   })
 );
@@ -28,10 +28,10 @@ router.get(
 router.post(
   "/people/:id",
   catchAsync(async (req, res) => {
-    const person = await requirePerson(req.params.id, req.world);
+    const person = await requirePerson(req.params.id);
     lens.assertProgramTag(req, req.body.key); // a program tag of the persona's own program only
-    await tags.give({ world: req.world, personId: person._id, key: req.body.key, by: req.body.by, note: req.body.note });
-    res.status(200).json({ status: "success", data: await answer(req.world, person._id) });
+    await tags.give({ personId: person._id, key: req.body.key, by: req.body.by, note: req.body.note });
+    res.status(200).json({ status: "success", data: await answer(person._id) });
   })
 );
 
@@ -39,20 +39,20 @@ router.post(
 router.delete(
   "/people/:id/:key",
   catchAsync(async (req, res) => {
-    const person = await requirePerson(req.params.id, req.world);
+    const person = await requirePerson(req.params.id);
     lens.assertProgramTag(req, req.params.key);
-    await tags.take({ world: req.world, personId: person._id, key: req.params.key, by: req.body?.by, note: req.body?.note });
-    res.status(200).json({ status: "success", data: await answer(req.world, person._id) });
+    await tags.take({ personId: person._id, key: req.params.key, by: req.body?.by, note: req.body?.note });
+    res.status(200).json({ status: "success", data: await answer(person._id) });
   })
 );
 
-async function requirePerson(id, world) {
-  const person = mongoose.isValidObjectId(id) && (await Person.findOne({ _id: id, world, deletedAt: null }).select("_id").lean());
+async function requirePerson(id) {
+  const person = mongoose.isValidObjectId(id) && (await Person.findOne({ _id: id, deletedAt: null }).select("_id").lean());
   if (!person) throw AppError.of("NOT_FOUND", 404, "אדם");
   return person;
 }
-async function answer(world, personId) {
-  const t = (await tags.tagsByPerson(world, [personId])).get(String(personId)) || { tags: [], pastTags: [] };
+async function answer(personId) {
+  const t = (await tags.tagsByPerson([personId])).get(String(personId)) || { tags: [], pastTags: [] };
   return { person: String(personId), tags: t.tags, pastTags: t.pastTags };
 }
 

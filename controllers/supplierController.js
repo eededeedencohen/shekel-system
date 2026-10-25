@@ -24,7 +24,7 @@ exports.requireSupplierStaff = (req, res, next) => {
 };
 
 async function load(req) {
-  const s = await Supplier.findOne({ _id: req.params.id, world: req.world });
+  const s = await Supplier.findOne({ _id: req.params.id });
   if (!s) throw AppError.of("NOT_FOUND", 404, "ספק");
   return s;
 }
@@ -34,12 +34,12 @@ const answer = (res, s, status = 200) => res.status(status).json({ status: "succ
 /* ───────────────────────── staff ───────────────────────── */
 
 exports.list = catchAsync(async (req, res) => {
-  const rows = await Supplier.find({ world: req.world }).sort({ updatedAt: -1 });
+  const rows = await Supplier.find().sort({ updatedAt: -1 });
   res.status(200).json({ status: "success", results: rows.length, data: { suppliers: rows.map(suppliers.staffView) } });
 });
 
 exports.create = catchAsync(async (req, res) => {
-  const s = await suppliers.create({ world: req.world, body: req.body || {}, by: by(req) });
+  const s = await suppliers.create({ body: req.body || {}, by: by(req) });
   answer(res, s, 201);
 });
 
@@ -101,8 +101,8 @@ exports.staffThumb = catchAsync(async (req, res) => sendThumb(req, res, await lo
 
 /* ───────────────────────── public (behind the link) ───────────────────────── */
 
-const resolve = (req) => suppliers.resolveToken({ world: req.world, token: req.params.token });
-const publicAnswer = (res, s) => res.status(200).json({ status: "success", data: { view: { ...suppliers.publicView(s), world: s.world } } });
+const resolve = (req) => suppliers.resolveToken({ token: req.params.token });
+const publicAnswer = (res, s) => res.status(200).json({ status: "success", data: { view: suppliers.publicView(s) } });
 
 exports.publicView = catchAsync(async (req, res) => publicAnswer(res, await suppliers.noteOpened(await resolve(req))));
 

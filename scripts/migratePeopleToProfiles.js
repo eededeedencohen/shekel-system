@@ -12,12 +12,11 @@
  *
  * Usage:
  *   node scripts/migratePeopleToProfiles.js --dry            # report only
- *   node scripts/migratePeopleToProfiles.js --world=test     # one world
- *   node scripts/migratePeopleToProfiles.js                  # all worlds
+ *   node scripts/migratePeopleToProfiles.js                  # migrate
  *   node scripts/migratePeopleToProfiles.js --cleanup        # also $unset
  *
- * Run order: test → pokemon → real; run --cleanup only after the counts
- * printed by the verify step match. Take a mongodump first.
+ * Run --cleanup only after the counts printed by the verify step match.
+ * Take a mongodump first.
  */
 
 require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") });
@@ -28,7 +27,6 @@ const { Profile, MODEL_BY_KIND } = require("../models/profiles");
 
 const DRY = process.argv.includes("--dry");
 const CLEANUP = process.argv.includes("--cleanup");
-const worldArg = (process.argv.find((a) => a.startsWith("--world=")) || "").split("=")[1];
 
 /** Old role → profile kind + the fields that move with it. */
 const ROLE_MAP = {
@@ -56,14 +54,13 @@ async function main() {
   const people = db.collection("people");
 
   const filter = { role: { $exists: true } };
-  if (worldArg) filter.world = worldArg;
 
-  const byRoleWorld = await people
-    .aggregate([{ $match: filter }, { $group: { _id: { role: "$role", world: "$world" }, n: { $sum: 1 } } }])
+  const byRole = await people
+    .aggregate([{ $match: filter }, { $group: { _id: "$role", n: { $sum: 1 } } }])
     .toArray();
   console.log("== people still carrying a role field ==");
-  for (const r of byRoleWorld) console.log(`  ${r._id.world} / ${r._id.role}: ${r.n}`);
-  if (!byRoleWorld.length) console.log("  (none - nothing to migrate)");
+  for (const r of byRole) console.log(`  ${r._id}: ${r.n}`);
+  if (!byRole.length) console.log("  (none - nothing to migrate)");
 
   let created = 0, skipped = 0, unknown = 0;
   const cursor = people.find(filter);
@@ -76,7 +73,7 @@ async function main() {
 
     if (DRY) { created++; continue; }
     const Model = MODEL_BY_KIND[map.kind];
-    const payload = { person: doc._id, world: doc.world };
+    const payload = { person: doc._id };
     for (const f of map.fields) if (doc[f] !== undefined) payload[f] = doc[f];
     // bypass the moveToStage-only guard: this IS the historical data
     await Model.collection.insertOne({
@@ -107,12 +104,8 @@ async function main() {
     else if (missing > 0) console.log("cleanup REFUSED - migrate the missing people first.");
     else {
       const unset = Object.fromEntries(LEGACY_PATHS.map((p) => [p, ""]));
-      const r = await people.updateMany(worldArg ? { world: worldArg } : {}, { $unset: unset });
+      const r = await people.updateMany({}, { $unset: unset });
       console.log(`cleanup - $unset legacy fields on ${r.modifiedCount} people.`);
-      try {
-        await people.dropIndex("world_1_role_1");
-        console.log("dropped index world_1_role_1");
-      } catch { /* index may not exist */ }
     }
   } else {
     console.log("run again with --cleanup (after verifying) to $unset the legacy fields.");

@@ -3,7 +3,7 @@
  * @module models/Intake
  *
  * The social worker meets a HUMAN once, whichever programs they join -
- * so the intake facts live here, one document per (world, person), and
+ * so the intake facts live here, one document per person, and
  * NOT on the two student profiles (a person in both programs would carry
  * the same checklist twice). The profiles keep their own pipeline stage;
  * services/intakeService moves them in lockstep with this record.
@@ -43,7 +43,6 @@
 
 const mongoose = require("mongoose");
 const {
-  WORLDS,
   STUDENT_KINDS,
   INTAKE_STATUSES,
   INTAKE_SOURCES,
@@ -67,7 +66,7 @@ const documentSchema = new mongoose.Schema(
       name: { type: String, trim: true },
       /** The bytes, in the `files` collection (since 2026-10-07). */
       stored: { type: mongoose.Schema.Types.ObjectId, ref: "StoredFile" },
-      /** Legacy: a file still on the server's disk (UPLOAD_DIR/<world>/<intakeId>/). */
+      /** Legacy: a file still on the server's disk (UPLOAD_DIR/real/<intakeId>/, written before the worlds were retired). */
       storedName: { type: String, trim: true },
       mime: { type: String, trim: true },
       size: { type: Number, min: 0 },
@@ -101,7 +100,6 @@ const logEntrySchema = new mongoose.Schema(
 
 const intakeSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     person: { type: mongoose.Schema.Types.ObjectId, ref: "Person", required: true, immutable: true },
     status: { type: String, enum: INTAKE_STATUSES, default: "new", index: true },
     source: { type: String, enum: INTAKE_SOURCES, default: "staff" },
@@ -184,12 +182,12 @@ const intakeSchema = new mongoose.Schema(
   { timestamps: true, collection: "intakes" }
 );
 
-intakeSchema.index({ world: 1, person: 1 }, { unique: true });
+intakeSchema.index({ person: 1 }, { unique: true });
 intakeSchema.index(
   { "landing.token": 1 },
   { unique: true, partialFilterExpression: { "landing.token": { $exists: true } } }
 );
-intakeSchema.index({ world: 1, status: 1, "scheduled.at": 1 });
+intakeSchema.index({ status: 1, "scheduled.at": 1 });
 
 /** Rows of retired document keys never survive a save. */
 intakeSchema.pre("save", function (next) {
@@ -199,14 +197,12 @@ intakeSchema.pre("save", function (next) {
   next();
 });
 
-/** world must equal the person's world - asserted once, on create. */
+/** The person must exist - asserted once, on create. */
 intakeSchema.pre("validate", async function (next) {
   if (!this.isNew || !this.person) return next();
   try {
-    const person = await mongoose.model("Person").findById(this.person).select("world");
+    const person = await mongoose.model("Person").findById(this.person).select("_id");
     if (!person) return next(new Error("תיק קליטה חייב להצביע על אדם קיים"));
-    if (!this.world) this.world = person.world;
-    if (this.world !== person.world) return next(new Error("world של תיק הקליטה חייב להשתוות ל-world של האדם"));
     next();
   } catch (e) {
     next(e);

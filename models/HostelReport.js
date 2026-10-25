@@ -16,7 +16,7 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS, ABSENCE_REASON_KEYS, HOSTEL_REPORT_SESSION_STATES, HOSTEL_REPORT_MARKS } = require("../utils/domain");
+const { ABSENCE_REASON_KEYS, HOSTEL_REPORT_SESSION_STATES, HOSTEL_REPORT_MARKS } = require("../utils/domain");
 
 const markSchema = new mongoose.Schema(
   {
@@ -76,7 +76,6 @@ const leftSchema = new mongoose.Schema(
 
 const hostelReportSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     hostel: { type: mongoose.Schema.Types.ObjectId, ref: "Hostel", required: true },
     /** "2026-10" */
     month: { type: String, required: true, match: /^\d{4}-(0[1-9]|1[0-2])$/ },
@@ -104,9 +103,9 @@ const hostelReportSchema = new mongoose.Schema(
   { timestamps: true, collection: "hostelReports" }
 );
 
-hostelReportSchema.index({ world: 1, token: 1 }, { unique: true });
-hostelReportSchema.index({ world: 1, hostel: 1, month: 1 }, { unique: true });
-hostelReportSchema.index({ world: 1, month: -1 });
+hostelReportSchema.index({ token: 1 }, { unique: true });
+hostelReportSchema.index({ hostel: 1, month: 1 }, { unique: true });
+hostelReportSchema.index({ month: -1 });
 
 hostelReportSchema.methods.linkLive = function () {
   return !!this.expiresAt && this.expiresAt.getTime() > Date.now();

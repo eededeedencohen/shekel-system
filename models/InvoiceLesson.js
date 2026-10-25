@@ -10,11 +10,9 @@
  */
 
 const mongoose = require("mongoose");
-const { WORLDS } = require("../utils/domain");
 
 const invoiceLessonSchema = new mongoose.Schema(
   {
-    world: { type: String, enum: WORLDS, required: true, default: "real", immutable: true },
     invoice: { type: mongoose.Schema.Types.ObjectId, ref: "Invoice", required: true },
     lesson: { type: mongoose.Schema.Types.ObjectId, ref: "Lesson", required: true },
   },

@@ -19,20 +19,13 @@
  * writer for the app) - a data migration is the one place that may bypass
  * it. Idempotent; run it as many times as you like:
  *
- *   cd server && node scripts/migratePipelineStages.js            # every world
- *   cd server && node scripts/migratePipelineStages.js --world=test
+ *   cd server && node scripts/migratePipelineStages.js
  */
 
 require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") });
 const mongoose = require("mongoose");
-const { LEGACY_STAGE_MAP, INTAKE_DOCUMENT_KEYS, WORLDS } = require("../utils/domain");
+const { LEGACY_STAGE_MAP, INTAKE_DOCUMENT_KEYS } = require("../utils/domain");
 
-const worldArg = process.argv.find((a) => a.startsWith("--world="))?.slice(8);
-if (worldArg && !WORLDS.includes(worldArg)) {
-  console.error(`world לא מוכר: ${worldArg} (${WORLDS.join(" | ")})`);
-  process.exit(1);
-}
-const scope = worldArg ? { world: worldArg } : {};
 const legacy = Object.keys(LEGACY_STAGE_MAP);
 
 (async () => {
@@ -45,23 +38,23 @@ const legacy = Object.keys(LEGACY_STAGE_MAP);
   let heads = 0;
   let entries = 0;
   for (const [from, to] of Object.entries(LEGACY_STAGE_MAP)) {
-    const r1 = await profiles.updateMany({ ...scope, "pipeline.stage": from }, { $set: { "pipeline.stage": to } });
+    const r1 = await profiles.updateMany({ "pipeline.stage": from }, { $set: { "pipeline.stage": to } });
     heads += r1.modifiedCount;
     const r2 = await profiles.updateMany(
-      { ...scope, "stageHistory.stage": from },
+      { "stageHistory.stage": from },
       { $set: { "stageHistory.$[h].stage": to } },
       { arrayFilters: [{ "h.stage": from }] }
     );
     entries += r2.modifiedCount;
   }
   const r3 = await intakes.updateMany(
-    { ...scope, "documents.key": { $nin: INTAKE_DOCUMENT_KEYS } },
+    { "documents.key": { $nin: INTAKE_DOCUMENT_KEYS } },
     { $pull: { documents: { key: { $nin: INTAKE_DOCUMENT_KEYS } } } }
   );
 
-  const left = await profiles.countDocuments({ ...scope, $or: [{ "pipeline.stage": { $in: legacy } }, { "stageHistory.stage": { $in: legacy } }] });
+  const left = await profiles.countDocuments({ $or: [{ "pipeline.stage": { $in: legacy } }, { "stageHistory.stage": { $in: legacy } }] });
   console.log(
-    `${worldArg || "every world"}: ${heads} current stages + ${entries} profiles' history rewritten (${legacy.join(", ")} → ${[...new Set(Object.values(LEGACY_STAGE_MAP))].join(", ")}); ` +
+    `${heads} current stages + ${entries} profiles' history rewritten (${legacy.join(", ")} → ${[...new Set(Object.values(LEGACY_STAGE_MAP))].join(", ")}); ` +
       `${r3.modifiedCount} intake files trimmed to the new checklist; ${left} legacy stages left`
   );
   await mongoose.disconnect();

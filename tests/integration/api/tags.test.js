@@ -10,22 +10,19 @@ const { Tag, TagGroup } = require("../../../models/Tag");
 const { PersonTag, PersonTagEvent } = require("../../../models/PersonTag");
 const CycleTag = require("../../../models/CycleTag");
 const tags = require("../../../services/tagService");
-const { migrateWorld } = require("../../../services/tagMigration");
+const { migrateTags } = require("../../../services/tagMigration");
 const { makeStudent, makeTeacher, makeCycle, makeEnrollment, makeHostel, makeCultureStudent } = require("../../helpers/factories");
 
 describe("the catalog", () => {
-  it("is written once per world and served", async () => {
-    await tags.ensureCatalog("real");
-    await tags.ensureCatalog("real");
-    expect(await TagGroup.countDocuments({ world: "real" })).toBe(2);
-    expect(await Tag.countDocuments({ world: "real" })).toBe(10);
+  it("is written once and served", async () => {
+    await tags.ensureCatalog();
+    await tags.ensureCatalog();
+    expect(await TagGroup.countDocuments()).toBe(2);
+    expect(await Tag.countDocuments()).toBe(10);
     const res = await request(app).get("/api/tags");
     expect(res.status).toBe(200);
     expect(res.body.data.groups.map((g) => g.key)).toEqual(["role", "program"]);
     expect(res.body.data.tags.find((t) => t.key === "hostels")).toMatchObject({ label: "הוסטלים", group: "program", active: true });
-    // another world has its own copy
-    expect((await request(app).get("/api/tags").set("X-Dataset", "test")).body.data.tags).toHaveLength(10);
-    expect(await Tag.countDocuments()).toBe(20);
   });
 });
 
@@ -43,7 +40,7 @@ describe("the migration", () => {
     await makeEnrollment({ cycle: hostelCycle._id, student: both._id });
     await makeEnrollment({ cycle: collegeCycle._id, student: both._id });
 
-    const stats = await migrateWorld("real");
+    const stats = await migrateTags();
     expect(stats.hostelOnly).toBe(1);
 
     const people = (await request(app).get("/api/people")).body.data.people;
@@ -61,7 +58,7 @@ describe("the migration", () => {
     // run it again: nothing doubles
     const rows = await PersonTag.countDocuments();
     const events = await PersonTagEvent.countDocuments();
-    const again = await migrateWorld("real");
+    const again = await migrateTags();
     expect(again.inserted).toBe(0);
     expect(await PersonTag.countDocuments()).toBe(rows);
     expect(await PersonTagEvent.countDocuments()).toBe(events);
@@ -75,13 +72,13 @@ describe("the migration", () => {
     closed.profile.until = new Date("2026-05-01");
     closed.profile.log.push({ event: "closed", at: new Date("2026-05-01"), by: "נעה", note: "עזב" });
     await closed.profile.save();
-    await migrateWorld("real");
+    await migrateTags();
     const people = (await request(app).get("/api/people")).body.data.people;
     const c = people.find((x) => x._id === String(closed._id));
     expect(c.tags).toEqual([]);
     expect(c.pastTags.sort()).toEqual(["college", "student"]);
     expect(people.find((x) => x._id === String(culture._id)).tags.sort()).toEqual(["culture", "student"]);
-    const row = await PersonTag.findOne({ person: closed._id, tag: (await tags.tagMap("real")).get("college")._id });
+    const row = await PersonTag.findOne({ person: closed._id, tag: (await tags.tagMap()).get("college")._id });
     expect(row.until).toEqual(new Date("2026-05-01"));
     expect((await PersonTagEvent.find({ personTag: row._id }).sort({ _id: 1 })).map((e) => e.event)).toEqual(["opened", "closed"]);
   });
@@ -90,30 +87,30 @@ describe("the migration", () => {
 describe("the writers", () => {
   it("give / take / reopen keep one row per tag and write every step", async () => {
     const s = await makeStudent();
-    await tags.give({ world: "real", personId: s._id, key: "hostels", by: "תמר" });
-    await tags.give({ world: "real", personId: s._id, key: "hostels", by: "תמר" }); // no-op
-    expect(await tags.holds(s._id, "real", "hostels")).toBe(true);
-    await tags.take({ world: "real", personId: s._id, key: "hostels", by: "תמר", note: "עבר דירה" });
-    expect(await tags.holds(s._id, "real", "hostels")).toBe(false);
-    await tags.give({ world: "real", personId: s._id, key: "hostels", by: "תמר" });
-    const hostelsTag = (await tags.tagMap("real")).get("hostels")._id;
+    await tags.give({ personId: s._id, key: "hostels", by: "תמר" });
+    await tags.give({ personId: s._id, key: "hostels", by: "תמר" }); // no-op
+    expect(await tags.holds(s._id, "hostels")).toBe(true);
+    await tags.take({ personId: s._id, key: "hostels", by: "תמר", note: "עבר דירה" });
+    expect(await tags.holds(s._id, "hostels")).toBe(false);
+    await tags.give({ personId: s._id, key: "hostels", by: "תמר" });
+    const hostelsTag = (await tags.tagMap()).get("hostels")._id;
     expect(await PersonTag.countDocuments({ person: s._id, tag: hostelsTag })).toBe(1);
     const row = await PersonTag.findOne({ person: s._id, tag: hostelsTag });
     expect((await PersonTagEvent.find({ personTag: row._id }).sort({ at: 1, _id: 1 })).map((e) => e.event)).toEqual(["opened", "closed", "reopened"]);
     const person = (await request(app).get(`/api/people/${s._id}`)).body.data.person;
     expect(person.tags.sort()).toEqual(["college", "hostels", "student"]);
-    await expect(tags.give({ world: "real", personId: s._id, key: "nope" })).rejects.toMatchObject({ code: "TAG_UNKNOWN" });
+    await expect(tags.give({ personId: s._id, key: "nope" })).rejects.toMatchObject({ code: "TAG_UNKNOWN" });
   });
 
   it("a transfer between programs is two rows with otherTag on both events", async () => {
     const s = await makeStudent();
-    await tags.give({ world: "real", personId: s._id, key: "college", at: "2026-01-01", by: "נעה" });
-    await tags.take({ world: "real", personId: s._id, key: "college", at: "2026-06-01", by: "נעה", otherKey: "culture" });
-    await tags.give({ world: "real", personId: s._id, key: "culture", at: "2026-06-01", by: "נעה", otherKey: "college" });
-    const map = await tags.tagsByPerson("real", [s._id]);
+    await tags.give({ personId: s._id, key: "college", at: "2026-01-01", by: "נעה" });
+    await tags.take({ personId: s._id, key: "college", at: "2026-06-01", by: "נעה", otherKey: "culture" });
+    await tags.give({ personId: s._id, key: "culture", at: "2026-06-01", by: "נעה", otherKey: "college" });
+    const map = await tags.tagsByPerson([s._id]);
     expect(map.get(String(s._id)).tags.sort()).toEqual(["culture", "student"]);
     expect(map.get(String(s._id)).pastTags).toEqual(["college"]);
-    const ev = await PersonTagEvent.find({ world: "real", otherTag: { $ne: null } });
+    const ev = await PersonTagEvent.find({ otherTag: { $ne: null } });
     expect(ev.map((e) => e.event).sort()).toEqual(["transferredIn", "transferredOut"]);
   });
 });
