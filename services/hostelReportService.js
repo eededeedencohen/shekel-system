@@ -433,10 +433,11 @@ function touchSession(s, by) {
 }
 
 /**
- * The coordinator says of a session: held / not held / nothing yet. A
- * session she marks held with no marks starts with everyone on the list
- * present - she flips the ones who did not come. A session the house
- * already approved does not change its state here.
+ * The coordinator says of a session: held / not held / nothing yet. The
+ * marks are hers to make one by one (or "כולם הגיעו" - fillSession):
+ * nothing is marked present on her behalf (Eden, 2026-10-25: "אם אני לוחץ
+ * על סתם משבצת ריקה אז הוא פשוט מסמן את כולם נוכחים??? זה לא טוב"). A
+ * session already approved does not change its state here.
  */
 async function setStaffState({ reportId, sessionId, state, by }) {
   const r = await loadReport({ reportId });
@@ -449,26 +450,25 @@ async function setStaffState({ reportId, sessionId, state, by }) {
   if ((s.state || null) !== st) {
     touchSession(s, by);
     s.state = st;
-    if (st === "held" && !s.marks.length) {
-      const roster = (await rostersOf([String(s.cycle)])).get(String(s.cycle)) || [];
-      s.marks = roster.map((p) => ({ person: p._id, status: "present", reason: null, staffAt: new Date(), staffBy: clean(by, 80) }));
-    }
     await r.save();
   }
   return getReport({ reportId });
 }
 
 /**
- * The coordinator's word on one person in a held session: came / did not
- * (with the reason). The house's mark, if there was one, is kept under
- * `house` the first time it changes. On a session already approved the
- * lesson's attendance follows her at once.
+ * The coordinator's word on one person: came / did not (with the reason).
+ * On a session nobody has marked yet her first mark also says the session
+ * was held; on one marked "לא התקיים" she flips the column first. The
+ * house's mark, if there was one, is kept under `house` the first time it
+ * changes. On a session already approved the lesson's attendance follows
+ * her at once.
  */
 async function setStaffMark({ reportId, sessionId, person, status, reason, note, by }) {
   const r = await loadReport({ reportId });
   const s = r.sessions.id(sessionId);
   if (!s) throw AppError.of("HOSTEL_REPORT_SESSION_UNKNOWN", 400);
-  if (s.state !== "held") throw AppError.of("HOSTEL_REPORT_NOT_HELD", 400);
+  if (s.state === "notHeld") throw AppError.of("HOSTEL_REPORT_NOT_HELD", 400);
+  if (!s.state && dayKey(s.date) > todayKey()) throw AppError.of("HOSTEL_REPORT_SESSION_FUTURE", 400);
   if (!isId(person) || !HOSTEL_REPORT_MARKS.includes(status)) throw AppError.of("HOSTEL_REPORT_MARK_INVALID", 400);
   const why = status === "absent" ? reason : null;
   if (status === "absent" && !ABSENCE_REASON_KEYS.includes(why)) throw AppError.of("HOSTEL_REPORT_REASON_REQUIRED", 400);
@@ -476,6 +476,7 @@ async function setStaffMark({ reportId, sessionId, person, status, reason, note,
   const existing = s.marks.find((m) => String(m.person) === String(person));
   if (!existing && !roster.some((p) => String(p._id) === String(person))) throw AppError.of("HOSTEL_REPORT_NOT_IN_LIST", 400);
   touchSession(s, by);
+  if (!s.state) s.state = "held";
   const stamp = { staffAt: new Date(), staffBy: clean(by, 80) };
   if (existing) {
     if (!existing.staffAt && !existing.house?.status) existing.house = { status: existing.status, reason: existing.reason || null, note: existing.note || undefined };
@@ -485,6 +486,78 @@ async function setStaffMark({ reportId, sessionId, person, status, reason, note,
     Object.assign(existing, stamp);
   } else s.marks.push({ person, status, reason: why, note: clean(note, 200), ...stamp });
   if (s.approvedAt) await writeLesson(s);
+  await r.save();
+  return getReport({ reportId });
+}
+
+/**
+ * "כולם הגיעו": everyone on the list the session has no mark for is marked
+ * present by her - an explicit press, never a side effect of a click. On
+ * a session nobody marked it also says the session was held.
+ */
+async function fillSession({ reportId, sessionId, by }) {
+  const r = await loadReport({ reportId });
+  const s = r.sessions.id(sessionId);
+  if (!s) throw AppError.of("HOSTEL_REPORT_SESSION_UNKNOWN", 400);
+  if (s.state === "notHeld") throw AppError.of("HOSTEL_REPORT_NOT_HELD", 400);
+  if (!s.state && dayKey(s.date) > todayKey()) throw AppError.of("HOSTEL_REPORT_SESSION_FUTURE", 400);
+  const roster = (await rostersOf([String(s.cycle)])).get(String(s.cycle)) || [];
+  const marked = new Set(s.marks.map((m) => String(m.person)));
+  const missing = roster.filter((p) => !marked.has(String(p._id)));
+  if (missing.length) {
+    touchSession(s, by);
+    if (!s.state) s.state = "held";
+    const stamp = { staffAt: new Date(), staffBy: clean(by, 80) };
+    for (const p of missing) s.marks.push({ person: p._id, status: "present", reason: null, ...stamp });
+    if (s.approvedAt) await writeLesson(s);
+    await r.save();
+  }
+  return getReport({ reportId });
+}
+
+/**
+ * "ביטול השינויים שלך": the session goes back to the house's word - its
+ * state as the house had left it, a mark she changed back to what the
+ * house said, a mark that was hers alone gone - and it opens again for the
+ * house. Not on a session already approved.
+ */
+async function revertSession({ reportId, sessionId }) {
+  const r = await loadReport({ reportId });
+  const s = r.sessions.id(sessionId);
+  if (!s) throw AppError.of("HOSTEL_REPORT_SESSION_UNKNOWN", 400);
+  if (s.approvedAt) throw AppError.of("HOSTEL_REPORT_APPROVED", 400);
+  if (!s.staffAt) return getReport({ reportId });
+  const kept = [];
+  for (const m of s.marks) {
+    if (!m.staffAt) kept.push(m.toObject());
+    else if (m.house?.status) kept.push({ person: m.person, status: m.house.status, reason: m.house.reason || null, note: m.house.note || undefined });
+  }
+  s.state = s.houseState || null;
+  s.marks = kept;
+  s.houseState = null;
+  s.staffAt = undefined;
+  s.staffBy = undefined;
+  await r.save();
+  return getReport({ reportId });
+}
+
+/**
+ * "איפוס המפגש" (Eden, 2026-10-25: "אפילו אין כפתור איפוס לנתוני מה שסומן
+ * בהוסטל"): the session goes back to nothing at all - no state, no marks,
+ * the house's word and hers alike - and the house may mark it again. Not
+ * on a session already approved (that is attendance now).
+ */
+async function resetSession({ reportId, sessionId }) {
+  const r = await loadReport({ reportId });
+  const s = r.sessions.id(sessionId);
+  if (!s) throw AppError.of("HOSTEL_REPORT_SESSION_UNKNOWN", 400);
+  if (s.approvedAt) throw AppError.of("HOSTEL_REPORT_APPROVED", 400);
+  s.state = null;
+  s.marks = [];
+  s.markedAt = undefined;
+  s.houseState = null;
+  s.staffAt = undefined;
+  s.staffBy = undefined;
   await r.save();
   return getReport({ reportId });
 }
@@ -854,6 +927,9 @@ module.exports = {
   approveAll,
   setStaffState,
   setStaffMark,
+  fillSession,
+  revertSession,
+  resetSession,
   createResident,
   ensureResidence,
   resolveExtra,

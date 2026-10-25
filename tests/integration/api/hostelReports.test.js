@@ -196,18 +196,36 @@ describe("the hostel's attendance draft", () => {
     expect(view.courses[0].sessions[1].locked).toBe(false);
     expect((await request(app).put(`${url}/sessions/${s1._id}`).send({ state: "notHeld" })).body.code).toBe("HOSTEL_REPORT_STAFF_MARKED");
 
-    // the untouched s3: she marks it held herself - everyone present to start with, then c did not come
-    r = (await request(app).post(`${base}/sessions/${s3._id}/state`).send({ state: "held" })).body.data.report;
-    expect(r.sessions[2]).toMatchObject({ state: "held", present: 3, absent: 0, houseState: null, changes: 0 });
-    expect(r.sessions[2].staffAt).toBeTruthy();
-    expect(r.sessions[2].marks.every((m) => m.byStaff && m.house === null)).toBe(true);
+    // "ביטול השינויים שלך": s1 goes back to the house's word and opens for the house again
+    r = (await request(app).delete(`${base}/sessions/${s1._id}/staff`)).body.data.report;
+    expect(r.sessions[0]).toMatchObject({ state: "held", present: 1, absent: 2, changes: 0, staffAt: null, houseState: null });
+    expect(r.sessions[0].marks.find((m) => String(m.person._id) === String(b._id))).toMatchObject({ status: "absent", reason: "hospital", note: "בהדסה", changed: false, byStaff: false, house: null });
+    expect((await request(app).get(url)).body.data.view.courses[0].sessions[0].locked).toBe(false);
+    await request(app).post(`${base}/sessions/${s1._id}/marks`).send({ person: b._id, status: "present" });
+
+    // the untouched s3: her first mark on it also says it was held - and nobody else is marked for her
     r = (await request(app).post(`${base}/sessions/${s3._id}/marks`).send({ person: c._id, status: "absent", reason: "vacation" })).body.data.report;
+    expect(r.sessions[2]).toMatchObject({ state: "held", present: 0, absent: 1, houseState: null, changes: 0 });
+    expect(r.sessions[2].staffAt).toBeTruthy();
+    // "כולם הגיעו": the rest of the list is present, by her
+    r = (await request(app).post(`${base}/sessions/${s3._id}/fill`).send({})).body.data.report;
     expect(r.sessions[2]).toMatchObject({ present: 2, absent: 1, changes: 0 });
-    // the house said s2 was not held; she says it was - the house's word stays
+    expect(r.sessions[2].marks.every((m) => m.byStaff && m.house === null)).toBe(true);
+    // the house said s2 was not held; she says it was - the house's word stays; the list is empty until she fills it
     r = (await request(app).post(`${base}/sessions/${s2._id}/state`).send({ state: "held" })).body.data.report;
-    expect(r.sessions[1]).toMatchObject({ state: "held", houseState: "notHeld", present: 3, changes: 1 });
+    expect(r.sessions[1]).toMatchObject({ state: "held", houseState: "notHeld", present: 0, changes: 1 });
+    r = (await request(app).post(`${base}/sessions/${s2._id}/fill`).send({})).body.data.report;
+    expect(r.sessions[1]).toMatchObject({ present: 3, changes: 1 });
     expect(r.counts).toMatchObject({ held: 3, notHeld: 0, toApprove: 3, changes: 2 });
     expect((await request(app).post(`${base}/sessions/${s1._id}/state`).send({ state: "soon" })).body.code).toBe("HOSTEL_REPORT_SESSION_STATE");
+    // "איפוס המפגש": a fourth session she filled goes back to nothing at all
+    const s4 = opened.sessions[3];
+    r = (await request(app).post(`${base}/sessions/${s4._id}/fill`).send({})).body.data.report;
+    expect(r.sessions[3]).toMatchObject({ state: "held", present: 3 });
+    r = (await request(app).delete(`${base}/sessions/${s4._id}`)).body.data.report;
+    expect(r.sessions[3]).toMatchObject({ state: null, present: 0, staffAt: null, houseState: null });
+    expect(r.sessions[3].marks).toHaveLength(0);
+    expect(r.counts).toMatchObject({ held: 3, toApprove: 3 });
 
     // one press approves the three; the lessons carry her word, not the house's
     const all = (await request(app).post(`${base}/approve`).send({})).body.data.report;
@@ -218,11 +236,13 @@ describe("the hostel's attendance draft", () => {
     expect(rows1[String(c._id)]).toMatchObject({ status: "Missing", reason: "refused" });
     expect(JSON.stringify(l1.toObject())).not.toMatch(/hospital|house/);
     expect(await Lesson.countDocuments({ cycle: cycle._id })).toBe(3);
-    // after the approval a change of hers reaches the lesson at once; the state is settled
+    // after the approval a change of hers reaches the lesson at once; the state is settled; no revert, no reset
     await request(app).post(`${base}/sessions/${s1._id}/marks`).send({ person: a._id, status: "absent", reason: "er" });
     const l1b = await Lesson.findOne({ cycle: cycle._id, date: new Date(s1.date) });
     expect(l1b.attendance.find((x) => String(x.student) === String(a._id))).toMatchObject({ status: "Missing", reason: "er" });
     expect((await request(app).post(`${base}/sessions/${s1._id}/state`).send({ state: "notHeld" })).body.code).toBe("HOSTEL_REPORT_APPROVED");
+    expect((await request(app).delete(`${base}/sessions/${s1._id}/staff`)).body.code).toBe("HOSTEL_REPORT_APPROVED");
+    expect((await request(app).delete(`${base}/sessions/${s1._id}`)).body.code).toBe("HOSTEL_REPORT_APPROVED");
     // the Ministry's average reads the final attendance: (1 + 3 + 2) / 3 = 2
     const rows = (await request(app).get(`/api/hostel-reports/ministry?month=${month}`)).body.data.rows;
     expect(rows[0].courses[0]).toMatchObject({ lessons: 3, avg: 2 });

@@ -24,6 +24,9 @@ router.post("/:id/sessions/:sid/approve", c.approveSession);
 // her own word on a session (Eden, 2026-10-25): held or not, and one person's mark
 router.post("/:id/sessions/:sid/state", c.setState);
 router.post("/:id/sessions/:sid/marks", c.setMark);
+router.post("/:id/sessions/:sid/fill", c.fill);
+router.delete("/:id/sessions/:sid/staff", c.revert);
+router.delete("/:id/sessions/:sid", c.resetSession);
 router.post("/:id/extras/:xid/resolve", c.resolveExtra);
 router.post("/:id/left/:lid/resolve", c.resolveLeft);
 

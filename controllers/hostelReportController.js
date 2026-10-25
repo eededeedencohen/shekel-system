@@ -35,11 +35,17 @@ exports.approveSession = catchAsync(async (req, res) => answer(res, await report
 exports.approveAll = catchAsync(async (req, res) => answer(res, await reports.approveAll({ reportId: req.params.id, by: by(req) })));
 /** POST { state: held | notHeld | null } - her word on whether the session was held. */
 exports.setState = catchAsync(async (req, res) => answer(res, await reports.setStaffState({ reportId: req.params.id, sessionId: req.params.sid, state: req.body?.state, by: by(req) })));
-/** POST { person, status, reason?, note? } - her word on one person in a held session. */
+/** POST { person, status, reason?, note? } - her word on one person (a first mark on an untouched session also says it was held). */
 exports.setMark = catchAsync(async (req, res) => {
   const { person, status, reason, note } = req.body || {};
   answer(res, await reports.setStaffMark({ reportId: req.params.id, sessionId: req.params.sid, person, status, reason, note, by: by(req) }));
 });
+/** POST - "כולם הגיעו": everyone still unmarked on the list is present. */
+exports.fill = catchAsync(async (req, res) => answer(res, await reports.fillSession({ reportId: req.params.id, sessionId: req.params.sid, by: by(req) })));
+/** DELETE - "ביטול השינויים שלך": back to the house's word; the session opens for the house again. */
+exports.revert = catchAsync(async (req, res) => answer(res, await reports.revertSession({ reportId: req.params.id, sessionId: req.params.sid })));
+/** DELETE - "איפוס המפגש": no state, no marks, the house may mark it again. */
+exports.resetSession = catchAsync(async (req, res) => answer(res, await reports.resetSession({ reportId: req.params.id, sessionId: req.params.sid })));
 exports.resolveExtra = catchAsync(async (req, res) => {
   const { person, firstName, lastName, gender } = req.body || {};
   if (!person && !firstName) throw AppError.of("MISSING_FIELDS", 400, "person / firstName");
