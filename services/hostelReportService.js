@@ -406,6 +406,37 @@ async function approveOne(r, s, by) {
   s.approvedBy = clean(by, 80);
 }
 
+/**
+ * "ביטול האישור" (Eden, 2026-10-25: an approval can go back to the state
+ * before it, and the real attendance changes with it): the rows the
+ * approval wrote - the marked people's - leave the lesson; the lesson
+ * itself stays (an invoice may point at it; with no rows it reads as
+ * unreported). The marks stay on the report as they were.
+ */
+async function unapproveOne(s) {
+  if (!s.approvedAt) return;
+  if (s.lesson) {
+    const lesson = await Lesson.findById(s.lesson);
+    if (lesson) {
+      const marked = new Set(s.marks.map((m) => String(m.person)));
+      lesson.attendance = (lesson.attendance || []).filter((a) => !marked.has(String(a.student)));
+      await lesson.save();
+    }
+  }
+  s.lesson = null;
+  s.approvedAt = undefined;
+  s.approvedBy = undefined;
+}
+
+async function unapproveSession({ reportId, sessionId }) {
+  const r = await loadReport({ reportId });
+  const s = r.sessions.id(sessionId);
+  if (!s) throw AppError.of("HOSTEL_REPORT_SESSION_UNKNOWN", 400);
+  await unapproveOne(s);
+  await r.save();
+  return getReport({ reportId });
+}
+
 async function approveSession({ reportId, sessionId, by }) {
   const r = await loadReport({ reportId });
   const s = r.sessions.id(sessionId);
@@ -519,14 +550,19 @@ async function fillSession({ reportId, sessionId, by }) {
  * "ביטול השינויים שלך": the session goes back to the house's word - its
  * state as the house had left it, a mark she changed back to what the
  * house said, a mark that was hers alone gone - and it opens again for the
- * house. Not on a session already approved.
+ * house. On an approved session the approval goes first (its rows leave
+ * the lesson).
  */
 async function revertSession({ reportId, sessionId }) {
   const r = await loadReport({ reportId });
   const s = r.sessions.id(sessionId);
   if (!s) throw AppError.of("HOSTEL_REPORT_SESSION_UNKNOWN", 400);
-  if (s.approvedAt) throw AppError.of("HOSTEL_REPORT_APPROVED", 400);
-  if (!s.staffAt) return getReport({ reportId });
+  if (!s.staffAt && !s.approvedAt) return getReport({ reportId });
+  await unapproveOne(s);
+  if (!s.staffAt) {
+    await r.save();
+    return getReport({ reportId });
+  }
   const kept = [];
   for (const m of s.marks) {
     if (!m.staffAt) kept.push(m.toObject());
@@ -544,14 +580,15 @@ async function revertSession({ reportId, sessionId }) {
 /**
  * "איפוס המפגש" (Eden, 2026-10-25: "אפילו אין כפתור איפוס לנתוני מה שסומן
  * בהוסטל"): the session goes back to nothing at all - no state, no marks,
- * the house's word and hers alike - and the house may mark it again. Not
- * on a session already approved (that is attendance now).
+ * the house's word and hers alike - and the house may mark it again. On an
+ * approved session the approval goes first, and the attendance it wrote
+ * with it (Eden: "ואז הנוכחות האמתית תשתנה בהתאם").
  */
 async function resetSession({ reportId, sessionId }) {
   const r = await loadReport({ reportId });
   const s = r.sessions.id(sessionId);
   if (!s) throw AppError.of("HOSTEL_REPORT_SESSION_UNKNOWN", 400);
-  if (s.approvedAt) throw AppError.of("HOSTEL_REPORT_APPROVED", 400);
+  await unapproveOne(s);
   s.state = null;
   s.marks = [];
   s.markedAt = undefined;
@@ -925,6 +962,7 @@ module.exports = {
   deleteReport,
   approveSession,
   approveAll,
+  unapproveSession,
   setStaffState,
   setStaffMark,
   fillSession,

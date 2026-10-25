@@ -44,7 +44,9 @@ exports.setMark = catchAsync(async (req, res) => {
 exports.fill = catchAsync(async (req, res) => answer(res, await reports.fillSession({ reportId: req.params.id, sessionId: req.params.sid, by: by(req) })));
 /** DELETE - "ביטול השינויים שלך": back to the house's word; the session opens for the house again. */
 exports.revert = catchAsync(async (req, res) => answer(res, await reports.revertSession({ reportId: req.params.id, sessionId: req.params.sid })));
-/** DELETE - "איפוס המפגש": no state, no marks, the house may mark it again. */
+/** DELETE - "ביטול האישור": back to before the approval; the rows it wrote leave the lesson. */
+exports.unapprove = catchAsync(async (req, res) => answer(res, await reports.unapproveSession({ reportId: req.params.id, sessionId: req.params.sid })));
+/** DELETE - "איפוס המפגש": no state, no marks (an approval and its attendance go with it), the house may mark it again. */
 exports.resetSession = catchAsync(async (req, res) => answer(res, await reports.resetSession({ reportId: req.params.id, sessionId: req.params.sid })));
 exports.resolveExtra = catchAsync(async (req, res) => {
   const { person, firstName, lastName, gender } = req.body || {};

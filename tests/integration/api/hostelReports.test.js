@@ -241,11 +241,33 @@ describe("the hostel's attendance draft", () => {
     const l1b = await Lesson.findOne({ cycle: cycle._id, date: new Date(s1.date) });
     expect(l1b.attendance.find((x) => String(x.student) === String(a._id))).toMatchObject({ status: "Missing", reason: "er" });
     expect((await request(app).post(`${base}/sessions/${s1._id}/state`).send({ state: "notHeld" })).body.code).toBe("HOSTEL_REPORT_APPROVED");
-    expect((await request(app).delete(`${base}/sessions/${s1._id}/staff`)).body.code).toBe("HOSTEL_REPORT_APPROVED");
-    expect((await request(app).delete(`${base}/sessions/${s1._id}`)).body.code).toBe("HOSTEL_REPORT_APPROVED");
     // the Ministry's average reads the final attendance: (1 + 3 + 2) / 3 = 2
-    const rows = (await request(app).get(`/api/hostel-reports/ministry?month=${month}`)).body.data.rows;
+    let rows = (await request(app).get(`/api/hostel-reports/ministry?month=${month}`)).body.data.rows;
     expect(rows[0].courses[0]).toMatchObject({ lessons: 3, avg: 2 });
+
+    // "ביטול האישור": s1 goes back to before the approval - its rows leave the lesson, the marks stay, the lesson stays
+    r = (await request(app).delete(`${base}/sessions/${s1._id}/approval`)).body.data.report;
+    expect(r.sessions[0]).toMatchObject({ approvedAt: null, state: "held", present: 1, absent: 2, reported: false });
+    expect(r.counts).toMatchObject({ approved: 2, toApprove: 1 });
+    const l1c = await Lesson.findOne({ cycle: cycle._id, date: new Date(s1.date) });
+    expect(l1c).toBeTruthy();
+    expect(l1c.attendance).toHaveLength(0);
+    // approving again writes them back
+    r = (await request(app).post(`${base}/sessions/${s1._id}/approve`).send({})).body.data.report;
+    expect(r.sessions[0].approvedAt).toBeTruthy();
+    expect((await Lesson.findOne({ cycle: cycle._id, date: new Date(s1.date) })).attendance).toHaveLength(3);
+    // "איפוס" on an approved session takes its attendance with it
+    r = (await request(app).delete(`${base}/sessions/${s3._id}`)).body.data.report;
+    expect(r.sessions[2]).toMatchObject({ state: null, approvedAt: null, staffAt: null });
+    expect(r.sessions[2].marks).toHaveLength(0);
+    expect((await Lesson.findOne({ cycle: cycle._id, date: new Date(s3.date) })).attendance).toHaveLength(0);
+    // "ביטול השינויים שלך" on the approved s2 (the house said not held): back to the house's word, the attendance gone
+    r = (await request(app).delete(`${base}/sessions/${s2._id}/staff`)).body.data.report;
+    expect(r.sessions[1]).toMatchObject({ state: "notHeld", approvedAt: null, staffAt: null, present: 0 });
+    expect((await Lesson.findOne({ cycle: cycle._id, date: new Date(s2.date) })).attendance).toHaveLength(0);
+    // the Ministry now reads s1 alone: 1
+    rows = (await request(app).get(`/api/hostel-reports/ministry?month=${month}`)).body.data.rows;
+    expect(rows[0].courses[0]).toMatchObject({ lessons: 1, avg: 1 });
   });
 
   it("a session is marked only once its day came; an unknown or expired link answers so; an empty month can be deleted", async () => {
