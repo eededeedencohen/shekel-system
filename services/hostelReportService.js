@@ -884,26 +884,52 @@ async function ministryRows({ month }) {
   const [y, m] = month.split("-").map(Number);
   const from = new Date(Date.UTC(y, m - 1, 1));
   const to = new Date(Date.UTC(y, m, 0));
+  // three round trips for the whole month, not three per house (Eden, 2026-10-25: "לוקח לו המון זמן לייצא")
   const hostels = await Hostel.find({ active: { $ne: false }, kind: { $ne: "community" } }).sort({ name: 1 }).lean();
-  const rows = [];
-  for (const h of hostels) {
-    const cycles = await cyclesOfMonth({ hostelId: h._id, month });
-    const named = await Cycle.find({ _id: { $in: cycles.map((c) => c._id) } }).select("subject teacher").populate("subject", "name").populate("teacher", "firstName lastName").lean();
-    const lessons = await Lesson.find({ source: "live", cycle: { $in: cycles.map((c) => c._id) }, date: { $gte: from, $lte: to } }).select("cycle attendance").lean();
-    const courses = named
+  const start = new Date(from.getTime() - DAY_MS);
+  const end = new Date(to.getTime() + 2 * DAY_MS);
+  const cycles = await Cycle.find({ hostel: { $in: hostels.map((h) => h._id) }, status: { $ne: "Cancelled" }, startDate: { $lte: end }, endDate: { $gte: start } })
+    .select("subject teacher hostel")
+    .populate("subject", "name")
+    .populate("teacher", "firstName lastName")
+    .lean();
+  const lessons = cycles.length ? await Lesson.find({ source: "live", cycle: { $in: cycles.map((c) => c._id) }, date: { $gte: from, $lte: to } }).select("cycle attendance").lean() : [];
+  const lessonsByCycle = new Map();
+  for (const l of lessons) {
+    if (!(l.attendance || []).length) continue;
+    const k = String(l.cycle);
+    if (!lessonsByCycle.has(k)) lessonsByCycle.set(k, []);
+    lessonsByCycle.get(k).push(l);
+  }
+  const cyclesByHostel = new Map();
+  for (const c of cycles) {
+    const k = String(c.hostel);
+    if (!cyclesByHostel.has(k)) cyclesByHostel.set(k, []);
+    cyclesByHostel.get(k).push(c);
+  }
+  const rows = hostels.map((h) => {
+    const courses = (cyclesByHostel.get(String(h._id)) || [])
       .map((c) => {
-        const mine = lessons.filter((l) => String(l.cycle) === String(c._id) && (l.attendance || []).length > 0);
+        const mine = lessonsByCycle.get(String(c._id)) || [];
         const present = mine.map((l) => l.attendance.filter((a) => a.status === "Present").length);
         const avg = present.length ? Math.round(present.reduce((a, b) => a + b, 0) / present.length) : null;
         return { _id: c._id, name: c.subject?.name || "קורס", teacher: c.teacher ? personName(c.teacher) : null, lessons: mine.length, avg };
       })
       .sort((a, b) => a.name.localeCompare(b.name, "he"));
-    rows.push({ hostel: { _id: h._id, name: h.name, kind: h.kind || "hostel", title: hostelTitle(h) }, since: h.since || null, sinceLabel: sinceLabel(h.since), approvals: h.approvals ?? null, courses });
-  }
+    return { hostel: { _id: h._id, name: h.name, kind: h.kind || "hostel", title: hostelTitle(h) }, since: h.since || null, sinceLabel: sinceLabel(h.since), approvals: h.approvals ?? null, courses };
+  });
   return { month, monthLabel: monthLabel(month), rows };
 }
 
-/** Her Excel: one row per course, the house's name / start / approvals merged down its courses. */
+/** Her file's pastel bands, one per house, around again when the houses run out. */
+const MINISTRY_BANDS = ["FFBDD7EE", "FFE2EFDA", "FFFFF2CC", "FFD9E1F2", "FF9BC2E6", "FFA9D08E", "FFF8CBAD", "FFC6E0B4", "FFFCE4D6", "FFDDEBF7"];
+
+/**
+ * Her Excel: one row per course, the house's name / start / approvals
+ * merged down its courses, every house in its own pastel band (her file
+ * is coloured that way - Eden, 2026-10-25), a grey bold header, thin
+ * borders, everything centred.
+ */
 async function ministryXlsx({ month }) {
   const data = await ministryRows({ month });
   const ExcelJS = require("exceljs");
@@ -911,23 +937,38 @@ async function ministryXlsx({ month }) {
   wb.creator = "שק״ל";
   const ws = wb.addWorksheet(`דוח ${data.monthLabel}`, { views: [{ rightToLeft: true }] });
   ws.columns = [
-    { header: "שם ההוסטל", key: "hostel", width: 24 },
+    { header: "שם ההוסטל", key: "hostel", width: 26 },
     { header: "תחילת פעילות", key: "since", width: 16 },
     { header: "חוג מועבר בהוסטל", key: "course", width: 22 },
     { header: "מספר אישורים בהוסטל", key: "approvals", width: 22 },
-    { header: "מספר משתתפים בפועל (בממוצע) נתון משתנה", key: "avg", width: 40 },
+    { header: "מספר משתתפים בפועל (בממוצע) נתון משתנה", key: "avg", width: 42 },
   ];
+  const thin = { style: "thin", color: { argb: "FF7F7F7F" } };
+  const border = { top: thin, bottom: thin, left: thin, right: thin };
   const head = ws.getRow(1);
-  head.font = { bold: true };
+  head.font = { bold: true, size: 11 };
   head.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-  head.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE6E3DA" } };
-  head.height = 32;
+  head.height = 34;
+  head.eachCell((cell) => {
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9D9D9" } };
+    cell.border = border;
+  });
   let row = 2;
-  for (const r of data.rows) {
+  data.rows.forEach((r, i) => {
+    const band = { type: "pattern", pattern: "solid", fgColor: { argb: MINISTRY_BANDS[i % MINISTRY_BANDS.length] } };
     const courses = r.courses.length ? r.courses : [{ name: "", avg: null }];
     const first = row;
     for (const c of courses) {
-      ws.addRow({ hostel: r.hostel.name, since: r.sinceLabel, course: c.name, approvals: r.approvals ?? "", avg: c.avg ?? "" });
+      const added = ws.addRow({ hostel: r.hostel.title, since: r.sinceLabel, course: c.name, approvals: r.approvals ?? "", avg: c.avg ?? "" });
+      added.height = 20;
+      added.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      for (let col = 1; col <= 5; col++) {
+        const cell = added.getCell(col);
+        cell.fill = band;
+        cell.border = border;
+        cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      }
+      added.getCell(1).font = { bold: true };
       row++;
     }
     const last = row - 1;
@@ -936,13 +977,6 @@ async function ministryXlsx({ month }) {
       ws.mergeCells(`B${first}:B${last}`);
       ws.mergeCells(`D${first}:D${last}`);
     }
-  }
-  ws.eachRow((r, i) => {
-    r.alignment = { ...(r.alignment || {}), horizontal: "center", vertical: "middle", wrapText: true };
-    r.eachCell((cell) => {
-      cell.border = { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } };
-    });
-    if (i > 1) r.height = 20;
   });
   const buffer = await wb.xlsx.writeBuffer();
   return { buffer: Buffer.from(buffer), fileName: `דוח משרד הבריאות - ${data.monthLabel}.xlsx`, data };
