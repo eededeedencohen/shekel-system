@@ -180,29 +180,43 @@ async function factsOf(reports) {
   const cycleIds = [...new Set(reports.flatMap((r) => [...r.sessions.map((s) => String(s.cycle)), ...r.extras.map((x) => x.cycle && String(x.cycle)).filter(Boolean)]))];
   const dates = [...new Set(reports.flatMap((r) => r.sessions.map((s) => new Date(s.date).toISOString())))].map((d) => new Date(d));
   const personIds = [...new Set(reports.flatMap((r) => [...r.sessions.flatMap((s) => s.marks.map((m) => String(m.person))), ...r.left.map((l) => String(l.person)), ...r.extras.map((x) => x.person && String(x.person)).filter(Boolean)]))];
-  const [hostels, cycles, lessons, people] = await Promise.all([
+  const [hostels, cycles, lessons, people, rosters] = await Promise.all([
     Hostel.find({ _id: { $in: hostelIds } }).select("name kind contacts contact").lean(),
     Cycle.find({ _id: { $in: cycleIds } }).select("subject hostel teacher schedule").populate("subject", "name").populate("teacher", "firstName lastName").lean(),
     cycleIds.length && dates.length ? Lesson.find({ source: "live", cycle: { $in: cycleIds }, date: { $in: dates } }).select("cycle date attendance").lean() : [],
     personIds.length ? Person.find({ _id: { $in: personIds } }).select("firstName lastName gender").lean() : [],
+    rostersOf(cycleIds),
   ]);
   return {
     hostelById: new Map(hostels.map((h) => [String(h._id), h])),
     cycleById: new Map(cycles.map((c) => [String(c._id), c])),
     lessonByKey: new Map(lessons.map((l) => [`${l.cycle}|${new Date(l.date).toISOString()}`, { _id: l._id, reported: (l.attendance || []).length > 0 }])),
     personById: new Map(people.map((p) => [String(p._id), p])),
+    rosterByCycle: rosters,
   };
 }
 
 const cycleView = (c) => (c ? { _id: c._id, name: c.subject?.name || "קורס", teacher: c.teacher ? personName(c.teacher) : null } : null);
 const personView = (facts, id) => {
-  const p = facts.personById.get(String(id));
+  const p = facts.personById.get(String(id)) || [...facts.rosterByCycle.values()].flat().find((x) => String(x._id) === String(id));
   return { _id: id, name: p ? personName(p) : "", gender: p?.gender || null };
 };
 
+/** The house's word on a mark, when the coordinator changed it - and whether hers differs from it. */
+function houseOfMark(m) {
+  const h = m.house && m.house.status ? { status: m.house.status, reason: m.house.reason || null, reasonLabel: m.house.reason ? REASON_LABEL[m.house.reason] : null, note: m.house.note || null } : null;
+  const changed = !!h && (h.status !== m.status || (m.status === "absent" && (h.reason || null) !== (m.reason || null)));
+  return { house: h, changed };
+}
+
 function sessionView(s, facts, today) {
   const existing = facts.lessonByKey.get(`${s.cycle}|${new Date(s.date).toISOString()}`);
-  const marks = s.marks.map((m) => ({ person: personView(facts, m.person), status: m.status, reason: m.reason || null, reasonLabel: m.reason ? REASON_LABEL[m.reason] : null, note: m.note || null }));
+  const marks = s.marks.map((m) => {
+    const { house, changed } = houseOfMark(m);
+    return { person: personView(facts, m.person), status: m.status, reason: m.reason || null, reasonLabel: m.reason ? REASON_LABEL[m.reason] : null, note: m.note || null, house, changed, byStaff: !!m.staffAt, staffBy: m.staffBy || null };
+  });
+  const held = s.state === "held";
+  const stateChanged = !!s.staffAt && (s.houseState || null) !== (s.state || null) && !!s.houseState;
   return {
     _id: s._id,
     cycle: cycleView(facts.cycleById.get(String(s.cycle))),
@@ -212,13 +226,18 @@ function sessionView(s, facts, today) {
     state: s.state || null,
     markedAt: s.markedAt || null,
     marks,
-    present: marks.filter((m) => m.status === "present").length,
-    absent: marks.filter((m) => m.status === "absent").length,
+    present: held ? marks.filter((m) => m.status === "present").length : 0,
+    absent: held ? marks.filter((m) => m.status === "absent").length : 0,
     lesson: s.lesson || existing?._id || null,
     reported: !!existing?.reported,
     approvedAt: s.approvedAt || null,
     approvedBy: s.approvedBy || null,
     future: dayKey(s.date) > today,
+    /** The coordinator's hand on this session: when, who, what the house had said (null = nothing), how many marks differ from the house. */
+    staffAt: s.staffAt || null,
+    staffBy: s.staffBy || null,
+    houseState: s.staffAt ? s.houseState || null : null,
+    changes: (held ? marks.filter((m) => m.changed).length : 0) + (stateChanged ? 1 : 0),
   };
 }
 
@@ -234,7 +253,7 @@ function statusOf(r) {
 }
 
 function countsOf(sessions, r) {
-  const c = { sessions: sessions.length, past: 0, held: 0, notHeld: 0, unmarked: 0, approved: 0, toApprove: 0, present: 0, absent: 0, reportedElsewhere: 0, extras: 0, left: 0 };
+  const c = { sessions: sessions.length, past: 0, held: 0, notHeld: 0, unmarked: 0, approved: 0, toApprove: 0, present: 0, absent: 0, reportedElsewhere: 0, extras: 0, left: 0, byStaff: 0, changes: 0 };
   for (const s of sessions) {
     if (!s.future) c.past++;
     if (s.state === "held") c.held++;
@@ -245,6 +264,8 @@ function countsOf(sessions, r) {
     c.present += s.present;
     c.absent += s.absent;
     if (s.reported && !s.approvedAt) c.reportedElsewhere++;
+    if (s.staffAt) c.byStaff++;
+    c.changes += s.changes || 0;
   }
   c.extras = r.extras.filter((x) => !x.resolvedAt).length;
   c.left = r.left.filter((x) => !x.resolvedAt).length;
@@ -255,6 +276,12 @@ function reportView(r, facts, today = todayKey()) {
   const h = facts.hostelById.get(String(r.hostel));
   const sessions = r.sessions.map((s) => sessionView(s, facts, today));
   const status = statusOf(r);
+  const openLeft = new Set(r.left.filter((l) => !l.resolvedAt).map((l) => String(l.person)));
+  // the courses of the month with the people seated in them now - the rows of her sheet
+  const courses = [...new Set(r.sessions.map((s) => String(s.cycle)))].map((k) => ({
+    cycle: cycleView(facts.cycleById.get(k)),
+    roster: (facts.rosterByCycle.get(k) || []).map((p) => ({ _id: p._id, name: personName(p), gender: p.gender || null, left: openLeft.has(String(p._id)) })),
+  }));
   return {
     _id: r._id,
     hostel: h ? { _id: h._id, name: h.name, kind: h.kind || "hostel", title: hostelTitle(h) } : { _id: r.hostel, name: "", kind: "hostel", title: "" },
@@ -275,6 +302,7 @@ function reportView(r, facts, today = todayKey()) {
     status,
     statusLabel: HOSTEL_REPORT_STATUS_LABELS[status],
     counts: countsOf(sessions, r),
+    courses,
     sessions,
     extras: r.extras.map((x) => ({ _id: x._id, name: x.name, note: x.note || null, cycle: cycleView(facts.cycleById.get(String(x.cycle))), addedAt: x.addedAt, person: x.person ? personView(facts, x.person) : null, resolvedAt: x.resolvedAt || null, resolvedBy: x.resolvedBy || null })),
     left: r.left.map((l) => ({ _id: l._id, person: personView(facts, l.person), date: l.date, note: l.note || null, addedAt: l.addedAt, resolvedAt: l.resolvedAt || null, resolvedBy: l.resolvedBy || null })),
@@ -350,23 +378,30 @@ const statusOfMark = (m) => (m.status === "present" ? "Present" : "Missing");
  * stay), reasons included; a session that was not held is noted and
  * leaves no lesson.
  */
+/**
+ * The marks of a held session become the Lesson's attendance - the final
+ * word alone (what the house had said stays on the report and never
+ * reaches a lesson or the Ministry's file).
+ */
+async function writeLesson(s) {
+  const lesson = await Lesson.findOneAndUpdate(
+    { cycle: s.cycle, date: s.date, source: "live" },
+    { $setOnInsert: { attendance: [] } },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+  const rows = new Map((lesson.attendance || []).map((a) => [String(a.student), a]));
+  for (const m of s.marks) {
+    rows.set(String(m.person), { student: m.person, status: statusOfMark(m), reason: m.status === "absent" ? m.reason || null : null, note: m.note || undefined });
+  }
+  lesson.attendance = [...rows.values()];
+  await lesson.save();
+  s.lesson = lesson._id;
+}
+
 async function approveOne(r, s, by) {
   if (!s.state) throw AppError.of("HOSTEL_REPORT_NOT_MARKED", 400);
   if (s.approvedAt) throw AppError.of("HOSTEL_REPORT_APPROVED", 400);
-  if (s.state === "held") {
-    const lesson = await Lesson.findOneAndUpdate(
-      { cycle: s.cycle, date: s.date, source: "live" },
-      { $setOnInsert: { attendance: [] } },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-    const rows = new Map((lesson.attendance || []).map((a) => [String(a.student), a]));
-    for (const m of s.marks) {
-      rows.set(String(m.person), { student: m.person, status: statusOfMark(m), reason: m.status === "absent" ? m.reason || null : null, note: m.note || undefined });
-    }
-    lesson.attendance = [...rows.values()];
-    await lesson.save();
-    s.lesson = lesson._id;
-  }
+  if (s.state === "held") await writeLesson(s);
   s.approvedAt = new Date();
   s.approvedBy = clean(by, 80);
 }
@@ -384,6 +419,72 @@ async function approveSession({ reportId, sessionId, by }) {
 async function approveAll({ reportId, by }) {
   const r = await loadReport({ reportId });
   for (const s of r.sessions) if (s.state && !s.approvedAt) await approveOne(r, s, by);
+  await r.save();
+  return getReport({ reportId });
+}
+
+/* ───── her own word (Eden, 2026-10-25: viewing what the house marked is not enough - she reports from her desk, changes a mark, and approves) ───── */
+
+/** The first time she touches a session, the house's word on it is kept beside hers. */
+function touchSession(s, by) {
+  if (!s.staffAt) s.houseState = s.state || null;
+  s.staffAt = new Date();
+  s.staffBy = clean(by, 80);
+}
+
+/**
+ * The coordinator says of a session: held / not held / nothing yet. A
+ * session she marks held with no marks starts with everyone on the list
+ * present - she flips the ones who did not come. A session the house
+ * already approved does not change its state here.
+ */
+async function setStaffState({ reportId, sessionId, state, by }) {
+  const r = await loadReport({ reportId });
+  const s = r.sessions.id(sessionId);
+  if (!s) throw AppError.of("HOSTEL_REPORT_SESSION_UNKNOWN", 400);
+  if (s.approvedAt) throw AppError.of("HOSTEL_REPORT_APPROVED", 400);
+  if (dayKey(s.date) > todayKey()) throw AppError.of("HOSTEL_REPORT_SESSION_FUTURE", 400);
+  const st = state == null || state === "" ? null : state;
+  if (st !== null && !HOSTEL_REPORT_SESSION_STATES.includes(st)) throw AppError.of("HOSTEL_REPORT_SESSION_STATE", 400);
+  if ((s.state || null) !== st) {
+    touchSession(s, by);
+    s.state = st;
+    if (st === "held" && !s.marks.length) {
+      const roster = (await rostersOf([String(s.cycle)])).get(String(s.cycle)) || [];
+      s.marks = roster.map((p) => ({ person: p._id, status: "present", reason: null, staffAt: new Date(), staffBy: clean(by, 80) }));
+    }
+    await r.save();
+  }
+  return getReport({ reportId });
+}
+
+/**
+ * The coordinator's word on one person in a held session: came / did not
+ * (with the reason). The house's mark, if there was one, is kept under
+ * `house` the first time it changes. On a session already approved the
+ * lesson's attendance follows her at once.
+ */
+async function setStaffMark({ reportId, sessionId, person, status, reason, note, by }) {
+  const r = await loadReport({ reportId });
+  const s = r.sessions.id(sessionId);
+  if (!s) throw AppError.of("HOSTEL_REPORT_SESSION_UNKNOWN", 400);
+  if (s.state !== "held") throw AppError.of("HOSTEL_REPORT_NOT_HELD", 400);
+  if (!isId(person) || !HOSTEL_REPORT_MARKS.includes(status)) throw AppError.of("HOSTEL_REPORT_MARK_INVALID", 400);
+  const why = status === "absent" ? reason : null;
+  if (status === "absent" && !ABSENCE_REASON_KEYS.includes(why)) throw AppError.of("HOSTEL_REPORT_REASON_REQUIRED", 400);
+  const roster = (await rostersOf([String(s.cycle)])).get(String(s.cycle)) || [];
+  const existing = s.marks.find((m) => String(m.person) === String(person));
+  if (!existing && !roster.some((p) => String(p._id) === String(person))) throw AppError.of("HOSTEL_REPORT_NOT_IN_LIST", 400);
+  touchSession(s, by);
+  const stamp = { staffAt: new Date(), staffBy: clean(by, 80) };
+  if (existing) {
+    if (!existing.staffAt && !existing.house?.status) existing.house = { status: existing.status, reason: existing.reason || null, note: existing.note || undefined };
+    existing.status = status;
+    existing.reason = why;
+    if (note !== undefined) existing.note = clean(note, 200);
+    Object.assign(existing, stamp);
+  } else s.marks.push({ person, status, reason: why, note: clean(note, 200), ...stamp });
+  if (s.approvedAt) await writeLesson(s);
   await r.save();
   return getReport({ reportId });
 }
@@ -521,13 +622,14 @@ async function publicView(r) {
   const today = todayKey();
   const h = facts.hostelById.get(String(r.hostel));
   const cycleIds = [...new Set(r.sessions.map((s) => String(s.cycle)))];
-  const rosters = await rostersOf(cycleIds);
+  const rosters = facts.rosterByCycle;
   const openLeft = new Set(r.left.filter((l) => !l.resolvedAt).map((l) => String(l.person)));
   const sessions = r.sessions.map((s) => sessionView(s, facts, today));
+  // a session the coordinator approved, or marked herself, is shut for the house
   const courses = cycleIds.map((k) => ({
     cycle: cycleView(facts.cycleById.get(k)),
     roster: (rosters.get(k) || []).map((p) => ({ _id: p._id, name: personName(p), gender: p.gender || null, left: openLeft.has(String(p._id)) })),
-    sessions: sessions.filter((s) => String(s.cycle?._id) === k).map((s) => ({ _id: s._id, date: s.date, start: s.start, end: s.end, state: s.state, marks: s.marks.map((m) => ({ person: m.person._id, status: m.status, reason: m.reason, note: m.note })), present: s.present, absent: s.absent, locked: !!s.approvedAt, future: s.future })),
+    sessions: sessions.filter((s) => String(s.cycle?._id) === k).map((s) => ({ _id: s._id, date: s.date, start: s.start, end: s.end, state: s.state, marks: s.marks.map((m) => ({ person: m.person._id, status: m.status, reason: m.reason, note: m.note })), present: s.present, absent: s.absent, locked: !!s.approvedAt || !!s.staffAt, lockedBy: s.approvedAt ? "approved" : s.staffAt ? "staff" : null, future: s.future })),
   }));
   return {
     hostel: { name: h?.name || "", kind: h?.kind || "hostel", title: hostelTitle(h) },
@@ -563,6 +665,7 @@ async function setSession(r, sessionId, { state, marks }) {
   const s = r.sessions.id(sessionId);
   if (!s) throw AppError.of("HOSTEL_REPORT_SESSION_UNKNOWN", 400);
   if (s.approvedAt) throw AppError.of("HOSTEL_REPORT_APPROVED", 400);
+  if (s.staffAt) throw AppError.of("HOSTEL_REPORT_STAFF_MARKED", 400);
   if (dayKey(s.date) > todayKey()) throw AppError.of("HOSTEL_REPORT_SESSION_FUTURE", 400);
   const st = state == null || state === "" ? null : state;
   if (st !== null && !HOSTEL_REPORT_SESSION_STATES.includes(st)) throw AppError.of("HOSTEL_REPORT_SESSION_STATE", 400);
@@ -749,6 +852,8 @@ module.exports = {
   deleteReport,
   approveSession,
   approveAll,
+  setStaffState,
+  setStaffMark,
   createResident,
   ensureResidence,
   resolveExtra,

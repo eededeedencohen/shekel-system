@@ -24,6 +24,19 @@ const markSchema = new mongoose.Schema(
     status: { type: String, enum: HOSTEL_REPORT_MARKS, required: true },
     reason: { type: String, enum: [...ABSENCE_REASON_KEYS, null], default: null },
     note: { type: String, trim: true },
+    /**
+     * The house's own word, kept the moment the coordinator changed this
+     * mark (Eden, 2026-10-25: she may say someone came when the house said
+     * not - "אבל כמובן יהיה רשום אצלה שבהוסטל דיווחו משהו שונה"). Absent
+     * when the mark is hers from the start. Never leaves for the Ministry.
+     */
+    house: {
+      status: { type: String, enum: [...HOSTEL_REPORT_MARKS, null], default: undefined },
+      reason: { type: String, enum: [...ABSENCE_REASON_KEYS, null], default: undefined },
+      note: { type: String, trim: true },
+    },
+    staffAt: { type: Date },
+    staffBy: { type: String, trim: true },
   },
   { _id: false }
 );
@@ -39,6 +52,11 @@ const sessionSchema = new mongoose.Schema(
     state: { type: String, enum: [...HOSTEL_REPORT_SESSION_STATES, null], default: null },
     markedAt: { type: Date },
     marks: { type: [markSchema], default: [] },
+    /** The house's word on held / not held once the coordinator changed it (null = the house had not marked it). Meaningful only with staffAt. */
+    houseState: { type: String, enum: [...HOSTEL_REPORT_SESSION_STATES, null], default: null },
+    /** The coordinator marked or changed this session herself - from then on the house's page shows it shut. */
+    staffAt: { type: Date },
+    staffBy: { type: String, trim: true },
     /** Set when the coordinator approved it: the Lesson row the marks became. */
     lesson: { type: mongoose.Schema.Types.ObjectId, ref: "Lesson", default: null },
     approvedAt: { type: Date },

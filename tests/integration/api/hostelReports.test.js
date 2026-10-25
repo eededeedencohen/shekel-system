@@ -159,6 +159,75 @@ describe("the hostel's attendance draft", () => {
     expect((await request(app).delete(`/api/hostel-reports/${opened._id}`)).body.code).toBe("HOSTEL_REPORT_HAS_APPROVED");
   });
 
+  it("the coordinator's own word: she flips a mark (the house's stays beside it), marks a session herself, approves all; the lesson and the Ministry read hers alone; the house's page shuts what she touched", async () => {
+    const { hostel, cycle, residents } = await houseMonth();
+    const month = lastMonth();
+    const opened = (await request(app).post("/api/hostel-reports").send({ month, hostel: hostel._id })).body.data.reports[0];
+    const url = `/api/public/hostel-reports/${opened.token}`;
+    const [a, b, c] = residents;
+    const [s1, s2, s3] = opened.sessions;
+    // the house: s1 held (b in hospital, c refused), s2 not held, s3 untouched
+    await request(app).put(`${url}/sessions/${s1._id}`).send({ state: "held", marks: [{ person: a._id, status: "present" }, { person: b._id, status: "absent", reason: "hospital", note: "בהדסה" }, { person: c._id, status: "absent", reason: "refused" }] });
+    await request(app).put(`${url}/sessions/${s2._id}`).send({ state: "notHeld" });
+    const base = `/api/hostel-reports/${opened._id}`;
+    let r = (await request(app).get(base)).body.data.report;
+    expect(r.courses).toHaveLength(1);
+    expect(r.courses[0].roster.map((p) => p.name)).toEqual(["אסתר כהן", "ליטבין סבטלנה", "ניצה פרסי"]);
+    expect(r.counts).toMatchObject({ byStaff: 0, changes: 0 });
+
+    // a mark on a session not held is refused; an absent one needs a reason
+    expect((await request(app).post(`${base}/sessions/${s2._id}/marks`).send({ person: a._id, status: "absent", reason: "er" })).body.code).toBe("HOSTEL_REPORT_NOT_HELD");
+    expect((await request(app).post(`${base}/sessions/${s1._id}/marks`).send({ person: a._id, status: "absent" })).body.code).toBe("HOSTEL_REPORT_REASON_REQUIRED");
+    // she says b came after all - the house's word is kept beside hers
+    r = (await request(app).post(`${base}/sessions/${s1._id}/marks`).send({ person: b._id, status: "present" })).body.data.report;
+    const mb = r.sessions[0].marks.find((m) => String(m.person._id) === String(b._id));
+    expect(mb).toMatchObject({ status: "present", reason: null, changed: true, byStaff: true, house: { status: "absent", reason: "hospital", reasonLabel: "אשפוז", note: "בהדסה" } });
+    expect(r.sessions[0]).toMatchObject({ present: 2, absent: 1, changes: 1, houseState: "held" });
+    expect(r.counts).toMatchObject({ byStaff: 1, changes: 1 });
+    // flipping it back leaves no contradiction
+    r = (await request(app).post(`${base}/sessions/${s1._id}/marks`).send({ person: b._id, status: "absent", reason: "hospital" })).body.data.report;
+    expect(r.sessions[0].marks.find((m) => String(m.person._id) === String(b._id))).toMatchObject({ status: "absent", changed: false, house: { status: "absent" } });
+    expect(r.counts.changes).toBe(0);
+    await request(app).post(`${base}/sessions/${s1._id}/marks`).send({ person: b._id, status: "present" });
+
+    // the house's page: s1 is shut for the house now; a change from there is refused
+    const view = (await request(app).get(url)).body.data.view;
+    expect(view.courses[0].sessions[0]).toMatchObject({ locked: true, lockedBy: "staff", present: 2 });
+    expect(view.courses[0].sessions[1].locked).toBe(false);
+    expect((await request(app).put(`${url}/sessions/${s1._id}`).send({ state: "notHeld" })).body.code).toBe("HOSTEL_REPORT_STAFF_MARKED");
+
+    // the untouched s3: she marks it held herself - everyone present to start with, then c did not come
+    r = (await request(app).post(`${base}/sessions/${s3._id}/state`).send({ state: "held" })).body.data.report;
+    expect(r.sessions[2]).toMatchObject({ state: "held", present: 3, absent: 0, houseState: null, changes: 0 });
+    expect(r.sessions[2].staffAt).toBeTruthy();
+    expect(r.sessions[2].marks.every((m) => m.byStaff && m.house === null)).toBe(true);
+    r = (await request(app).post(`${base}/sessions/${s3._id}/marks`).send({ person: c._id, status: "absent", reason: "vacation" })).body.data.report;
+    expect(r.sessions[2]).toMatchObject({ present: 2, absent: 1, changes: 0 });
+    // the house said s2 was not held; she says it was - the house's word stays
+    r = (await request(app).post(`${base}/sessions/${s2._id}/state`).send({ state: "held" })).body.data.report;
+    expect(r.sessions[1]).toMatchObject({ state: "held", houseState: "notHeld", present: 3, changes: 1 });
+    expect(r.counts).toMatchObject({ held: 3, notHeld: 0, toApprove: 3, changes: 2 });
+    expect((await request(app).post(`${base}/sessions/${s1._id}/state`).send({ state: "soon" })).body.code).toBe("HOSTEL_REPORT_SESSION_STATE");
+
+    // one press approves the three; the lessons carry her word, not the house's
+    const all = (await request(app).post(`${base}/approve`).send({})).body.data.report;
+    expect(all.counts).toMatchObject({ approved: 3, toApprove: 0 });
+    const l1 = await Lesson.findOne({ cycle: cycle._id, date: new Date(s1.date) });
+    const rows1 = Object.fromEntries(l1.attendance.map((x) => [String(x.student), x]));
+    expect(rows1[String(b._id)]).toMatchObject({ status: "Present", reason: null });
+    expect(rows1[String(c._id)]).toMatchObject({ status: "Missing", reason: "refused" });
+    expect(JSON.stringify(l1.toObject())).not.toMatch(/hospital|house/);
+    expect(await Lesson.countDocuments({ cycle: cycle._id })).toBe(3);
+    // after the approval a change of hers reaches the lesson at once; the state is settled
+    await request(app).post(`${base}/sessions/${s1._id}/marks`).send({ person: a._id, status: "absent", reason: "er" });
+    const l1b = await Lesson.findOne({ cycle: cycle._id, date: new Date(s1.date) });
+    expect(l1b.attendance.find((x) => String(x.student) === String(a._id))).toMatchObject({ status: "Missing", reason: "er" });
+    expect((await request(app).post(`${base}/sessions/${s1._id}/state`).send({ state: "notHeld" })).body.code).toBe("HOSTEL_REPORT_APPROVED");
+    // the Ministry's average reads the final attendance: (1 + 3 + 2) / 3 = 2
+    const rows = (await request(app).get(`/api/hostel-reports/ministry?month=${month}`)).body.data.rows;
+    expect(rows[0].courses[0]).toMatchObject({ lessons: 3, avg: 2 });
+  });
+
   it("a session is marked only once its day came; an unknown or expired link answers so; an empty month can be deleted", async () => {
     const { hostel } = await houseMonth();
     const now = new Date();

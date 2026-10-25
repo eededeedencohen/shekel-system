@@ -876,6 +876,8 @@ const ERROR_CODES = {
   HOSTEL_REPORT_REASON_REQUIRED: "על מי שלא הגיע/ה חובה לסמן סיבה",
   HOSTEL_REPORT_APPROVED: "המפגש הזה כבר אושר",
   HOSTEL_REPORT_NOT_MARKED: "המפגש עוד לא סומן בהוסטל",
+  HOSTEL_REPORT_NOT_HELD: "קודם מסמנים שהמפגש התקיים",
+  HOSTEL_REPORT_STAFF_MARKED: "הרכזת כבר עברה על המפגש הזה - הוא נסגר לשינויים מהבית",
   HOSTEL_REPORT_HAS_APPROVED: "בדיווח הזה כבר אושרו מפגשים - אי אפשר למחוק אותו",
   HOSTEL_REPORT_EXTRA_NAME: "למי שלא ברשימה חובה שם",
   HOSTEL_REPORT_RESOLVED: "הפריט הזה כבר טופל",
