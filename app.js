@@ -17,6 +17,7 @@ const fs = require("fs");
 const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
+const compression = require("compression");
 
 const AppError = require("./utils/AppError");
 const globalErrorHandler = require("./controllers/errorController");
@@ -35,6 +36,10 @@ app.set("trust proxy", 1);
 // limit once this global one has already refused the body (that was the
 // "Something went wrong" of 2026-09-17 on every real photo).
 app.use(cors());
+// Every answer leaves gzipped - the JSON slices and the client bundle alike. Nothing was compressed
+// before (Eden, 2026-10-25: שמרית's phone took "הרבה מאוד זמן לטעון"): her boot was ~2MB of JSON over
+// the air plus a 2.4MB bundle after every deploy; repeated shapes squeeze five to eight times.
+app.use(compression());
 app.use(express.json({ limit: "16mb" }));
 
 // World scoping (the demo-data switch): the client sends `X-Dataset`
