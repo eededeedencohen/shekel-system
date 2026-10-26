@@ -21,14 +21,18 @@ let cache = { at: 0, value: null };
 
 const sum = (rows, field) => rows.reduce((n, r) => n + (r[field] || 0), 0);
 
+/** The collections this app owns (every registered model's); the Atlas database is shared with other projects, whose collections count against the same quota. */
+const appCollections = () => new Set(mongoose.modelNames().map((n) => mongoose.model(n).collection.name));
+
 async function collectionStats(db) {
   const names = (await db.listCollections({}, { nameOnly: true }).toArray()).map((c) => c.name).filter((n) => !n.startsWith("system."));
+  const mine = appCollections();
   const out = [];
   for (const name of names) {
     try {
       const [s] = await db.collection(name).aggregate([{ $collStats: { storageStats: {} } }]).toArray();
       const st = s?.storageStats || {};
-      out.push({ name, count: st.count || 0, dataSize: st.size || 0, storageSize: st.storageSize || 0, indexSize: st.totalIndexSize || 0 });
+      out.push({ name, app: mine.has(name), count: st.count || 0, dataSize: st.size || 0, storageSize: st.storageSize || 0, indexSize: st.totalIndexSize || 0 });
     } catch {
       /* a view or a collection that refuses stats - skipped */
     }
@@ -61,6 +65,8 @@ async function usage({ fresh = false } = {}) {
       dataSize: stats.dataSize || 0,
       indexSize: stats.indexSize || 0,
       storageSize: stats.storageSize || 0,
+      // what other projects on the same Atlas database take of the quota
+      othersBytes: collections.filter((c) => !c.app).reduce((n, c) => n + c.dataSize + c.indexSize, 0),
       collections,
     },
     bucket: {

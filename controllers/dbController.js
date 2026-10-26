@@ -359,6 +359,12 @@ exports.getStorage = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: { storage } });
 });
 
+/** GET /api/db/costs - what Amazon charges, month by month (services/awsCostService; cached twelve hours). */
+exports.getCosts = catchAsync(async (req, res) => {
+  const costs = await require("../services/awsCostService").costs({ fresh: req.query.fresh === "1" });
+  res.status(200).json({ status: "success", data: { costs } });
+});
+
 /** GET /api/db/schema */
 exports.getDbSchema = catchAsync(async (req, res) => {
   const collections = await Promise.all(
