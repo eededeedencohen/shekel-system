@@ -641,16 +641,30 @@ async function signWaiver({ intake, by, signedAt, explained, parties, witness, g
     guardianSig = parseSignature(signatures?.guardian);
     if (!guardianSig) throw AppError.of("WAIVER_INVALID", 400, "חתימת האפוטרופוס");
   }
-  if (!document?.data) throw AppError.of("WAIVER_INVALID", 400, "הטופס החתום");
+  if (!document?.data && !document?.fileId) throw AppError.of("WAIVER_INVALID", 400, "הטופס החתום");
 
-  // the signed page is the document in the file - received, signed today, a year of validity
-  const { moved } = await uploadDocument({
-    intake, key: "waiver", by, staff: true, signedAt: when,
-    fileName: clean(document.fileName, 120) || "ויתור סודיות.pdf",
-    mime: document.mime || "application/pdf",
-    data: document.data,
-    thumb: document.thumb,
-  });
+  // the signed page is the document in the file - received, signed today, a year of validity:
+  // a PDF already in the bucket (fileService, slot "waiver", confirmed with signedAt), or the legacy base64
+  let moved = false;
+  if (document.fileId) {
+    const current = docOf(intake, "waiver");
+    if (String(current.file?.stored || "") !== String(document.fileId)) {
+      const stored = await StoredFile.findOne({ _id: document.fileId, family: "intake", status: "ready" });
+      if (!stored) throw AppError.of("WAIVER_INVALID", 400, "הטופס החתום");
+      ({ moved } = await attachDocument({ intake, key: "waiver", stored, by, staff: true, signedAt: when }));
+    } else if (!current.signedAt || current.status !== "received") {
+      const stored = await StoredFile.findById(document.fileId);
+      ({ moved } = await attachDocument({ intake, key: "waiver", stored, by, staff: true, signedAt: when }));
+    }
+  } else {
+    ({ moved } = await uploadDocument({
+      intake, key: "waiver", by, staff: true, signedAt: when,
+      fileName: clean(document.fileName, 120) || "ויתור סודיות.pdf",
+      mime: document.mime || "application/pdf",
+      data: document.data,
+      thumb: document.thumb,
+    }));
+  }
   const row = docOf(intake, "waiver");
   row.note = "נחתם דיגיטלית";
   const witnessName = [w.firstName, w.lastName].filter(Boolean).join(" ");

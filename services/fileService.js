@@ -321,6 +321,23 @@ async function assertRead(actor, row) {
   await access.assert(actor.req, row);
 }
 
+/**
+ * A legacy row (bytes still in the database) read behind a public link:
+ * the link's own content route, which needs no session (the staff route
+ * /api/files/:id/bytes would answer 401 there).
+ */
+async function legacyPublicUrl(actor, row, thumb) {
+  const t = actor.token;
+  if (t.kind === "intake") return `/api/public/join/${encodeURIComponent(t.link?.token || t.intake.landing?.token || "")}/documents/${row.owner?.slot}/${thumb ? "thumb" : "file"}`;
+  if (t.kind === "supplier") return `/api/public/supplier/${encodeURIComponent(t.supplier.link?.token || "")}/files/${row.owner?.slot}/${thumb ? "thumb" : "file"}`;
+  if (t.kind === "invoiceRequest") {
+    const Invoice = require("../models/Invoice");
+    const inv = await Invoice.findOne({ file: row._id }).select("_id").lean();
+    return inv ? `/api/public/invoices/${encodeURIComponent(t.request.token)}/invoices/${inv._id}/image${thumb ? "?thumb=1" : ""}` : null;
+  }
+  return null;
+}
+
 /** Step 3. → { url, expiresAt, legacy, mime, name, size } for the file or its thumbnail. */
 async function signedRead({ actor, fileId, thumb = false, download = false }) {
   const row = isId(fileId) && (await StoredFile.findById(fileId).select("-data -thumb"));
@@ -329,6 +346,11 @@ async function signedRead({ actor, fileId, thumb = false, download = false }) {
   await assertRead(actor, row);
   const signed = await storedFiles.signedRead(row, { thumb, download });
   if (!signed) throw AppError.of("NOT_FOUND", 404, "תמונה מוקטנת");
+  if (signed.legacy && actor.token) {
+    const url = await legacyPublicUrl(actor, row, thumb);
+    if (!url) throw AppError.of("NOT_FOUND", 404, "קובץ");
+    signed.url = url;
+  }
   return signed;
 }
 
