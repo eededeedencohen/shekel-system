@@ -28,7 +28,7 @@ describe("profile lifecycle log", () => {
       .post(`/api/people/${s._id}/profiles`)
       .send({ kind: "StudentCulture", by: "רותם", note: "נרשמה גם לתרבות" });
     expect(res.status).toBe(201);
-    expect(res.body.data.profile.log[0]).toMatchObject({ event: "opened", by: "רותם", note: "נרשמה גם לתרבות" });
+    expect(res.body.data.profile.log[0]).toMatchObject({ event: "opened", by: "בדיקות", note: "נרשמה גם לתרבות" }); // the session signs, never the body's `by`
     expect(res.body.data.profile.pipeline.stage).toBe("Interested");
   });
 });
@@ -65,7 +65,7 @@ describe("POST /api/people/:id/transfer", () => {
     expect(college.active).toBe(false);
     expect(college.until).toBeInstanceOf(Date);
     expect(college.log.map((l) => l.event)).toEqual(["opened", "transferredOut"]);
-    expect(college.log[1]).toMatchObject({ by: "נעה", otherKind: "StudentCulture", note: "העדיפה את הטיולים" });
+    expect(college.log[1]).toMatchObject({ by: "בדיקות", otherKind: "StudentCulture", note: "העדיפה את הטיולים" });
     expect(culture.active).toBe(true);
     expect(culture.log[0]).toMatchObject({ event: "transferredIn", otherKind: "StudentCollege" });
     expect(culture.pipeline.stage).toBe("Interested");
@@ -90,7 +90,7 @@ describe("POST /api/people/:id/transfer", () => {
     expect(w.body.data.registration.status).toBe("waitlisted");
     // a past registration, built as history
     const culture = require("../../../services/cultureService");
-    await culture.register({ eventId: past._id, studentId: mover._id, by: staff._id, trusted: true });
+    await culture.register({ eventId: past._id, studentId: mover._id, actor: { kind: "culture", personId: String(staff._id), name: "בדיקות" }, trusted: true });
 
     const res = await request(app)
       .post(`/api/people/${mover._id}/transfer`)
@@ -185,6 +185,6 @@ describe("close / reopen with a reason", () => {
     expect(del.status).toBe(204);
     const profile = await Profile.findById(s.profile._id);
     expect(profile.active).toBe(false);
-    expect(profile.log.at(-1)).toMatchObject({ event: "closed", by: "נעה", note: "ביטול" });
+    expect(profile.log.at(-1)).toMatchObject({ event: "closed", by: "בדיקות", note: "ביטול" });
   });
 });

@@ -434,14 +434,15 @@ const linkLabel = (minutes) => UPLOAD_LINK_MINUTES.find((m) => m.key === minutes
 
 /**
  * A temporary upload link (the social worker: 10 minutes / half an hour /
- * an hour / 24 hours, locked after). `token` may come from the client -
- * then the link is known the moment the button is pressed - else it is
- * made here. `docs` narrows the page to particular documents.
+ * an hour / 24 hours, locked after). The token is made HERE and only here
+ * (since 2026-10-26 - a browser-made secret is no secret); the page shows
+ * the link when the answer comes. `docs` narrows the page to particular
+ * documents.
  */
-async function createUploadLink({ intake, minutes, docs, by, token, note }) {
+async function createUploadLink({ intake, minutes, docs, by, note }) {
   const m = Number(minutes);
   if (!UPLOAD_LINK_MINUTES.some((x) => x.key === m)) throw AppError.of("LINK_MINUTES_INVALID", 400);
-  const t = typeof token === "string" && /^[\w-]{16,64}$/.test(token) ? token : crypto.randomBytes(18).toString("base64url");
+  const t = crypto.randomBytes(18).toString("base64url");
   const keys = [...new Set((Array.isArray(docs) ? docs : []).filter((k) => DOC_BY_KEY[k]))];
   const link = await UploadLink.create({
     intake: intake._id,

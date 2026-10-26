@@ -13,6 +13,7 @@ const { Person } = require("../models/Person");
 const { Profile } = require("../models/profiles");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
+const { byOf } = require("../utils/actor");
 const { STUDENT_KINDS } = require("../utils/domain");
 const {
   createProfile,
@@ -42,9 +43,9 @@ exports.createPersonProfile = catchAsync(async (req, res, next) => {
   if (!req.body.kind) return next(AppError.of("MISSING_FIELDS", 400, "kind"));
   lens.assertProfileKind(req, req.body.kind); // the persona's own program only
   const profile = await createProfile(person, req.body.kind, req.body, {
-    opened: { by: req.body.by, note: req.body.note },
+    opened: { by: byOf(req), note: req.body.note },
     ...(STUDENT_KINDS.includes(req.body.kind) && {
-      pipelineInit: { stage: req.body.stage || "Interested", movedBy: req.body.by, note: req.body.note || "נפתח פרופיל" },
+      pipelineInit: { stage: req.body.stage || "Interested", movedBy: byOf(req), note: req.body.note || "נפתח פרופיל" },
     }),
   });
   res.status(201).json({ status: "success", data: { profile } });
@@ -84,9 +85,9 @@ exports.updateProfile = catchAsync(async (req, res, next) => {
   if ("active" in req.body) {
     const want = !!req.body.active;
     if (want && !profile.active) {
-      await reopenProfile({ profile, by: req.body.by, note: req.body.note, stage: req.body.stage });
+      await reopenProfile({ profile, by: byOf(req), note: req.body.note, stage: req.body.stage });
     } else if (!want && profile.active) {
-      await closeProfile({ profile, by: req.body.by, note: req.body.note });
+      await closeProfile({ profile, by: byOf(req), note: req.body.note });
     }
   }
   res.status(200).json({ status: "success", data: { profile } });
@@ -97,7 +98,7 @@ exports.deactivateProfile = catchAsync(async (req, res, next) => {
   const profile = await Profile.findOne({ _id: req.params.id });
   if (!profile) return next(AppError.of("NOT_FOUND", 404, "פרופיל"));
   if (profile.active) {
-    await closeProfile({ profile, by: req.query.by, note: req.query.note });
+    await closeProfile({ profile, by: byOf(req), note: req.query.note });
   }
   res.status(204).json({ status: "success", data: null });
 });
@@ -132,7 +133,7 @@ exports.moveStage = catchAsync(async (req, res, next) => {
     return next(AppError.of("NO_STUDENT_PROFILE", 404));
   }
   try {
-    await profile.moveToStage(req.body.stage, req.body.movedBy, req.body.note);
+    await profile.moveToStage(req.body.stage, byOf(req), req.body.note);
   } catch (e) {
     if (e.code === "INVALID_STAGE") return next(AppError.of("INVALID_STAGE", 400));
     throw e;
@@ -164,7 +165,7 @@ exports.updateMatching = catchAsync(async (req, res, next) => {
 
 exports.personMoveStage = asStudentProfile(async (profile, req) => {
   try {
-    await profile.moveToStage(req.body.stage, req.body.movedBy, req.body.note);
+    await profile.moveToStage(req.body.stage, byOf(req), req.body.note);
   } catch (e) {
     if (e.code === "INVALID_STAGE") return AppError.of("INVALID_STAGE", 400);
     throw e;

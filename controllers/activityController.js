@@ -15,6 +15,7 @@
  */
 
 const catchAsync = require("../utils/catchAsync");
+const { byOf } = require("../utils/actor");
 const activities = require("../services/activityService");
 const lens = require("../services/lensService");
 
@@ -32,7 +33,7 @@ exports.createActivity = catchAsync(async (req, res) => {
     person: b.person,
     kind: b.kind,
     at: b.at,
-    by: b.by,
+    by: byOf(req),
     title: b.title,
     body: b.body,
     fields: b.fields,
@@ -43,7 +44,7 @@ exports.createActivity = catchAsync(async (req, res) => {
 
 exports.updateActivity = catchAsync(async (req, res) => {
   const b = req.body || {};
-  const activity = await activities.updateActivity({ id: req.params.id, at: b.at, title: b.title, body: b.body, fields: b.fields, by: b.by });
+  const activity = await activities.updateActivity({ id: req.params.id, at: b.at, title: b.title, body: b.body, fields: b.fields, by: byOf(req) });
   res.status(200).json({ status: "success", data: { activity } });
 });
 
@@ -64,7 +65,7 @@ exports.getTemplate = catchAsync(async (req, res) => {
 
 exports.saveTemplate = catchAsync(async (req, res) => {
   const b = req.body || {};
-  const template = await activities.saveTemplate({ kind: req.params.kind, title: b.title, body: b.body, fields: b.fields, by: b.by });
+  const template = await activities.saveTemplate({ kind: req.params.kind, title: b.title, body: b.body, fields: b.fields, by: byOf(req) });
   res.status(200).json({ status: "success", data: { template } });
 });
 

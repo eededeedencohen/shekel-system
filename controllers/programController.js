@@ -14,6 +14,7 @@ const { Person } = require("../models/Person");
 const { Profile } = require("../models/profiles");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
+const { byOf } = require("../utils/actor");
 const { transfer, closeProfile, leaveProgram, reopenProfile, programTimeline } = require("../services/programService");
 const { profilesOf, flattenPerson } = require("../services/profileService");
 const lens = require("../services/lensService");
@@ -25,7 +26,8 @@ async function respondWithPerson(res, personId, extra = {}) {
 }
 
 exports.transferProgram = catchAsync(async (req, res, next) => {
-  const { from, to, by, note, stage, at } = req.body;
+  const { from, to, note, stage, at } = req.body;
+  const by = byOf(req);
   if (!from || !to) return next(AppError.of("MISSING_FIELDS", 400, "from, to"));
   lens.assertProfileKind(req, to); // the destination must be a program the persona has (lensService)
   const { effects } = await transfer({ personId: req.params.id, from, to, by, note, stage, at });
@@ -42,7 +44,7 @@ exports.getProgramTimeline = catchAsync(async (req, res, next) => {
 exports.closeProfile = catchAsync(async (req, res, next) => {
   const profile = await Profile.findOne({ _id: req.params.id });
   if (!profile) return next(AppError.of("NOT_FOUND", 404, "פרופיל"));
-  const { effects } = await closeProfile({ profile, by: req.body.by, note: req.body.note, at: req.body.at });
+  const { effects } = await closeProfile({ profile, by: byOf(req), note: req.body.note, at: req.body.at });
   await respondWithPerson(res, profile.person, { effects });
 });
 
@@ -52,7 +54,7 @@ exports.leaveProgram = catchAsync(async (req, res, next) => {
   if (!profile) return next(AppError.of("NOT_FOUND", 404, "פרופיל"));
   const { effects, activity } = await leaveProgram({
     profile,
-    by: req.body.by,
+    by: byOf(req),
     leftAt: req.body.leftAt,
     reason: req.body.reason,
     note: req.body.note,
@@ -64,6 +66,6 @@ exports.leaveProgram = catchAsync(async (req, res, next) => {
 exports.reopenProfile = catchAsync(async (req, res, next) => {
   const profile = await Profile.findOne({ _id: req.params.id });
   if (!profile) return next(AppError.of("NOT_FOUND", 404, "פרופיל"));
-  await reopenProfile({ profile, by: req.body.by, note: req.body.note, stage: req.body.stage, at: req.body.at });
+  await reopenProfile({ profile, by: byOf(req), note: req.body.note, stage: req.body.stage, at: req.body.at });
   await respondWithPerson(res, profile.person);
 });

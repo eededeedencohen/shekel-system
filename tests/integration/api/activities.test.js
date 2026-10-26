@@ -74,7 +74,7 @@ describe("activities", () => {
     const edited = await request(app).patch(`/api/activities/${a._id}`).send({ body: "שיחה ארוכה", fields: { attendance: "חלקית" }, by: "חגי" });
     expect(edited.body.data.activity.body).toBe("שיחה ארוכה");
     expect(edited.body.data.activity.fields.attendance).toBe("חלקית");
-    expect(edited.body.data.activity.editedBy).toBe("חגי");
+    expect(edited.body.data.activity.editedBy).toBe("בדיקות"); // the session signs, never the body's `by`
 
     expect((await request(app).delete(`/api/activities/${a._id}`)).status).toBe(204);
     expect(await Activity.countDocuments()).toBe(1);

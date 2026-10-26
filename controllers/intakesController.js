@@ -17,6 +17,7 @@ const Intake = require("../models/Intake");
 const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
+const { byOf } = require("../utils/actor");
 const intake = require("../services/intakeService");
 const lens = require("../services/lensService");
 const storedFiles = require("../services/storedFiles");
@@ -63,15 +64,15 @@ exports.getByPerson = catchAsync(async (req, res, next) => {
 /** POST /api/intakes/open - { person, by }: open a record for a walk-in. */
 exports.openIntake = catchAsync(async (req, res) => {
   const person = await personOf(req, req.body.person);
-  const doc = await intake.ensureIntake({ person, source: "staff", by: req.body.by });
+  const doc = await intake.ensureIntake({ person, source: "staff", by: byOf(req) });
   res.status(201).json({ status: "success", data: { intake: await populated(doc) } });
 });
 
 /** POST /api/intakes/schedule - { person, at, by, note } (find-or-create + schedule). */
 exports.scheduleForPerson = catchAsync(async (req, res) => {
   const person = await personOf(req, req.body.person);
-  const doc = await intake.ensureIntake({ person, source: "staff", by: req.body.by });
-  const { moved } = await intake.schedule({ intake: doc, at: req.body.at, by: req.body.by, note: req.body.note });
+  const doc = await intake.ensureIntake({ person, source: "staff", by: byOf(req) });
+  const { moved } = await intake.schedule({ intake: doc, at: req.body.at, by: byOf(req), note: req.body.note });
   res.status(200).json({ status: "success", data: { intake: await populated(doc), moved } });
 });
 
@@ -81,13 +82,13 @@ exports.scheduleForPerson = catchAsync(async (req, res) => {
  */
 exports.screenPerson = catchAsync(async (req, res) => {
   const person = await personOf(req, req.body.person);
-  const doc = await intake.ensureIntake({ person, source: "staff", by: req.body.by });
+  const doc = await intake.ensureIntake({ person, source: "staff", by: byOf(req) });
   const { activity } = await intake.setScreening({
     intake: doc,
     eligibility: req.body.eligibility,
     interests: req.body.interests,
     calledAt: req.body.calledAt,
-    by: req.body.by,
+    by: byOf(req),
     note: req.body.note,
   });
   res.status(200).json({ status: "success", data: { intake: await populated(doc), activity } });
@@ -96,7 +97,7 @@ exports.screenPerson = catchAsync(async (req, res) => {
 /** POST /api/intakes/:id/schedule - { at, by, note } (re)schedule. */
 exports.reschedule = catchAsync(async (req, res) => {
   const doc = await load(req);
-  const { moved } = await intake.schedule({ intake: doc, at: req.body.at, by: req.body.by, note: req.body.note });
+  const { moved } = await intake.schedule({ intake: doc, at: req.body.at, by: byOf(req), note: req.body.note });
   res.status(200).json({ status: "success", data: { intake: await populated(doc), moved } });
 });
 
@@ -106,7 +107,7 @@ exports.markDone = catchAsync(async (req, res) => {
   const { moved, activity } = await intake.markDone({
     intake: doc,
     at: req.body.at,
-    by: req.body.by,
+    by: byOf(req),
     waiverSigned: req.body.waiverSigned === true || req.body.waiverSigned === "true",
     summary: req.body.summary,
     fields: req.body.fields,
@@ -126,7 +127,7 @@ exports.setDocument = catchAsync(async (req, res) => {
     intake: doc,
     key: req.params.key,
     status: req.body.status,
-    by: req.body.by,
+    by: byOf(req),
     note: req.body.note,
     validUntil: req.body.validUntil,
     signedAt: req.body.signedAt,
@@ -137,9 +138,9 @@ exports.setDocument = catchAsync(async (req, res) => {
 /** POST /api/intakes/:id/documents - { key, fileName, mime, data(base64), by, validUntil?, signedAt? } (staff upload = received). */
 exports.uploadDocument = catchAsync(async (req, res, next) => {
   const doc = await load(req);
-  const { key, fileName, mime, data, thumb, by, validUntil, signedAt } = req.body || {};
+  const { key, fileName, mime, data, thumb, validUntil, signedAt } = req.body || {};
   if (!key || !data) return next(AppError.of("MISSING_FIELDS", 400, "key, data"));
-  const { moved } = await intake.uploadDocument({ intake: doc, key, fileName, mime, data, thumb, by, staff: true, validUntil, signedAt });
+  const { moved } = await intake.uploadDocument({ intake: doc, key, fileName, mime, data, thumb, by: byOf(req), staff: true, validUntil, signedAt });
   res.status(200).json({ status: "success", data: { intake: await populated(doc), moved } });
 });
 
@@ -160,7 +161,7 @@ exports.signWaiver = catchAsync(async (req, res) => {
   const doc = await load(req);
   const b = req.body || {};
   const { moved, waiver, activity } = await intake.signWaiver({
-    intake: doc, by: b.by, signedAt: b.signedAt, explained: b.explained === true || b.explained === "true",
+    intake: doc, by: byOf(req), signedAt: b.signedAt, explained: b.explained === true || b.explained === "true",
     parties: b.parties, witness: b.witness, guardian: b.guardian, signatures: b.signatures, document: b.document,
   });
   res.status(201).json({ status: "success", data: { intake: await populated(doc), moved, waiver, activity } });
@@ -187,7 +188,7 @@ exports.setShkedia = catchAsync(async (req, res) => {
   const { moved } = await intake.setShkedia({
     intake: doc,
     enteredAt: req.body.enteredAt,
-    by: req.body.by,
+    by: byOf(req),
     decisionNo: req.body.decisionNo,
     note: req.body.note,
     clear: req.body.clear === true || req.body.clear === "true",
@@ -198,7 +199,7 @@ exports.setShkedia = catchAsync(async (req, res) => {
 /** PATCH /api/intakes/:id/coordinator - { name, by } (an empty name clears). */
 exports.setCoordinator = catchAsync(async (req, res) => {
   const doc = await load(req);
-  await intake.setCoordinator({ intake: doc, name: req.body.name, by: req.body.by });
+  await intake.setCoordinator({ intake: doc, name: req.body.name, by: byOf(req) });
   res.status(200).json({ status: "success", data: { intake: await populated(doc) } });
 });
 
@@ -210,7 +211,7 @@ exports.setScreening = catchAsync(async (req, res) => {
     eligibility: req.body.eligibility,
     interests: req.body.interests,
     calledAt: req.body.calledAt,
-    by: req.body.by,
+    by: byOf(req),
     note: req.body.note,
   });
   res.status(200).json({ status: "success", data: { intake: await populated(doc), activity } });
@@ -219,19 +220,18 @@ exports.setScreening = catchAsync(async (req, res) => {
 /** PATCH /api/intakes/:id/committee - { committeeDate, by } (empty clears). */
 exports.setCommittee = catchAsync(async (req, res) => {
   const doc = await load(req);
-  await intake.setCommitteeDate({ intake: doc, committeeDate: req.body.committeeDate, by: req.body.by });
+  await intake.setCommitteeDate({ intake: doc, committeeDate: req.body.committeeDate, by: byOf(req) });
   res.status(200).json({ status: "success", data: { intake: await populated(doc) } });
 });
 
-/** POST /api/intakes/:id/links - { minutes, docs?[], by, token?, note? } → the link. */
+/** POST /api/intakes/:id/links - { minutes, docs?[], note? } → the link (its token is made here, never by the browser). */
 exports.createLink = catchAsync(async (req, res) => {
   const doc = await load(req);
   const link = await intake.createUploadLink({
     intake: doc,
     minutes: req.body.minutes,
     docs: req.body.docs,
-    by: req.body.by,
-    token: req.body.token,
+    by: byOf(req),
     note: req.body.note,
   });
   res.status(201).json({ status: "success", data: { link, intake: await populated(doc) } });
@@ -247,6 +247,6 @@ exports.getLinks = catchAsync(async (req, res) => {
 /** PATCH /api/intakes/:id - { notes, by } */
 exports.updateIntake = catchAsync(async (req, res) => {
   const doc = await load(req);
-  await intake.addNote({ intake: doc, by: req.body.by, note: req.body.notes });
+  await intake.addNote({ intake: doc, by: byOf(req), note: req.body.notes });
   res.status(200).json({ status: "success", data: { intake: await populated(doc) } });
 });

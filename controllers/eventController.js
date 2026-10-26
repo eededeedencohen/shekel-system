@@ -12,6 +12,7 @@ const EventRegistration = require("../models/EventRegistration");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 const culture = require("../services/cultureService");
+const { whoAmI } = require("../utils/actor");
 
 const PERSON_SELECT = "firstName lastName email phone gender birthDate avatar deletedAt";
 
@@ -63,42 +64,42 @@ exports.getEventById = catchAsync(async (req, res, next) => {
   res.status(200).json({ status: "success", data: { event, registrations } });
 });
 
-/** POST /api/events - body { by*, name*, date*, category?, location?, settings?, … } */
+/** POST /api/events - body { name*, date*, category?, location?, settings?, … } - the actor is the session (utils/actor) */
 exports.createEvent = catchAsync(async (req, res, next) => {
   if (!req.body.name || !req.body.date) return next(AppError.of("MISSING_FIELDS", 400, "name, date"));
-  const event = await culture.createEvent({ by: req.body.by, data: req.body });
+  const event = await culture.createEvent({ actor: whoAmI(req), data: req.body });
   res.status(201).json({ status: "success", data: { event } });
 });
 
-/** PUT /api/events/:id - body { by*, …editable fields } */
+/** PUT /api/events/:id - body { …editable fields } */
 exports.updateEvent = catchAsync(async (req, res) => {
-  const event = await culture.updateEvent({ eventId: req.params.id, by: req.body.by, data: req.body });
+  const event = await culture.updateEvent({ eventId: req.params.id, actor: whoAmI(req), data: req.body });
   res.status(200).json({ status: "success", data: { event } });
 });
 
-/** POST /api/events/:id/publish - body { by* } */
+/** POST /api/events/:id/publish */
 exports.publishEvent = catchAsync(async (req, res) => {
-  const event = await culture.publishEvent({ eventId: req.params.id, by: req.body.by });
+  const event = await culture.publishEvent({ eventId: req.params.id, actor: whoAmI(req) });
   res.status(200).json({ status: "success", data: { event } });
 });
 
-/** POST /api/events/:id/cancel - body { by*, reason? } */
+/** POST /api/events/:id/cancel - body { reason? } */
 exports.cancelEvent = catchAsync(async (req, res) => {
   const { event, cancelled } = await culture.cancelEvent({
-    eventId: req.params.id, by: req.body.by, reason: req.body.reason,
+    eventId: req.params.id, actor: whoAmI(req), reason: req.body.reason,
   });
   res.status(200).json({ status: "success", data: { event, cancelledRegistrations: cancelled } });
 });
 
-/** POST /api/events/:id/done - body { by* } */
+/** POST /api/events/:id/done */
 exports.markEventDone = catchAsync(async (req, res) => {
-  const event = await culture.markEventDone({ eventId: req.params.id, by: req.body.by });
+  const event = await culture.markEventDone({ eventId: req.params.id, actor: whoAmI(req) });
   res.status(200).json({ status: "success", data: { event } });
 });
 
-/** DELETE /api/events/:id?by= - untouched drafts only */
+/** DELETE /api/events/:id - untouched drafts only */
 exports.deleteEvent = catchAsync(async (req, res) => {
-  await culture.deleteEvent({ eventId: req.params.id, by: req.query.by || req.body?.by });
+  await culture.deleteEvent({ eventId: req.params.id, actor: whoAmI(req) });
   res.status(204).json({ status: "success", data: null });
 });
 
@@ -117,30 +118,30 @@ exports.getRegistrations = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", results: registrations.length, data: { registrations } });
 });
 
-/** POST /api/event-registrations - body { event*, student*, by*, reason?, force?, allowWaitlist?, guest? } */
+/** POST /api/event-registrations - body { event*, student*, reason?, force?, allowWaitlist?, guest? } */
 exports.register = catchAsync(async (req, res, next) => {
-  const { event, student, by, reason, force, allowWaitlist, guest } = req.body;
+  const { event, student, reason, force, allowWaitlist, guest } = req.body;
   if (!event || !student) return next(AppError.of("MISSING_FIELDS", 400, "event, student"));
   const registration = await culture.register({
-    eventId: event, studentId: student, by, reason,
+    eventId: event, studentId: student, actor: whoAmI(req), reason,
     force: !!force, allowWaitlist: allowWaitlist !== false, guest: !!guest,
   });
   res.status(201).json({ status: "success", data: { registration } });
 });
 
-/** POST /api/event-registrations/:id/cancel - body { by*, reason? } */
+/** POST /api/event-registrations/:id/cancel - body { reason? } */
 exports.cancelRegistration = catchAsync(async (req, res) => {
   const { registration, promoted } = await culture.cancelRegistration({
-    registrationId: req.params.id, by: req.body.by, reason: req.body.reason,
+    registrationId: req.params.id, actor: whoAmI(req), reason: req.body.reason,
   });
   res.status(200).json({ status: "success", data: { registration, promoted } });
 });
 
-/** PATCH /api/event-registrations/:id/attendance - body { by*, present (bool|null), note? } */
+/** PATCH /api/event-registrations/:id/attendance - body { present (bool|null), note? } */
 exports.reportAttendance = catchAsync(async (req, res, next) => {
   if (!("present" in req.body)) return next(AppError.of("MISSING_FIELDS", 400, "present"));
   const registration = await culture.reportAttendance({
-    registrationId: req.params.id, by: req.body.by,
+    registrationId: req.params.id, actor: whoAmI(req),
     present: req.body.present, note: req.body.note,
   });
   res.status(200).json({ status: "success", data: { registration } });

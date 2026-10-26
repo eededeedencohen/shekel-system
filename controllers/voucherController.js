@@ -8,6 +8,7 @@ const Voucher = require("../models/Voucher");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 const culture = require("../services/cultureService");
+const { whoAmI } = require("../utils/actor");
 const voucherImages = require("../services/voucherImageService");
 const storedFiles = require("../services/storedFiles");
 
@@ -33,37 +34,37 @@ exports.getVoucherById = catchAsync(async (req, res, next) => {
   res.status(200).json({ status: "success", data: { voucher } });
 });
 
-/** POST /api/vouchers - body { by*, name*, number*, balance|initialValue, expiresAt?, notes?, + the picture: imageData(+imageThumb, imageName) | imageUrl | imageFrom } */
+/** POST /api/vouchers - body { name*, number*, balance|initialValue, expiresAt?, notes?, + the picture: imageData(+imageThumb, imageName) | imageUrl | imageFrom } */
 exports.createVoucher = catchAsync(async (req, res, next) => {
   if (!req.body.name || !req.body.number) return next(AppError.of("MISSING_FIELDS", 400, "name, number"));
-  const voucher = await culture.createVoucher({ by: req.body.by, data: req.body });
+  const voucher = await culture.createVoucher({ actor: whoAmI(req), data: req.body });
   res.status(201).json({ status: "success", data: { voucher } });
 });
 
-/** PUT /api/vouchers/:id - body { by*, …fields } */
+/** PUT /api/vouchers/:id - body { …fields } */
 exports.updateVoucher = catchAsync(async (req, res) => {
-  const voucher = await culture.updateVoucher({ voucherId: req.params.id, by: req.body.by, data: req.body });
+  const voucher = await culture.updateVoucher({ voucherId: req.params.id, actor: whoAmI(req), data: req.body });
   res.status(200).json({ status: "success", data: { voucher } });
 });
 
-/** POST /api/vouchers/:id/grant - body { by*, student*, note? } */
+/** POST /api/vouchers/:id/grant - body { student*, note? } */
 exports.grantVoucher = catchAsync(async (req, res, next) => {
   if (!req.body.student) return next(AppError.of("MISSING_FIELDS", 400, "student"));
   const voucher = await culture.grantVoucher({
-    voucherId: req.params.id, by: req.body.by, studentId: req.body.student, note: req.body.note,
+    voucherId: req.params.id, actor: whoAmI(req), studentId: req.body.student, note: req.body.note,
   });
   res.status(200).json({ status: "success", data: { voucher: await voucher.populate(POP) } });
 });
 
-/** POST /api/vouchers/:id/redeem - body { by* } */
+/** POST /api/vouchers/:id/redeem */
 exports.redeemVoucher = catchAsync(async (req, res) => {
-  const voucher = await culture.redeemVoucher({ voucherId: req.params.id, by: req.body.by });
+  const voucher = await culture.redeemVoucher({ voucherId: req.params.id, actor: whoAmI(req) });
   res.status(200).json({ status: "success", data: { voucher: await voucher.populate(POP) } });
 });
 
-/** POST /api/vouchers/:id/revoke - body { by* } - un-redeemed grants only */
+/** POST /api/vouchers/:id/revoke - un-redeemed grants only */
 exports.revokeGrant = catchAsync(async (req, res) => {
-  const voucher = await culture.revokeGrant({ voucherId: req.params.id, by: req.body.by });
+  const voucher = await culture.revokeGrant({ voucherId: req.params.id, actor: whoAmI(req) });
   res.status(200).json({ status: "success", data: { voucher } });
 });
 
@@ -97,14 +98,14 @@ exports.getImage = catchAsync(async (req, res, next) => {
   next(AppError.of("NOT_FOUND", 404, "תמונת השובר"));
 });
 
-/** PATCH /api/vouchers/:id/image - body { by*, imageData(+imageThumb, imageName) | imageUrl | imageFrom | remove: true } */
+/** PATCH /api/vouchers/:id/image - body { imageData(+imageThumb, imageName) | imageUrl | imageFrom | remove: true } */
 exports.setImage = catchAsync(async (req, res) => {
-  const voucher = await culture.setVoucherImage({ voucherId: req.params.id, by: req.body.by, data: req.body });
+  const voucher = await culture.setVoucherImage({ voucherId: req.params.id, actor: whoAmI(req), data: req.body });
   res.status(200).json({ status: "success", data: { voucher: await voucher.populate(POP) } });
 });
 
-/** DELETE /api/vouchers/:id?by= - never-granted vouchers only */
+/** DELETE /api/vouchers/:id - never-granted vouchers only */
 exports.deleteVoucher = catchAsync(async (req, res) => {
-  await culture.deleteVoucher({ voucherId: req.params.id, by: req.query.by || req.body?.by });
+  await culture.deleteVoucher({ voucherId: req.params.id, actor: whoAmI(req) });
   res.status(204).json({ status: "success", data: null });
 });

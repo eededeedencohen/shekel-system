@@ -28,8 +28,9 @@ const historySchema = new mongoose.Schema(
   {
     action: { type: String, enum: REGISTRATION_ACTION_KEYS, required: true },
     at: { type: Date, default: Date.now },
-    /** מבצע הפעולה - the student or a ManagerCulture (service-checked). */
+    /** מבצע הפעולה - the acting account's Person row when it has one (utils/actor), and its name always. */
     by: { type: mongoose.Schema.Types.ObjectId, ref: "Person" },
+    byName: { type: String, trim: true },
     reason: { type: String, trim: true },
   },
   { _id: false }
@@ -61,11 +62,13 @@ const registrationSchema = new mongoose.Schema(
       position: { type: Number, min: 1 },
       since: { type: Date },
       addedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Person" },
+      addedByName: { type: String, trim: true },
     },
     attendance: {
       present: { type: Boolean },
       note: { type: String, trim: true },
       reportedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Person" },
+      reportedByName: { type: String, trim: true },
       reportedAt: { type: Date },
     },
     registeredAt: { type: Date },

@@ -20,8 +20,9 @@ const mongoose = require("mongoose");
 const grantSchema = new mongoose.Schema(
   {
     student: { type: mongoose.Schema.Types.ObjectId, ref: "Person", required: true },
-    /** מחלק השובר - culture staff. */
-    by: { type: mongoose.Schema.Types.ObjectId, ref: "Person", required: true },
+    /** מחלק השובר - the acting account's Person row when it has one, and its name always (utils/actor). */
+    by: { type: mongoose.Schema.Types.ObjectId, ref: "Person" },
+    byName: { type: String, trim: true },
     at: { type: Date, default: Date.now },
     redeemed: { type: Boolean, default: false },
     redeemedAt: { type: Date },

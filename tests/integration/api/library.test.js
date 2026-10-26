@@ -134,7 +134,7 @@ describe("POST /api/library/books", () => {
     const { book } = res.body.data;
     expect(book.title).toBe("הזוג מהבית השכן");
     expect(book.source).toBe("booknet");
-    expect(book.addedBy).toBe("נעה");
+    expect(book.addedBy).toBe("בדיקות"); // the session signs, never the body's `by`
     expect(book.cover.mime).toBe("image/png");
     expect(book.cover.size).toBe(PNG.length);
     // the bytes went to the bucket: the book carries the file's id, never bytes
@@ -221,14 +221,14 @@ describe("lend / extend / return", () => {
     const later = await request(app).post(`/api/library/loans/${loan._id}/extend`).send({ dueAt: dayStr(28), by: "חגי", note: "ביקשה עוד שבועיים" });
     expect(later.status).toBe(200);
     expect(later.body.data.loan.extensions).toHaveLength(1);
-    expect(later.body.data.loan.extensions[0].by).toBe("חגי");
+    expect(later.body.data.loan.extensions[0].by).toBe("בדיקות");
     expect(new Date(later.body.data.loan.dueAt) > new Date(loan.dueAt)).toBe(true);
 
     // return
     const back = await request(app).post(`/api/library/loans/${loan._id}/return`).send({ by: "נעה" });
     expect(back.status).toBe(200);
     expect(back.body.data.loan.open).toBe(false);
-    expect(back.body.data.loan.returnedBy).toBe("נעה");
+    expect(back.body.data.loan.returnedBy).toBe("בדיקות");
     expect(back.body.data.loan.log.map((l) => l.action)).toEqual(["lent", "extended", "returned"]);
     expect((await request(app).post(`/api/library/loans/${loan._id}/return`).send({ by: "נעה" })).body.code).toBe("LOAN_CLOSED");
     expect((await request(app).post(`/api/library/loans/${loan._id}/extend`).send({ dueAt: dayStr(40), by: "נעה" })).body.code).toBe("LOAN_CLOSED");

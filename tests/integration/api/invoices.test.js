@@ -38,7 +38,7 @@ describe("POST /api/invoices", () => {
     expect(inv.lessons[0].cycle).toBeDefined();
     expect(inv.file).toMatchObject({ mime: "image/png", name: "march.png" });
     expect(inv.file.data).toBeUndefined();
-    expect(inv.uploadedBy).toBe("נעה");
+    expect(inv.uploadedBy).toBe("בדיקות"); // the session signs, never the body's `by`
     expect(await InvoiceLesson.countDocuments({ invoice: inv._id })).toBe(2);
     expect(await StoredFile.countDocuments()).toBe(1);
   });

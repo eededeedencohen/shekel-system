@@ -6,6 +6,7 @@
 
 const svc = require("../services/subjectCategoryService");
 const catchAsync = require("../utils/catchAsync");
+const { byOf } = require("../utils/actor");
 
 /** GET /api/subject-categories - the named rows alone (the merged list is in /api/meta/domain). */
 exports.list = catchAsync(async (req, res) => {
@@ -16,7 +17,7 @@ exports.list = catchAsync(async (req, res) => {
 
 /** POST /api/subject-categories { label } */
 exports.create = catchAsync(async (req, res) => {
-  const row = await svc.createCategory({ label: req.body.label, by: req.actor?.label || req.body.by });
+  const row = await svc.createCategory({ label: req.body.label, by: byOf(req) });
   res.status(201).json({ status: "success", data: { subjectCategory: row } });
 });
 

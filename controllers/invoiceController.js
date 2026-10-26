@@ -14,6 +14,7 @@
  */
 
 const catchAsync = require("../utils/catchAsync");
+const { byOf } = require("../utils/actor");
 const AppError = require("../utils/AppError");
 const Invoice = require("../models/Invoice");
 const invoices = require("../services/invoiceService");
@@ -56,7 +57,7 @@ exports.createInvoice = catchAsync(async (req, res) => {
     imageData: req.body.imageData,
     imageName: req.body.imageName,
     thumb: req.body.thumb,
-    by: req.body.by,
+    by: byOf(req),
     note: req.body.note,
     cycleIds,
   });

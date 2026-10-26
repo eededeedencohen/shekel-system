@@ -8,6 +8,7 @@
 
 const Enrollment = require("../models/Enrollment");
 const { enroll, updateStatus, enrollResidents } = require("../services/enrollmentService");
+const { byOf } = require("../utils/actor");
 const { attachStudentData } = require("../services/profileService");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
@@ -44,7 +45,7 @@ exports.createEnrollment = catchAsync(async (req, res) => {
     status: req.body.status || "active",
     slotId: req.body.slotId || null,
     note: req.body.note,
-    createdBy: req.body.createdBy,
+    createdBy: byOf(req),
     joinedAt: req.body.joinedAt,
   });
   await enrollment.populate(STUDENT_POP);
@@ -59,7 +60,7 @@ exports.createEnrollment = catchAsync(async (req, res) => {
  */
 exports.enrollResidents = catchAsync(async (req, res) => {
   await lens.assertCycle(req, req.body.cycle);
-  const result = await enrollResidents({ cycleId: req.body.cycle, createdBy: req.body.createdBy });
+  const result = await enrollResidents({ cycleId: req.body.cycle, createdBy: byOf(req) });
   const docs = [];
   for (const e of result.created) {
     await e.populate(STUDENT_POP);
@@ -82,7 +83,7 @@ exports.patchEnrollment = catchAsync(async (req, res) => {
     leftAt: req.body.leftAt,
     joinedAt: req.body.joinedAt,
     note: req.body.note,
-    movedBy: req.body.movedBy,
+    movedBy: byOf(req),
   });
   await enrollment.populate(STUDENT_POP);
   const [withProfile] = await attachStudentData([enrollment.toObject()]);

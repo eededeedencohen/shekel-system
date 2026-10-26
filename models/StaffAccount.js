@@ -11,7 +11,10 @@
  *
  * `passwordHash` never leaves the server (select: false + stripped from
  * JSON). `passwordChangedAt` empty = the account still has its default
- * password (the users page says so).
+ * password (the users page says so). Since 2026-10-26 the account is the
+ * ONLY source of "who did it" on the server (utils/actor): `name` signs
+ * the records, `person` is the optional link to the staff member's own
+ * Person row.
  */
 
 const mongoose = require("mongoose");
@@ -28,6 +31,13 @@ const staffAccountSchema = new mongoose.Schema(
     kind: { type: String, enum: STAFF_KIND_KEYS, required: true },
     phone: { type: String, trim: true, default: "" },
     email: { type: String, trim: true, lowercase: true, default: "" },
+    /**
+     * The Person row this account is (שירן, ייטב, שמרית…) - optional, set on
+     * the users page (2026-10-26). The records that expect a person id for
+     * "who did it" (a culture event's creator, a voucher's grantor) take it
+     * from here; an account without one leaves its name only.
+     */
+    person: { type: mongoose.Schema.Types.ObjectId, ref: "Person", default: null },
     active: { type: Boolean, default: true },
     passwordHash: { type: String, required: true, select: false },
     passwordChangedAt: { type: Date, default: null },

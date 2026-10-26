@@ -10,6 +10,7 @@
  */
 
 const catchAsync = require("../utils/catchAsync");
+const { byOf } = require("../utils/actor");
 const incidents = require("../services/incidentService");
 const lens = require("../services/lensService");
 
@@ -32,13 +33,13 @@ exports.createIncident = catchAsync(async (req, res) => {
     description: b.description,
     actions: b.actions,
     managerNotified: b.managerNotified,
-    by: b.by,
+    by: byOf(req),
   });
   res.status(201).json({ status: "success", data: { incident, activity } });
 });
 
 exports.updateIncident = catchAsync(async (req, res) => {
-  const { by, ...patch } = req.body || {};
-  const incident = await incidents.updateIncident({ id: req.params.id, patch, by });
+  const { by: _ignored, ...patch } = req.body || {}; // the actor is the session, never the body
+  const incident = await incidents.updateIncident({ id: req.params.id, patch, by: byOf(req) });
   res.status(200).json({ status: "success", data: { incident } });
 });

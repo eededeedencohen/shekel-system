@@ -123,4 +123,13 @@ function requireFamily(name) {
   };
 }
 
-module.exports = { COOKIE, tokenOf, setSessionCookie, clearSessionCookie, authenticate, requireSuper, requireFamily, FAMILIES };
+/** Only some staff kinds (the record's templates: the super admin and the social worker). */
+function requireKinds(...kinds) {
+  return (req, res, next) => {
+    if (req.actor && kinds.includes(req.actor.kind)) return next();
+    return next(AppError.of("AUTH_FORBIDDEN", 403));
+  };
+}
+
+// TEST_ACCOUNT is exported for the tests alone: a suite may give the bypass actor a `person` link or another kind
+module.exports = { COOKIE, tokenOf, setSessionCookie, clearSessionCookie, authenticate, requireSuper, requireFamily, requireKinds, FAMILIES, TEST_ACCOUNT };

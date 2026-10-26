@@ -18,6 +18,7 @@ const Book = require("../models/Book");
 const Loan = require("../models/Loan");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
+const { byOf } = require("../utils/actor");
 const library = require("../services/libraryService");
 const lookup = require("../services/bookLookupService");
 const storedFiles = require("../services/storedFiles");
@@ -90,7 +91,7 @@ exports.lookupBarcode = catchAsync(async (req, res, next) => {
 
 /** POST /api/library/books - { barcode*, title*, author, summary, …, imageUrl, coverData, source, by } */
 exports.createBook = catchAsync(async (req, res) => {
-  const book = await library.createBook({ data: req.body, by: req.body.by, cover: coverOf(req.body), coverFile: req.body.coverFile || null });
+  const book = await library.createBook({ data: req.body, by: byOf(req), cover: coverOf(req.body), coverFile: req.body.coverFile || null });
   res.status(201).json({ status: "success", data: { book } });
 });
 
@@ -99,7 +100,7 @@ exports.updateBook = catchAsync(async (req, res) => {
   const book = await library.updateBook({
     bookId: req.params.id,
     data: req.body,
-    by: req.body.by,
+    by: byOf(req),
     cover: coverOf(req.body),
     coverFile: req.body.coverFile || null,
     removeCoverFlag: req.body.removeCover === true,
@@ -136,7 +137,7 @@ exports.lend = catchAsync(async (req, res) => {
     bookId: req.params.id,
     studentId: req.body.student,
     dueAt: req.body.dueAt,
-    by: req.body.by,
+    by: byOf(req),
     note: req.body.note,
   });
   res.status(201).json({ status: "success", data: { loan: await loan.populate([STUDENT_POP, BOOK_POP]) } });
@@ -144,12 +145,12 @@ exports.lend = catchAsync(async (req, res) => {
 
 /** POST /api/library/loans/:id/extend - { dueAt*, by, note } */
 exports.extend = catchAsync(async (req, res) => {
-  const loan = await library.extend({ loanId: req.params.id, dueAt: req.body.dueAt, by: req.body.by, note: req.body.note });
+  const loan = await library.extend({ loanId: req.params.id, dueAt: req.body.dueAt, by: byOf(req), note: req.body.note });
   res.status(200).json({ status: "success", data: { loan: await loan.populate([STUDENT_POP, BOOK_POP]) } });
 });
 
 /** POST /api/library/loans/:id/return - { by, note } */
 exports.returnBook = catchAsync(async (req, res) => {
-  const loan = await library.returnBook({ loanId: req.params.id, by: req.body.by, note: req.body.note });
+  const loan = await library.returnBook({ loanId: req.params.id, by: byOf(req), note: req.body.note });
   res.status(200).json({ status: "success", data: { loan: await loan.populate([STUDENT_POP, BOOK_POP]) } });
 });

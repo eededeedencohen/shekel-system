@@ -16,12 +16,14 @@
 const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
+const { byOf } = require("../utils/actor");
 const { STUDENT_KINDS } = require("../utils/domain");
 const { createProfile, profilesOf, flattenPerson } = require("../services/profileService");
 const lens = require("../services/lensService");
 
 exports.createIntakeLead = catchAsync(async (req, res, next) => {
-  const { firstName, lastName, department, phone, email, birthDate, gender, residenceLabel, notes, movedBy } = req.body;
+  const { firstName, lastName, department, phone, email, birthDate, gender, residenceLabel, notes } = req.body;
+  const movedBy = byOf(req);
   if (!firstName || !lastName) return next(AppError.of("MISSING_FIELDS", 400, "שם פרטי ושם משפחה"));
   const kind = department || "StudentCollege";
   if (!STUDENT_KINDS.includes(kind)) return next(AppError.of("INVALID_KIND", 400, kind));

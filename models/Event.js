@@ -25,8 +25,10 @@ const {
 
 const stampSchema = new mongoose.Schema(
   {
-    /** A person holding an ACTIVE ManagerCulture profile (service-checked). */
-    by: { type: mongoose.Schema.Types.ObjectId, ref: "Person", required: true },
+    /** The acting account's Person row, when the account has one (StaffAccount.person); the service checked the account's kind. */
+    by: { type: mongoose.Schema.Types.ObjectId, ref: "Person" },
+    /** The acting account's name - always written (since 2026-10-26, utils/actor). */
+    byName: { type: String, trim: true },
     at: { type: Date, default: Date.now },
   },
   { _id: false }

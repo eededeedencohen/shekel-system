@@ -67,7 +67,7 @@ describe("POST /api/enrollments", () => {
     const after = await request(app).get(`/api/people/${s._id}`);
     expect(after.body.data.person.pipeline.stage).toBe("Intake");
     const hist = after.body.data.person.stageHistory;
-    expect(hist[hist.length - 1]).toMatchObject({ stage: "Intake", movedBy: "נעה" });
+    expect(hist[hist.length - 1]).toMatchObject({ stage: "Intake", movedBy: "בדיקות" }); // the session signs, never the body
     expect(hist[hist.length - 1].note).toMatch(/ציור/);
   });
 
@@ -105,7 +105,7 @@ describe("POST /api/enrollments", () => {
     expect(res.body.data.enrollment.joinedAt).toMatch(/^2026-1[01]-/);
     const after = await request(app).get(`/api/people/${s._id}`);
     expect(after.body.data.person.pipeline.stage).toBe("Placed");
-    expect(after.body.data.person.stageHistory.at(-1)).toMatchObject({ stage: "Placed", movedBy: "חגי" });
+    expect(after.body.data.person.stageHistory.at(-1)).toMatchObject({ stage: "Placed", movedBy: "בדיקות" });
   });
 
   it("a reserved seat for a NeedsReplacement student → AwaitingPlacement (the date is still missing)", async () => {
@@ -153,7 +153,7 @@ describe("PATCH /api/enrollments/:id", () => {
       .send({ status: "left", movedBy: "חגי" });
     const after = await request(app).get(`/api/people/${s._id}`);
     expect(after.body.data.person.pipeline.stage).toBe("NeedsReplacement");
-    expect(after.body.data.person.stageHistory.at(-1)).toMatchObject({ stage: "NeedsReplacement", movedBy: "חגי" });
+    expect(after.body.data.person.stageHistory.at(-1)).toMatchObject({ stage: "NeedsReplacement", movedBy: "בדיקות" });
     expect(after.body.data.person.stageHistory.at(-1).note).toMatch(/יוגה/);
   });
 

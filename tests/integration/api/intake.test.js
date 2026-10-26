@@ -220,7 +220,9 @@ describe("temporary upload links", () => {
     const made = await request(app).post(`/api/intakes/${intakeId}/links`).send({ minutes: 30, docs: ["psychiatric"], by: "נעה", token: "client-made-token-abcdef12" });
     expect(made.status).toBe(201);
     const link = made.body.data.link;
-    expect(link.token).toBe("client-made-token-abcdef12"); // the client may name the token - the page knows the link at once
+    expect(link.token).toMatch(/^[\w-]{20,}$/);
+    expect(link.token).not.toBe("client-made-token-abcdef12"); // the token is the server's - a browser-made one is ignored
+    expect(link.createdBy).toBe("בדיקות"); // and so is "who": the session, never the body's `by`
     expect(new Date(link.expiresAt).getTime()).toBeGreaterThan(Date.now() + 29 * 60000);
     expect(made.body.data.intake.log.at(-1).action).toBe("link");
 

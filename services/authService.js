@@ -16,6 +16,8 @@
 const StaffAccount = require("../models/StaffAccount");
 const StaffSession = require("../models/StaffSession");
 const PasswordReset = require("../models/PasswordReset");
+const mongoose = require("mongoose");
+const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
 const { STAFF_KIND_KEYS, RESET_LINK_HOURS } = require("../utils/domain");
 const { hashPassword, verifyPassword, defaultPasswordFor, isStrongEnough, newToken, hashToken, isTokenShape } = require("../utils/password");
@@ -57,6 +59,8 @@ const publicAccount = (a) => ({
   kind: a.kind,
   phone: a.phone || "",
   email: a.email || "",
+  /** The staff member's own Person row, when linked (the users page) - the actor's person id on the server (utils/actor). */
+  person: a.person ? String(a.person) : null,
   defaultPassword: !a.passwordChangedAt,
 });
 
@@ -232,7 +236,7 @@ async function staffDirectory() {
   return rows.map((a) => ({ _id: String(a._id), name: a.name, title: a.title || "", kind: a.kind }));
 }
 
-const FIELDS = ["username", "name", "title", "kind", "phone", "email", "active"];
+const FIELDS = ["username", "name", "title", "kind", "phone", "email", "active", "person"];
 const pick = (body) => Object.fromEntries(FIELDS.filter((k) => body[k] !== undefined).map((k) => [k, typeof body[k] === "string" ? body[k].trim() : body[k]]));
 
 function validate(fields, creating) {
@@ -246,6 +250,14 @@ function validate(fields, creating) {
   return fields;
 }
 
+/** The optional link to a Person row: empty clears it, else a live person (2026-10-26). */
+async function resolvePerson(fields) {
+  if (fields.person === undefined) return fields;
+  if (!fields.person) return { ...fields, person: null };
+  if (!mongoose.isValidObjectId(fields.person) || !(await Person.exists({ _id: fields.person, deletedAt: null }))) throw AppError.of("ACCOUNT_INVALID", 400, "האדם לא נמצא");
+  return fields;
+}
+
 const taken = (err) => {
   if (err && err.code === 11000) throw AppError.of("USERNAME_TAKEN", 409);
   throw err;
@@ -253,13 +265,13 @@ const taken = (err) => {
 
 /** A new account starts with its default password. */
 async function createAccount(body) {
-  const fields = validate(pick(body), true);
+  const fields = await resolvePerson(validate(pick(body), true));
   const account = await StaffAccount.create({ ...fields, passwordHash: await hashPassword(defaultPasswordFor(fields.username)) }).catch(taken);
   return adminView(account.toObject());
 }
 
 async function updateAccount(id, body) {
-  const fields = validate(pick(body), false);
+  const fields = await resolvePerson(validate(pick(body), false));
   const account = await StaffAccount.findById(id);
   if (!account) throw new AppError("המשתמש לא נמצא", 404);
   const wasSuper = account.active && account.kind === "super";

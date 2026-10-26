@@ -4,11 +4,13 @@
  * @module services/cultureService
  *
  * The ERD's rules, enforced from every caller:
- *  - ACTORS are people. Creating/publishing an event, reporting attendance
- *    and handing out vouchers require an ACTIVE ManagerCulture profile;
- *    registering/cancelling is allowed to the student themself OR staff.
- *    (No auth yet: the client sends the acting person's id from the
- *    persona; the check is on the id, exactly like the ERD demands.)
+ *  - ACTORS: the acting ACCOUNT (utils/actor whoAmI, never the body - since
+ *    2026-10-26). Creating/publishing an event, reporting attendance and
+ *    handing out vouchers need a culture-staff kind (super / social /
+ *    culture - the same line as the family gate); registering/cancelling
+ *    is allowed to the student themself (an account linked to that person)
+ *    OR staff. A stamp carries the account's Person row when it has one
+ *    (StaffAccount.person) and its name always.
  *  - REGISTRATION: only a published, future event; the student must hold an
  *    active StudentCulture profile; the event's
  *    settings (gender scope, age range) must fit - staff may `force`.
@@ -36,28 +38,26 @@ const LIVE = ["registered", "waitlisted"];
 
 /* ───────────────────────── actors ───────────────────────── */
 
-/** Active ManagerCulture profile of a person, or null. */
-function staffProfileOf(personId) {
-  if (!personId) return null;
-  return Profile.findOne({ person: personId, kind: "ManagerCulture", active: true });
+/** The account kinds that are culture staff (utils/auth FAMILIES.culture says the same at the router). */
+const CULTURE_STAFF_KINDS = ["super", "social", "culture"];
+
+/** Throw unless the acting account (utils/actor whoAmI) is culture staff. */
+function assertStaff(actor) {
+  if (!actor || !actor.kind) throw AppError.of("NO_ACTOR", 400);
+  if (!CULTURE_STAFF_KINDS.includes(actor.kind)) throw AppError.of("NOT_CULTURE_STAFF", 403);
+  return actor;
 }
 
-/** Throw unless `personId` is culture staff. */
-async function assertStaff(personId) {
-  if (!personId) throw AppError.of("NO_ACTOR", 400);
-  const p = await staffProfileOf(personId);
-  if (!p) throw AppError.of("NOT_CULTURE_STAFF", 403);
-  return p;
-}
-
-/** The student themself or culture staff - returns "self" | "staff". */
-async function assertActor({ actorId, studentId }) {
-  if (!actorId) throw AppError.of("NO_ACTOR", 400);
-  if (String(actorId) === String(studentId)) return "self";
-  const p = await staffProfileOf(actorId);
-  if (!p) throw AppError.of("NOT_CULTURE_STAFF", 403);
+/** The student themself (an account linked to that person) or culture staff - returns "self" | "staff". */
+function assertActor({ actor, studentId }) {
+  if (!actor || !actor.kind) throw AppError.of("NO_ACTOR", 400);
+  if (actor.personId && String(actor.personId) === String(studentId)) return "self";
+  if (!CULTURE_STAFF_KINDS.includes(actor.kind)) throw AppError.of("NOT_CULTURE_STAFF", 403);
   return "staff";
 }
+
+/** What a record remembers of the actor: the Person row when the account has one, the name always. */
+const stamp = (actor, at) => ({ by: actor.personId || undefined, byName: actor.name || undefined, at: at || new Date() });
 
 /** Person + active StudentCulture profile. */
 async function assertCultureStudent(personId) {
@@ -84,36 +84,36 @@ const pickEvent = (data = {}) => {
   return out;
 };
 
-async function createEvent({ by, data, at }) {
-  await assertStaff(by);
+async function createEvent({ actor, data, at }) {
+  assertStaff(actor);
   return Event.create({
     ...pickEvent(data),
     status: "draft",
-    created: { by, at: at || new Date() },
+    created: stamp(actor, at),
   });
 }
 
-async function updateEvent({ eventId, by, data }) {
-  await assertStaff(by);
+async function updateEvent({ eventId, actor, data }) {
+  assertStaff(actor);
   const event = await requireEvent(eventId);
   if (event.status === "cancelled") throw AppError.of("EVENT_NOT_OPEN", 400, "האירוע בוטל");
   Object.assign(event, pickEvent(data));
   return event.save();
 }
 
-async function publishEvent({ eventId, by, at }) {
-  await assertStaff(by);
+async function publishEvent({ eventId, actor, at }) {
+  assertStaff(actor);
   const event = await requireEvent(eventId);
   if (event.status === "cancelled") throw AppError.of("EVENT_NOT_OPEN", 400, "האירוע בוטל");
   if (event.status === "published") return event;
   event.status = "published";
-  event.published = { by, at: at || new Date() };
+  event.published = stamp(actor, at);
   return event.save();
 }
 
 /** Cancel the event and every live registration on it (with the reason). */
-async function cancelEvent({ eventId, by, reason, at }) {
-  await assertStaff(by);
+async function cancelEvent({ eventId, actor, reason, at }) {
+  assertStaff(actor);
   const event = await requireEvent(eventId);
   if (event.status === "cancelled") return { event, cancelled: 0 };
   const when = at || new Date();
@@ -125,14 +125,14 @@ async function cancelEvent({ eventId, by, reason, at }) {
     r.status = "cancelled";
     r.cancelledAt = when;
     r.waitlist = undefined;
-    r.history.push({ action: "cancelled", at: when, by, reason: reason || "האירוע בוטל" });
+    r.history.push({ action: "cancelled", ...stamp(actor, when), reason: reason || "האירוע בוטל" });
     await r.save();
   }
   return { event, cancelled: live.length };
 }
 
-async function markEventDone({ eventId, by }) {
-  await assertStaff(by);
+async function markEventDone({ eventId, actor }) {
+  assertStaff(actor);
   const event = await requireEvent(eventId);
   if (event.status !== "published") throw AppError.of("EVENT_NOT_OPEN", 400);
   event.status = "done";
@@ -145,8 +145,8 @@ async function markEventDone({ eventId, by }) {
  * לבטל"). A published event - and anything with registrations - keeps its
  * history: it is cancelled, never deleted.
  */
-async function deleteEvent({ eventId, by }) {
-  await assertStaff(by);
+async function deleteEvent({ eventId, actor }) {
+  assertStaff(actor);
   const event = await requireEvent(eventId);
   if (event.status !== "draft") throw AppError.of("EVENT_NOT_DRAFT", 409);
   const refs = await EventRegistration.countDocuments({ event: event._id });
@@ -248,17 +248,17 @@ async function assertGuestPerson(personId) {
 
 /**
  * Register a culture student to an event (seat or waitlist).
- *   { eventId, studentId, by, reason?, at?, force?, allowWaitlist?, guest?, trusted? }
+ *   { eventId, studentId, actor, reason?, at?, force?, allowWaitlist?, guest?, trusted? }
  * `trusted` (seeds) skips the published/future checks so history can be
  * built; `force` (staff only) overrides the settings check; `guest` (staff
  * only) admits a person without a culture profile as אורח/ת.
  */
 async function register({
-  eventId, studentId, by, reason, at, force = false, allowWaitlist = true, guest = false, trusted = false,
+  eventId, studentId, actor, reason, at, force = false, allowWaitlist = true, guest = false, trusted = false,
 }) {
   const event = await requireEvent(eventId);
-  const actor = await assertActor({ actorId: by, studentId });
-  if (guest && actor !== "staff") throw AppError.of("NOT_CULTURE_STAFF", 403);
+  const role = assertActor({ actor, studentId });
+  if (guest && role !== "staff") throw AppError.of("NOT_CULTURE_STAFF", 403);
   const { person } = guest ? await assertGuestPerson(studentId) : await assertCultureStudent(studentId);
   const when = at || new Date();
 
@@ -267,7 +267,7 @@ async function register({
     if (event.date.getTime() < Date.now()) throw AppError.of("EVENT_NOT_OPEN", 400, "האירוע כבר התקיים");
   }
   const issues = eligibilityIssues(event, person);
-  if (issues.length && !(force && actor === "staff")) {
+  if (issues.length && !(force && role === "staff")) {
     throw AppError.of("NOT_ELIGIBLE", 400, issues.join("; "));
   }
 
@@ -287,9 +287,9 @@ async function register({
       cancelledAt: null,
       ...(seatFree
         ? { registeredAt: when, waitlist: undefined }
-        : { waitlist: { position: await nextWaitlistPosition(event._id, session), since: when, addedBy: by } }),
+        : { waitlist: { position: await nextWaitlistPosition(event._id, session), since: when, addedBy: actor.personId || undefined, addedByName: actor.name || undefined } }),
     };
-    const entry = { action: status, at: when, by, reason };
+    const entry = { action: status, ...stamp(actor, when), reason };
 
     if (existing) {
       Object.assign(existing, fields);
@@ -305,17 +305,17 @@ async function register({
 }
 
 /** Cancel a live registration; a freed seat promotes the waitlist head. */
-async function cancelRegistration({ registrationId, by, reason, at }) {
+async function cancelRegistration({ registrationId, actor, reason, at }) {
   const reg = await EventRegistration.findById(registrationId);
   if (!reg) throw AppError.of("NOT_FOUND", 404, "רישום");
   if (!LIVE.includes(reg.status)) throw AppError.of("REGISTRATION_CLOSED", 400);
-  await assertActor({ actorId: by, studentId: reg.student });
+  assertActor({ actor, studentId: reg.student });
   const when = at || new Date();
   const hadSeat = reg.status === "registered";
   reg.status = "cancelled";
   reg.cancelledAt = when;
   reg.waitlist = undefined;
-  reg.history.push({ action: "cancelled", at: when, by, reason });
+  reg.history.push({ action: "cancelled", ...stamp(actor, when), reason });
   await reg.save();
 
   let promoted = null;
@@ -328,8 +328,8 @@ async function cancelRegistration({ registrationId, by, reason, at }) {
  * Report attendance on a registered seat (staff only, after the event).
  * `present: null` clears the report.
  */
-async function reportAttendance({ registrationId, by, present, note, at, trusted = false }) {
-  await assertStaff(by);
+async function reportAttendance({ registrationId, actor, present, note, at, trusted = false }) {
+  assertStaff(actor);
   const reg = await EventRegistration.findById(registrationId).populate({ path: "event", select: "date" });
   if (!reg) throw AppError.of("NOT_FOUND", 404, "רישום");
   if (reg.status !== "registered") throw AppError.of("REGISTRATION_CLOSED", 400, "אפשר לדווח רק על רשומים");
@@ -340,8 +340,8 @@ async function reportAttendance({ registrationId, by, present, note, at, trusted
   if (present === null) {
     reg.attendance = undefined;
   } else {
-    reg.attendance = { present: !!present, note, reportedBy: by, reportedAt: when };
-    reg.history.push({ action: present ? "attended" : "absent", at: when, by, reason: note });
+    reg.attendance = { present: !!present, note, reportedBy: actor.personId || undefined, reportedByName: actor.name || undefined, reportedAt: when };
+    reg.history.push({ action: present ? "attended" : "absent", ...stamp(actor, when), reason: note });
   }
   reg.depopulate("event");
   return reg.save();
@@ -433,8 +433,8 @@ async function releaseVoucherImage(fileId) {
   if (!still) await storedFiles.destroy(fileId);
 }
 
-async function createVoucher({ by, data }) {
-  await assertStaff(by);
+async function createVoucher({ actor, data }) {
+  assertStaff(actor);
   const fields = pickVoucher(data);
   if (fields.balance == null && fields.initialValue != null) fields.balance = fields.initialValue;
   if (fields.initialValue == null && fields.balance != null) fields.initialValue = fields.balance;
@@ -450,8 +450,8 @@ async function createVoucher({ by, data }) {
 }
 
 /** Set / replace / remove the picture of an existing voucher (`remove: true`). */
-async function setVoucherImage({ voucherId, by, data = {} }) {
-  await assertStaff(by);
+async function setVoucherImage({ voucherId, actor, data = {} }) {
+  assertStaff(actor);
   const v = await requireVoucher(voucherId);
   const before = v.image;
   if (data.remove) {
@@ -483,8 +483,8 @@ async function setVoucherImageFile({ voucherId, fileId }) {
 /** Pictures on the web for a place name (voucherImageService). */
 const searchVoucherImages = (q) => images.searchImages(q);
 
-async function updateVoucher({ voucherId, by, data }) {
-  await assertStaff(by);
+async function updateVoucher({ voucherId, actor, data }) {
+  assertStaff(actor);
   const v = await requireVoucher(voucherId);
   Object.assign(v, pickVoucher(data));
   try {
@@ -496,17 +496,17 @@ async function updateVoucher({ voucherId, by, data }) {
 }
 
 /** Hand the voucher to a culture student (the ERD's "קיבל שובר"). */
-async function grantVoucher({ voucherId, by, studentId, at, note }) {
-  await assertStaff(by);
+async function grantVoucher({ voucherId, actor, studentId, at, note }) {
+  assertStaff(actor);
   const v = await requireVoucher(voucherId);
   if (v.grant) throw AppError.of("VOUCHER_TAKEN", 409);
   const { person } = await assertCultureStudent(studentId);
-  v.grant = { student: person._id, by, at: at || new Date(), redeemed: false, note };
+  v.grant = { student: person._id, ...stamp(actor, at), redeemed: false, note };
   return v.save();
 }
 
-async function redeemVoucher({ voucherId, by, at }) {
-  await assertStaff(by);
+async function redeemVoucher({ voucherId, actor, at }) {
+  assertStaff(actor);
   const v = await requireVoucher(voucherId);
   if (!v.grant) throw AppError.of("VOUCHER_NOT_GRANTED", 400);
   if (v.grant.redeemed) throw AppError.of("VOUCHER_REDEEMED", 400);
@@ -516,8 +516,8 @@ async function redeemVoucher({ voucherId, by, at }) {
 }
 
 /** Take back an un-redeemed grant (a mistake) - the voucher returns to stock. */
-async function revokeGrant({ voucherId, by }) {
-  await assertStaff(by);
+async function revokeGrant({ voucherId, actor }) {
+  assertStaff(actor);
   const v = await requireVoucher(voucherId);
   if (!v.grant) throw AppError.of("VOUCHER_NOT_GRANTED", 400);
   if (v.grant.redeemed) throw AppError.of("VOUCHER_REDEEMED", 400);
@@ -525,8 +525,8 @@ async function revokeGrant({ voucherId, by }) {
   return v.save();
 }
 
-async function deleteVoucher({ voucherId, by }) {
-  await assertStaff(by);
+async function deleteVoucher({ voucherId, actor }) {
+  assertStaff(actor);
   const v = await requireVoucher(voucherId);
   if (v.grant) throw AppError.of("REFERENCED_BLOCKED", 409);
   const image = v.image;
@@ -536,7 +536,7 @@ async function deleteVoucher({ voucherId, by }) {
 
 module.exports = {
   // actors
-  staffProfileOf, assertStaff, assertActor, assertCultureStudent,
+  CULTURE_STAFF_KINDS, assertStaff, assertActor, assertCultureStudent,
   // events
   createEvent, updateEvent, publishEvent, cancelEvent, markEventDone, deleteEvent, eligibilityIssues,
   // registrations
