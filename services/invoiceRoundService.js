@@ -332,7 +332,8 @@ function requestView(r, facts, teacher, rate = null) {
     round: r.round,
     // `rate` = ₪ per session in the hostels (the Teacher profile) - the page checks the invoice's sum against billed × rate
     teacher: teacher ? { _id: teacher._id, firstName: teacher.firstName, lastName: teacher.lastName, gender: teacher.gender || null, phone: teacher.phone || null, rate } : { _id: r.teacher, rate },
-    token: r.token,
+    // the token stays on the server (2026-10-26): GET /api/invoice-rounds/:id/requests/:rid/link hands the address
+    hasToken: !!r.token,
     expiresAt: r.expiresAt,
     linkLive: r.expiresAt.getTime() > Date.now(),
     sentAt: r.sentAt || null,
@@ -402,6 +403,12 @@ async function getRound({ roundId }) {
 /* ───────────────────────── the coordinator's moves ───────────────────────── */
 
 /** She sent the link (by WhatsApp, outside the app) - noted with her name. */
+/** The request's own link facts for the staff route: { token, expiresAt }. */
+async function requestLink({ roundId, requestId }) {
+  const r = await loadRequest({ roundId, requestId });
+  return { token: r.token, expiresAt: r.expiresAt };
+}
+
 async function markSent({ roundId, requestId, by }) {
   const r = await loadRequest({ roundId, requestId });
   r.sentAt = new Date();
@@ -903,6 +910,7 @@ module.exports = {
   removeInvoice,
   invoiceOfRequest,
   complete,
+  requestLink,
   adminAction,
   orphanSweep,
 };

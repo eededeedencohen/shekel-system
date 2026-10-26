@@ -585,7 +585,9 @@ describe("the social worker's flow", () => {
     const intake = await Intake.findById(intakeId);
     const byPerson = await request(app).get(`/api/intakes/person/${intake.person}`);
     expect(byPerson.status).toBe(200);
-    expect(byPerson.body.data.intake.landing.token).toBe(token);
+    expect(byPerson.body.data.intake.landing.token).toBeUndefined(); // the token stays on the server
+    expect(byPerson.body.data.intake.landing.hasToken).toBe(true);
+    expect((await request(app).get(`/api/intakes/${intakeId}/link`)).body.data.link.token).toBe(token);
   });
 
   it("her stages 1 and 3: the first call's facts (+ a שיחה ראשונית activity), the coordinator, the committee date", async () => {

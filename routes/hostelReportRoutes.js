@@ -15,6 +15,7 @@ router.route("/").get(c.list).post(c.open);
 router.get("/ministry", c.ministry);
 router.get("/ministry.xlsx", c.ministryXlsx);
 router.route("/:id").get(c.getOne).delete(c.remove);
+router.get("/:id/link", c.getLink);
 router.post("/:id/sent", c.markSent);
 router.post("/:id/renew", c.renew);
 router.post("/:id/reopen", c.reopen);

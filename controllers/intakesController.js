@@ -18,6 +18,7 @@ const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 const { byOf } = require("../utils/actor");
+const { linkAnswer } = require("../utils/publicUrl");
 const intake = require("../services/intakeService");
 const lens = require("../services/lensService");
 const storedFiles = require("../services/storedFiles");
@@ -235,6 +236,15 @@ exports.createLink = catchAsync(async (req, res) => {
     note: req.body.note,
   });
   res.status(201).json({ status: "success", data: { link, intake: await populated(doc) } });
+});
+
+/** GET /api/intakes/:id/link - the person's personal documents link (the landing page's), whole; its token never rides in the record's JSON (2026-10-26). */
+exports.getLink = catchAsync(async (req, res, next) => {
+  const doc = await load(req);
+  const token = doc.landing?.token;
+  if (!token) return next(AppError.of("NOT_FOUND", 404, "קישור אישי"));
+  res.set("Cache-Control", "private, no-store");
+  res.status(200).json({ status: "success", data: { link: linkAnswer(req, `/join/docs/${token}`, token, doc.landing.linkExpiresAt) } });
 });
 
 /** GET /api/intakes/:id/links - every link of the record, newest first. */

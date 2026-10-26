@@ -51,7 +51,8 @@ describe("the locks of a link invoice, and the super admin's door", () => {
     await tags.setCycleProgram({ cycleId: cycle._id, key: "hostels" });
     const round = (await request(app).post("/api/invoice-rounds").set("Cookie", tamar).send({ month: "2026-10" })).body.data.round;
     const req0 = round.requests[0];
-    const url = `/api/public/invoices/${req0.token}`;
+    // the token from the request's own route (the round's JSON carries none since 2026-10-26)
+    const url = `/api/public/invoices/${(await request(app).get(`/api/invoice-rounds/${round._id}/requests/${req0._id}/link`).set("Cookie", tamar)).body.data.link.token}`;
     const view = (await request(app).get(url)).body.data.view;
     const ids = view.courses[0].sessions.map((s) => s._id);
     const up = await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "a.png", sessions: [ids[0], ids[1]] });

@@ -17,7 +17,7 @@ router.use(c.requireSupplierStaff);
 router.post("/:id/admin", requireSuper, c.admin);
 router.route("/").get(c.list).post(c.create);
 router.route("/:id").get(c.getOne).patch(c.update).delete(c.remove);
-router.post("/:id/link", c.renewLink);
+router.route("/:id/link").get(c.getLink).post(c.renewLink);
 router.post("/:id/review", c.review);
 router.post("/:id/seen", c.markSeen);
 router.post("/:id/email", c.emailStep);

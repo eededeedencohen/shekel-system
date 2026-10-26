@@ -41,6 +41,8 @@ const GOOD_FORM = {
 
 describe("/api/suppliers + /api/public/supplier/:token", () => {
   let tamar;
+  /** The supplier's token from its own route (the staff answers carry none since 2026-10-26). */
+  const tokenOf = async (s, cookie = tamar) => (await request(app).get(`/api/suppliers/${s._id}/link`).set("Cookie", cookie)).body.data.link.token;
   let hagai;
   let eden;
   beforeEach(async () => {
@@ -60,7 +62,7 @@ describe("/api/suppliers + /api/public/supplier/:token", () => {
   /** A supplier with the form sent and every certificate in - ready for the coordinator. */
   async function readySupplier(cookie = tamar) {
     const s = (await create(cookie)).body.data.supplier;
-    const t = s.link.token;
+    const t = await tokenOf(s);
     expect((await request(app).put(`${pub(t)}/form`).send(GOOD_FORM)).status).toBe(200);
     for (const key of ["books", "withholding", "bankProof"]) expect((await upload(t, key)).status).toBe(200);
     expect((await request(app).post(`${pub(t)}/files/exempt/not-applicable`).send({ value: true })).status).toBe(200);
@@ -74,7 +76,9 @@ describe("/api/suppliers + /api/public/supplier/:token", () => {
     const res = await create(tamar);
     expect(res.status).toBe(201);
     expect(res.body.data.supplier).toMatchObject({ firstName: "דנה", gender: "female", status: "link", statusLabel: "נשלח קישור", linkLive: true, createdBy: "תמר צימרינג" });
-    expect(res.body.data.supplier.link.token).toMatch(/^[\w-]{20,}$/);
+    expect(res.body.data.supplier.link.token).toBeUndefined(); // the token stays on the server - GET /:id/link hands the address
+    expect(res.body.data.supplier.link.hasToken).toBe(true);
+    expect(await tokenOf(res.body.data.supplier)).toMatch(/^[\w-]{20,}$/);
     expect(new Date(res.body.data.supplier.link.expiresAt).getTime()).toBeGreaterThan(Date.now() + 6 * 24 * 3600 * 1000);
     const list = await request(app).get("/api/suppliers").set("Cookie", tamar);
     expect(list.body.data.suppliers.map((x) => x._id)).toContain(res.body.data.supplier._id);
@@ -90,7 +94,8 @@ describe("/api/suppliers + /api/public/supplier/:token", () => {
 
   it("the link opens the supplier's own view, notes the first opening, and locks when its time is over", async () => {
     const s = (await create(tamar)).body.data.supplier;
-    const view = await request(app).get(pub(s.link.token));
+    const t0 = await tokenOf(s);
+    const view = await request(app).get(pub(t0));
     expect(view.status).toBe(200);
     expect(view.body.data.view).toMatchObject({ firstName: "דנה", gender: "female", status: "link", paymentTerms: "שוטף + 60", form: null });
     expect(view.body.data.view.files.map((f) => f.key)).toEqual(["books", "withholding", "bankProof", "exempt"]);
@@ -101,24 +106,24 @@ describe("/api/suppliers + /api/public/supplier/:token", () => {
 
     expect((await request(app).get(pub("nope"))).status).toBe(404);
     await Supplier.updateOne({ _id: s._id }, { "link.expiresAt": new Date(Date.now() - 1000) });
-    const expired = await request(app).get(pub(s.link.token));
+    const expired = await request(app).get(pub(t0));
     expect(expired.status).toBe(410);
     expect(expired.body.code).toBe("SUPPLIER_LINK_EXPIRED");
     // the coordinator opens it again - same address, fresh clock
     const renewed = await request(app).post(`/api/suppliers/${s._id}/link`).set("Cookie", tamar).send({ days: 3 });
     expect(renewed.status).toBe(200);
-    expect(renewed.body.data.supplier.link.token).toBe(s.link.token);
+    expect(await tokenOf(renewed.body.data.supplier)).toBe(t0);
     expect(renewed.body.data.supplier.linkLive).toBe(true);
-    expect((await request(app).get(pub(s.link.token))).status).toBe(200);
+    expect((await request(app).get(pub(t0))).status).toBe(200);
     // ...or a brand-new address
     const fresh = (await request(app).post(`/api/suppliers/${s._id}/link`).set("Cookie", tamar).send({ days: 3, fresh: true })).body.data.supplier;
-    expect(fresh.link.token).not.toBe(s.link.token);
-    expect((await request(app).get(pub(s.link.token))).status).toBe(404);
+    expect(await tokenOf(fresh)).not.toBe(t0);
+    expect((await request(app).get(pub(t0))).status).toBe(404);
   });
 
   it("the form: the starred fields are required, numbers are numbers, the terms are fixed", async () => {
     const s = (await create(tamar)).body.data.supplier;
-    const t = s.link.token;
+    const t = await tokenOf(s);
     const missing = await request(app).put(`${pub(t)}/form`).send({ ...GOOD_FORM, contactEmail: "not-an-email", accountNumber: "abc" });
     expect(missing.status).toBe(400);
     expect(missing.body.code).toBe("SUPPLIER_FORM_INVALID");
@@ -140,7 +145,7 @@ describe("/api/suppliers + /api/public/supplier/:token", () => {
 
   it("the files: PDF / image / Word only, the optional one may be waved, counts and status follow", async () => {
     const s = (await create(tamar)).body.data.supplier;
-    const t = s.link.token;
+    const t = await tokenOf(s);
     expect((await upload(t, "junk")).status).toBe(400);
     const mp3 = await upload(t, "books", { fileName: "song.mp3", mime: "audio/mpeg" });
     expect(mp3.status).toBe(400);
@@ -175,7 +180,7 @@ describe("/api/suppliers + /api/public/supplier/:token", () => {
 
   it("the supplier's שליחה: refused until everything is in, then stamped with a line for the coordinator; a later change clears it (2026-10-23)", async () => {
     const s = (await create(tamar)).body.data.supplier;
-    const t = s.link.token;
+    const t = await tokenOf(s);
     const early = await request(app).post(`${pub(t)}/finish`);
     expect(early.status).toBe(400);
     expect(early.body.code).toBe("SUPPLIER_NOT_COMPLETE");

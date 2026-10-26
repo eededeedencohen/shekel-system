@@ -537,6 +537,8 @@ function staffView(s) {
   const obj = s.toObject ? s.toObject() : s;
   return {
     ...obj,
+    // the link's token stays on the server (2026-10-26): GET /api/suppliers/:id/link hands the address
+    link: obj.link ? { ...obj.link, token: undefined, hasToken: !!obj.link.token } : obj.link,
     status: computeStatus(s),
     statusLabel: SUPPLIER_STATUS_LABELS[computeStatus(s)],
     linkLive: s.linkLive ? s.linkLive() : false,

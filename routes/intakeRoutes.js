@@ -27,6 +27,7 @@ const {
   setCommittee,
   createLink,
   getLinks,
+  getLink,
   updateIntake,
 } = require("../controllers/intakesController");
 const Intake = require("../models/Intake");
@@ -61,5 +62,6 @@ router.patch("/:id/coordinator", setCoordinator);
 router.patch("/:id/screening", setScreening);
 router.patch("/:id/committee", setCommittee);
 router.route("/:id/links").get(getLinks).post(createLink);
+router.get("/:id/link", getLink);
 
 module.exports = router;

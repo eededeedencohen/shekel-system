@@ -22,6 +22,9 @@ const { Profile } = require("../../../models/profiles");
 const tags = require("../../../services/tagService");
 const { makeTeacher, makeStudent, makeHostel, makeCycle, makeSubject } = require("../../helpers/factories");
 
+/** A request's token from its own route (the round's JSON carries none since 2026-10-26). */
+const tokenOf = async (roundId, r) => (await request(app).get(`/api/invoice-rounds/${roundId}/requests/${r._id}/link`)).body.data.link.token;
+
 const PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 const IMAGE = `data:image/png;base64,${PNG_B64}`;
 
@@ -155,7 +158,9 @@ describe("the monthly invoice round", () => {
     expect(r.sessions.map((s) => s.date.slice(0, 10))).toEqual(["2026-10-01", "2026-10-08", "2026-10-15", "2026-10-22", "2026-10-29"]);
     expect(r.sessions.every((s) => String(s.cycle._id) === String(cycle._id))).toBe(true);
     expect(r.counts).toMatchObject({ sessions: 5, unbilled: 5, billed: 0 });
-    expect(r.token).toMatch(/^[\w-]{12,}$/);
+    expect(r.token).toBeUndefined(); // the token stays on the server
+    expect(r.hasToken).toBe(true);
+    expect(await tokenOf(round._id, r)).toMatch(/^[\w-]{12,}$/);
     expect(r.linkLive).toBe(true);
 
     const again = await request(app).post("/api/invoice-rounds").send({ month: "2026-10", program: "hostels" });
@@ -180,7 +185,7 @@ describe("the monthly invoice round", () => {
     const sent = await request(app).post(`/api/invoice-rounds/${opened._id}/requests/${req0._id}/sent`).send({});
     expect(sent.body.data.round.requests[0].status).toBe("sent");
 
-    const url = `/api/public/invoices/${req0.token}`;
+    const url = `/api/public/invoices/${await tokenOf(opened._id, req0)}`;
     const view = (await request(app).get(url)).body.data.view;
     expect(view).toMatchObject({ month: "2026-10", monthLabel: "אוקטובר 2026", done: false });
     expect(view.teacher).toMatchObject({ firstName: "אביה", gender: "female" });
@@ -241,7 +246,7 @@ describe("the monthly invoice round", () => {
     const opened = (await request(app).post("/api/invoice-rounds").send({ month: "2026-10" })).body.data.round;
     expect((await request(app).get("/api/public/invoices/not-a-real-token-at-all")).status).toBe(404);
     await InvoiceRequest.updateOne({ _id: opened.requests[0]._id }, { expiresAt: new Date(Date.now() - 1000) });
-    const expired = await request(app).get(`/api/public/invoices/${opened.requests[0].token}`);
+    const expired = await request(app).get(`/api/public/invoices/${await tokenOf(opened._id, opened.requests[0])}`);
     expect(expired.status).toBe(410);
     expect(expired.body.code).toBe("INVOICE_LINK_EXPIRED");
     const renewed = await request(app).post(`/api/invoice-rounds/${opened._id}/requests/${opened.requests[0]._id}/renew`).send({ days: 7 });
@@ -259,7 +264,7 @@ describe("the state machine of the invoices (2026-10-22)", () => {
     const base = await hostelMonth();
     const round = (await request(app).post("/api/invoice-rounds").send({ month: "2026-10" })).body.data.round;
     const req0 = round.requests[0];
-    const url = `/api/public/invoices/${req0.token}`;
+    const url = `/api/public/invoices/${await tokenOf(round._id, req0)}`;
     const view = (await request(app).get(url)).body.data.view;
     return { ...base, round, req0, url, ids: view.courses[0].sessions.map((s) => s._id) };
   }
@@ -369,11 +374,13 @@ describe("the state machine of the invoices (2026-10-22)", () => {
     await request(app).post(`${url}/done`).send({ note: "זהו" });
     const b = await admin(round._id, { action: "requestReset", request: req0._id });
     expect(b.body.data.did).toMatchObject({ invoices: 1, requests: 1 });
-    expect(b.body.data.round.requests[0]).toMatchObject({ status: "new", token: req0.token, note: null, openedAt: null, completedAt: null, linkLive: true });
+    expect(b.body.data.round.requests[0]).toMatchObject({ status: "new", note: null, openedAt: null, completedAt: null, linkLive: true });
+    expect(await tokenOf(round._id, req0)).toBe(url.split("/").pop());
     const fresh = (await admin(round._id, { action: "requestReset", request: req0._id, rotateToken: true })).body.data.round.requests[0];
-    expect(fresh.token).not.toBe(req0.token);
+    const freshToken = await tokenOf(round._id, fresh);
+    expect(freshToken).not.toBe(url.split("/").pop());
     expect((await request(app).get(url)).status).toBe(404);
-    const url2 = `/api/public/invoices/${fresh.token}`;
+    const url2 = `/api/public/invoices/${freshToken}`;
     expect((await request(app).get(url2)).status).toBe(200);
 
     // D: the course moved to Mondays - the billed Thursday stays, the rest follow the schedule
@@ -397,7 +404,7 @@ describe("the state machine of the invoices (2026-10-22)", () => {
     expect((await admin(round._id, { action: "requestsSync" })).body.data.did.requests).toBe(0);
 
     // C: a teacher with invoices leaves only with force; a lesson row that carries attendance stays (rule 2)
-    await upload(`/api/public/invoices/${lateReq.token}`, [lateReq.sessions[0]._id]);
+    await upload(`/api/public/invoices/${await tokenOf(round._id, lateReq)}`, [lateReq.sessions[0]._id]);
     const refused = await admin(round._id, { action: "requestRemove", request: lateReq._id });
     expect(refused.status).toBe(409);
     expect(refused.body.code).toBe("INVOICE_REQUEST_HAS_INVOICES");
@@ -413,7 +420,8 @@ describe("the state machine of the invoices (2026-10-22)", () => {
     await request(app).post(`/api/invoice-rounds/${round._id}/mail`).send({ sent: true });
     const f = await admin(round._id, { action: "roundReset" });
     expect(f.body.data.round.mail.sentAt).toBeNull();
-    expect(f.body.data.round.requests[0]).toMatchObject({ status: "new", linkLive: true, token: fresh.token });
+    expect(f.body.data.round.requests[0]).toMatchObject({ status: "new", linkLive: true });
+    expect(await tokenOf(round._id, f.body.data.round.requests[0])).toBe(freshToken);
     expect(f.body.data.did).toMatchObject({ invoices: 1, requests: 1 });
     expect(await Invoice.countDocuments()).toBe(0);
 

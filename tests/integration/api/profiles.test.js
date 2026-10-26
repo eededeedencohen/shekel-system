@@ -7,6 +7,10 @@
 const request = require("supertest");
 const app = require("../../../app");
 const { makeStudent, makeHostel } = require("../../helpers/factories");
+const { Profile } = require("../../../models/profiles");
+
+// the duplicate-kind refusal is the unique index (person, kind): make sure it exists before the race is tried
+beforeAll(() => Profile.init());
 
 describe("POST /api/people/:id/profiles", () => {
   it("adds a second role to an existing person (תמר: מנהלת הוסטל + סטודנטית)", async () => {

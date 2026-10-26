@@ -287,7 +287,8 @@ function reportView(r, facts, today = todayKey()) {
     hostel: h ? { _id: h._id, name: h.name, kind: h.kind || "hostel", title: hostelTitle(h) } : { _id: r.hostel, name: "", kind: "hostel", title: "" },
     month: r.month,
     monthLabel: monthLabel(r.month),
-    token: r.token,
+    // the token stays on the server (2026-10-26): GET /api/hostel-reports/:id/link hands the address
+    hasToken: !!r.token,
     expiresAt: r.expiresAt,
     linkLive: r.expiresAt.getTime() > Date.now(),
     contact: { name: r.contact?.name || "", phone: r.contact?.phone || "" },
@@ -322,6 +323,12 @@ async function listReports() {
   const reports = await HostelReport.find();
   for (const r of reports) await syncSessions(r);
   return viewsOf(reports);
+}
+
+/** The report's own link facts for the staff route: { token, expiresAt }. */
+async function reportLink({ reportId }) {
+  const r = await loadReport({ reportId });
+  return { token: r.token, expiresAt: r.expiresAt };
 }
 
 async function getReport({ reportId }) {
@@ -988,6 +995,7 @@ module.exports = {
   syncSessions,
   listReports,
   getReport,
+  reportLink,
   loadReport,
   markSent,
   renew,

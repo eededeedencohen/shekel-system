@@ -9,6 +9,7 @@
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/AppError");
 const reports = require("../services/hostelReportService");
+const { linkAnswer } = require("../utils/publicUrl");
 
 const by = (req) => req.actor?.name || req.account?.name || "";
 const answer = (res, report, status = 200) => res.status(status).json({ status: "success", data: { report } });
@@ -27,6 +28,12 @@ exports.open = catchAsync(async (req, res) => {
 });
 
 exports.getOne = catchAsync(async (req, res) => answer(res, await reports.getReport({ reportId: req.params.id })));
+/** GET /api/hostel-reports/:id/link - the house's link, whole; its token never rides in the list's JSON (2026-10-26). */
+exports.getLink = catchAsync(async (req, res) => {
+  const { token, expiresAt } = await reports.reportLink({ reportId: req.params.id });
+  res.set("Cache-Control", "private, no-store");
+  res.status(200).json({ status: "success", data: { link: linkAnswer(req, `/hostel-report/${token}`, token, expiresAt) } });
+});
 exports.markSent = catchAsync(async (req, res) => answer(res, await reports.markSent({ reportId: req.params.id, by: by(req) })));
 exports.renew = catchAsync(async (req, res) => answer(res, await reports.renew({ reportId: req.params.id, days: req.body?.days })));
 exports.reopen = catchAsync(async (req, res) => answer(res, await reports.reopen({ reportId: req.params.id })));

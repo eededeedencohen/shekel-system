@@ -178,6 +178,17 @@ const intakeSchema = new mongoose.Schema(
   { timestamps: true, collection: "intakes" }
 );
 
+/** The personal link's token stays on the server (2026-10-26): JSON says only that there is one; `GET /api/intakes/:id/link` hands the address. */
+function hideLandingToken(doc, ret) {
+  if (ret.landing) {
+    ret.landing.hasToken = !!ret.landing.token;
+    delete ret.landing.token;
+  }
+  return ret;
+}
+intakeSchema.set("toJSON", { transform: hideLandingToken });
+intakeSchema.set("toObject", { transform: hideLandingToken });
+
 intakeSchema.index({ person: 1 }, { unique: true });
 intakeSchema.index(
   { "landing.token": 1 },

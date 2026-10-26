@@ -12,6 +12,8 @@ const { lensOf } = require("../services/lensService");
 const files = require("../services/fileService");
 const storedFiles = require("../services/storedFiles");
 
+const { linkAnswer } = require("../utils/publicUrl");
+
 const by = (req) => req.actor?.name || req.account?.name || "";
 
 /** Which programs' rounds the acting persona may see: hers alone, or every one. */
@@ -50,6 +52,14 @@ exports.open = catchAsync(async (req, res) => {
 exports.getOne = catchAsync(async (req, res) => {
   const round = await loadVisible(req);
   answer(res, await rounds.getRound({ roundId: round._id }));
+});
+
+/** GET /api/invoice-rounds/:id/requests/:rid/link - the teacher's link, whole; its token never rides in the round's JSON (2026-10-26). */
+exports.requestLink = catchAsync(async (req, res) => {
+  const round = await loadVisible(req);
+  const { token, expiresAt } = await rounds.requestLink({ roundId: round._id, requestId: req.params.rid });
+  res.set("Cache-Control", "private, no-store");
+  res.status(200).json({ status: "success", data: { link: linkAnswer(req, `/invoices/${token}`, token, expiresAt) } });
 });
 
 exports.markSent = catchAsync(async (req, res) => {

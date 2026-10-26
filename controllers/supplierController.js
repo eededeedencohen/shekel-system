@@ -14,6 +14,7 @@ const catchAsync = require("../utils/catchAsync");
 const suppliers = require("../services/supplierService");
 const files = require("../services/fileService");
 const storedFiles = require("../services/storedFiles");
+const { linkAnswer } = require("../utils/publicUrl");
 
 const by = (req) => req.actor?.name || req.account?.name || "";
 
@@ -47,6 +48,14 @@ exports.create = catchAsync(async (req, res) => {
 exports.getOne = catchAsync(async (req, res) => answer(res, await load(req)));
 
 exports.update = catchAsync(async (req, res) => answer(res, await suppliers.updateDetails(await load(req), req.body || {})));
+
+/** GET /api/suppliers/:id/link - the supplier's link, whole; its token never rides in the card's JSON (2026-10-26). */
+exports.getLink = catchAsync(async (req, res) => {
+  const s = await load(req);
+  if (!s.link?.token) throw AppError.of("NOT_FOUND", 404, "קישור");
+  res.set("Cache-Control", "private, no-store");
+  res.status(200).json({ status: "success", data: { link: linkAnswer(req, `/supplier/${s.link.token}`, s.link.token, s.link.expiresAt) } });
+});
 
 exports.renewLink = catchAsync(async (req, res) => {
   const { days, fresh } = req.body || {};

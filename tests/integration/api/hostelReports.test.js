@@ -39,6 +39,10 @@ async function houseMonth() {
   return { hostel, community, cycle, c2, teacher, residents };
 }
 
+/** A report's token from its own route (the list's JSON carries none since 2026-10-26); the same for an invoice request. */
+const tokenOf = async (r) => (await request(app).get(`/api/hostel-reports/${r._id}/link`)).body.data.link.token;
+const requestTokenOf = async (roundId, r) => (await request(app).get(`/api/invoice-rounds/${roundId}/requests/${r._id}/link`)).body.data.link.token;
+
 /** Last month's key, "YYYY-MM" - its sessions all lie in the past. */
 function lastMonth() {
   const d = new Date();
@@ -78,7 +82,7 @@ describe("the hostel's attendance draft", () => {
     const opened = (await request(app).post("/api/hostel-reports").send({ month, hostel: hostel._id })).body.data.reports[0];
     await request(app).post(`/api/hostel-reports/${opened._id}/sent`).send({});
 
-    const url = `/api/public/hostel-reports/${opened.token}`;
+    const url = `/api/public/hostel-reports/${await tokenOf(opened)}`;
     const view = (await request(app).get(url)).body.data.view;
     expect(view).toMatchObject({ month, done: false, contact: "גילי" });
     expect(view.hostel.title).toBe("הוסטל השיירות");
@@ -163,7 +167,7 @@ describe("the hostel's attendance draft", () => {
     const { hostel, cycle, residents } = await houseMonth();
     const month = lastMonth();
     const opened = (await request(app).post("/api/hostel-reports").send({ month, hostel: hostel._id })).body.data.reports[0];
-    const url = `/api/public/hostel-reports/${opened.token}`;
+    const url = `/api/public/hostel-reports/${await tokenOf(opened)}`;
     const [a, b, c] = residents;
     const [s1, s2, s3] = opened.sessions;
     // the house: s1 held (b in hospital, c refused), s2 not held, s3 untouched
@@ -275,7 +279,7 @@ describe("the hostel's attendance draft", () => {
     const now = new Date();
     const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const opened = (await request(app).post("/api/hostel-reports").send({ month: thisMonth, hostel: hostel._id })).body.data.reports[0];
-    const url = `/api/public/hostel-reports/${opened.token}`;
+    const url = `/api/public/hostel-reports/${await tokenOf(opened)}`;
     const view = (await request(app).get(url)).body.data.view;
     const future = view.courses[0].sessions.find((s) => s.future);
     if (future) {
@@ -295,7 +299,7 @@ describe("the hostel's attendance draft", () => {
     const { hostel, cycle, teacher, residents } = await houseMonth();
     const month = lastMonth();
     const opened = (await request(app).post("/api/hostel-reports").send({ month, hostel: hostel._id })).body.data.reports[0];
-    const url = `/api/public/hostel-reports/${opened.token}`;
+    const url = `/api/public/hostel-reports/${await tokenOf(opened)}`;
     const mondays = opened.sessions.length;
     expect(opened.sessions.every((s) => new Date(s.date).getUTCDay() === 1)).toBe(true);
     const first = opened.sessions[0];
@@ -381,7 +385,7 @@ describe("the invoice round carries the due day and the teacher's rate", () => {
     const round = (await request(app).post("/api/invoice-rounds").send({ month, program: "hostels" })).body.data.round;
     expect(round.dueAt.slice(0, 10)).toBe(`${month}-29`);
     expect(round.requests[0].teacher.rate).toBe(350);
-    const view = (await request(app).get(`/api/public/invoices/${round.requests[0].token}`)).body.data.view;
+    const view = (await request(app).get(`/api/public/invoices/${await requestTokenOf(round._id, round.requests[0])}`)).body.data.view;
     expect(view.dueAt.slice(0, 10)).toBe(`${month}-29`);
   });
 });

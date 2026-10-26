@@ -14,6 +14,7 @@ router.route("/").get(c.list).post(c.open);
 router.route("/:id").get(c.getOne).delete(c.remove);
 router.post("/:id/mail", c.setMail);
 router.post("/:id/note", c.setNote);
+router.get("/:id/requests/:rid/link", c.requestLink);
 router.post("/:id/requests/:rid/sent", c.markSent);
 router.post("/:id/requests/:rid/renew", c.renew);
 router.post("/:id/requests/:rid/reopen", c.reopen);
