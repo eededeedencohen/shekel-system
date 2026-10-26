@@ -16,8 +16,10 @@
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/AppError");
 const { notModified } = require("../utils/sendFile");
+const Invoice = require("../models/Invoice");
 const invoices = require("../services/invoiceService");
 const rounds = require("../services/invoiceRoundService");
+const storedFiles = require("../services/storedFiles");
 const lens = require("../services/lensService");
 
 const isSuper = (req) => req.actor?.kind === "super";
@@ -89,7 +91,12 @@ exports.deleteInvoice = catchAsync(async (req, res) => {
 
 /** The stored file (image or PDF), inline - a plain link the browser may open in a tab; `?thumb=1` the small JPEG. */
 exports.getImage = catchAsync(async (req, res) => {
-  const file = await invoices.imageOf({ invoiceId: req.params.id, thumb: req.query.thumb === "1" });
+  const thumb = req.query.thumb === "1";
+  // a file already in the bucket: a signed link (the thumbnail, else the picture itself when it has none)
+  const inv = await Invoice.findById(req.params.id).select("file").lean();
+  if (inv && (await storedFiles.redirectIfRemote(req, res, inv.file, { thumb }))) return;
+  if (inv && thumb && (await storedFiles.redirectIfRemote(req, res, inv.file))) return;
+  const file = await invoices.imageOf({ invoiceId: req.params.id, thumb });
   // revalidated every time (utils/sendFile): a replaced picture never shows its old bytes
   if (notModified(req, res, `${file._id}-${file.updatedAt ? new Date(file.updatedAt).getTime() : 0}`)) return;
   res.type(file.mime);

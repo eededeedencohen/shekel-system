@@ -21,6 +21,7 @@ const catchAsync = require("../utils/catchAsync");
 const { notModified } = require("../utils/sendFile");
 const library = require("../services/libraryService");
 const lookup = require("../services/bookLookupService");
+const storedFiles = require("../services/storedFiles");
 
 const STUDENT_POP = { path: "student", select: "firstName lastName phone avatar deletedAt" };
 const BOOK_POP = { path: "book", select: "title author barcode cover deletedAt" };
@@ -90,17 +91,18 @@ exports.lookupBarcode = catchAsync(async (req, res, next) => {
 
 /** POST /api/library/books - { barcode*, title*, author, summary, …, imageUrl, coverData, source, by } */
 exports.createBook = catchAsync(async (req, res) => {
-  const book = await library.createBook({ data: req.body, by: req.body.by, cover: coverOf(req.body) });
+  const book = await library.createBook({ data: req.body, by: req.body.by, cover: coverOf(req.body), coverFile: req.body.coverFile || null });
   res.status(201).json({ status: "success", data: { book } });
 });
 
-/** PATCH /api/library/books/:id - { …fields, coverData?, removeCover?, by } */
+/** PATCH /api/library/books/:id - { …fields, coverData? | coverFile? (a confirmed bucket file), removeCover?, by } */
 exports.updateBook = catchAsync(async (req, res) => {
   const book = await library.updateBook({
     bookId: req.params.id,
     data: req.body,
     by: req.body.by,
     cover: coverOf(req.body),
+    coverFile: req.body.coverFile || null,
     removeCoverFlag: req.body.removeCover === true,
   });
   res.status(200).json({ status: "success", data: { book } });
@@ -115,6 +117,8 @@ exports.deleteBook = catchAsync(async (req, res) => {
 /** GET /api/library/books/:id/cover - the stored image, inline (from the record). */
 exports.getCover = catchAsync(async (req, res, next) => {
   const book = await Book.findById(req.params.id);
+  // a cover already in the bucket: a signed link
+  if (book?.cover?.file && (await storedFiles.redirectIfRemote(req, res, book.cover.file))) return;
   const bytes = book && library.coverBuffer(book);
   if (!bytes) return next(AppError.of("NOT_FOUND", 404, "כריכה"));
   // revalidated every time (utils/sendFile): a changed cover never shows its old bytes

@@ -32,6 +32,8 @@ const {
 } = require("../utils/domain");
 const intake = require("../services/intakeService");
 const { allCategories } = require("../services/subjectCategoryService");
+const files = require("../services/fileService");
+const storedFiles = require("../services/storedFiles");
 
 /** GET /api/public/join/options - everything the page renders from. */
 exports.joinOptions = catchAsync(async (req, res) => {
@@ -100,9 +102,39 @@ async function rowForLink(req) {
   return { doc, row: (doc.documents || []).find((d) => d.key === key) };
 }
 
+/* ── the bucket (2026-10-26): upload-url → the browser's PUT → confirm; a signed read ── */
+
+const tokenActor = async (req) => {
+  const { intake: doc, person, link } = await intake.resolveToken({ token: req.params.token });
+  return { token: { kind: "intake", intake: doc, person, link } };
+};
+
+/** POST /api/public/join/:token/files/upload-url - { key, name, mime, size, thumb } */
+exports.fileUploadUrl = catchAsync(async (req, res) => {
+  const actor = await tokenActor(req);
+  const b = req.body || {};
+  if (!b.key || !b.mime) throw AppError.of("MISSING_FIELDS", 400, "key, mime");
+  const out = await files.beginUpload({ actor, family: "intake", owner: { id: actor.token.intake._id, slot: b.key }, name: b.name, mime: b.mime, size: b.size, thumb: b.thumb === true });
+  res.status(201).json({ status: "success", data: out });
+});
+
+/** POST /api/public/join/:token/files/:id/confirm → { view } */
+exports.fileConfirm = catchAsync(async (req, res) => {
+  const out = await files.confirmUpload({ actor: await tokenActor(req), fileId: req.params.id, meta: {} });
+  res.status(200).json({ status: "success", data: out });
+});
+
+/** GET /api/public/join/:token/files/:id/url?thumb=1 */
+exports.fileUrl = catchAsync(async (req, res) => {
+  const out = await files.signedRead({ actor: await tokenActor(req), fileId: req.params.id, thumb: req.query.thumb === "1", download: req.query.download === "1" });
+  res.set("Cache-Control", "private, no-store");
+  res.status(200).json({ status: "success", data: out });
+});
+
 /** GET /api/public/join/:token/documents/:key/file - the person looks at what they (or the office) uploaded. */
 exports.fileByToken = catchAsync(async (req, res) => {
   const { doc, row } = await rowForLink(req);
+  if (await storedFiles.redirectIfRemote(req, res, row?.file?.stored)) return;
   const file = row ? await intake.documentFile(doc, row) : null;
   if (!file) throw AppError.of("NOT_FOUND", 404, "קובץ");
   res.type(file.mime || "application/octet-stream");
@@ -115,6 +147,7 @@ exports.fileByToken = catchAsync(async (req, res) => {
 /** GET /api/public/join/:token/documents/:key/thumb */
 exports.thumbByToken = catchAsync(async (req, res) => {
   const { row } = await rowForLink(req);
+  if (await storedFiles.redirectIfRemote(req, res, row?.file?.stored, { thumb: true })) return;
   const thumb = row ? await intake.documentThumb(row) : null;
   if (!thumb) throw AppError.of("NOT_FOUND", 404, "תמונה מוקטנת");
   res.type(thumb.mime);

@@ -67,6 +67,9 @@ app.use("/api/accounts", require("./routes/accountRoutes"));
 // ACTING persona loads and reads its own data, nothing of another program's.
 app.use("/api/people", require("./routes/personRoutes"));
 app.use("/api/profiles", require("./routes/profileRoutes"));
+// the files bucket (2026-10-26): signed uploads and reads; the family and
+// the lens decide per file inside (services/fileService, fileAccess)
+app.use("/api/files", require("./routes/fileRoutes"));
 app.use("/api/subjects", requireFamily("college"), require("./routes/subjectRoutes"));
 app.use("/api/subject-categories", requireFamily("college"), require("./routes/subjectCategoryRoutes"));
 app.use("/api/cycles", requireFamily("college"), require("./routes/cycleRoutes"));

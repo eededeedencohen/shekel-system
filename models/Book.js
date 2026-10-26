@@ -42,8 +42,9 @@ const bookSchema = new mongoose.Schema(
     productUrl: { type: String, trim: true },
     /** The remote cover image (kept for re-download / reference). */
     imageUrl: { type: String, trim: true },
-    /** The stored cover - the image bytes themselves (see the header). */
+    /** The stored cover: a `files` row in the bucket (since 2026-10-26), else the image bytes themselves (legacy, see the header). */
     cover: {
+      file: { type: mongoose.Schema.Types.ObjectId, ref: "StoredFile" },
       data: { type: Buffer },
       /** Legacy (until scripts/migrateCoversToDb.js ran): the file's name under UPLOAD_DIR/real/books/ (written before the worlds were retired). */
       storedName: { type: String, trim: true },

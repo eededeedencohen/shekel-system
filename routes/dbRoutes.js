@@ -10,9 +10,12 @@ const {
   getDbSchema,
   getDbCollection,
   getDbRecord,
+  getStorage,
 } = require("../controllers/dbController");
 
 router.get("/schema", getDbSchema);
+// how full the database and the files bucket are (2026-10-26) - before /:collection
+router.get("/storage", getStorage);
 router.get("/:collection", getDbCollection);
 router.get("/:collection/:id", getDbRecord);
 

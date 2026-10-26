@@ -56,6 +56,7 @@ const { Profile } = require("../models/profiles");
 const Intake = require("../models/Intake");
 const UploadLink = require("../models/UploadLink");
 const StoredFile = require("../models/StoredFile");
+const storedFiles = require("./storedFiles");
 const Waiver = require("../models/Waiver");
 const Enrollment = require("../models/Enrollment");
 const Subject = require("../models/Subject");
@@ -148,7 +149,8 @@ async function documentFile(intake, doc) {
   return null;
 }
 async function removeFile(intake, doc) {
-  if (doc?.file?.stored) await StoredFile.deleteOne({ _id: doc.file.stored });
+  // the row and its bytes, in the bucket or in the database (services/storedFiles)
+  if (doc?.file?.stored) await storedFiles.destroy(doc.file.stored);
   const p = documentPath(intake, doc);
   if (p && fs.existsSync(p)) fs.unlinkSync(p);
 }
@@ -522,28 +524,46 @@ async function resolveToken({ token }) {
  * `signedAt` (today when not given) and is good for a year.
  */
 async function uploadDocument({ intake, key, fileName, mime, data, thumb, by, staff = false, validUntil, signedAt, link }) {
-  const def = DOC_BY_KEY[key];
-  if (!def) throw AppError.of("DOCUMENT_UNKNOWN", 400, key);
-  if (!def.upload && !staff) throw AppError.of("DOCUMENT_UNKNOWN", 400, def.label);
-  if (link && link.docs?.length && !link.docs.includes(key)) throw AppError.of("DOCUMENT_UNKNOWN", 400, def.label);
+  const def = assertDocumentSlot({ key, staff, link });
   const kind = fileKind(mime, fileName);
   const buffer = Buffer.isBuffer(data)
     ? data
     : Buffer.from(String(data || "").replace(/^data:[^;]+;base64,/, ""), "base64");
   if (!kind || buffer.length === 0 || buffer.length > MAX_FILE_BYTES) throw AppError.of("DOCUMENT_INVALID", 400);
-  const { ext } = kind;
-  const until = def.validity === "dated" ? parseDate(validUntil) : undefined;
-  const signed = def.validity === "signed" && staff ? parseDate(signedAt) || new Date() : undefined;
-
   const d = docOf(intake, key);
   if (!staff && d.status === "received") throw AppError.of("DOCUMENT_LOCKED", 400);
-
-  await removeFile(intake, d);
-  const name = clean(fileName, 120) || `${key}.${ext}`;
+  const name = clean(fileName, 120) || `${key}.${kind.ext}`;
   const thumbBuf = parseThumb(thumb);
-  const stored = await StoredFile.create({ name, mime: kind.mime, size: buffer.length, data: buffer, ...(thumbBuf && { thumb: thumbBuf }) });
+  const stored = await StoredFile.create({ name, mime: kind.mime, size: buffer.length, data: buffer, ...(thumbBuf && { thumb: thumbBuf }), family: "intake", owner: { kind: "intake", id: intake._id, slot: key }, uploadedBy: { label: staff ? clean(by, 80) : "student" } });
+  return attachDocument({ intake, key, stored, by, staff, validUntil, signedAt, link, def });
+}
+
+/** The document key a staff member / a link may put a file on (the definition), or the typed refusal. */
+function assertDocumentSlot({ key, staff = false, link = null }) {
+  const def = DOC_BY_KEY[key];
+  if (!def) throw AppError.of("DOCUMENT_UNKNOWN", 400, key);
+  if (!def.upload && !staff) throw AppError.of("DOCUMENT_UNKNOWN", 400, def.label);
+  if (link && link.docs?.length && !link.docs.includes(key)) throw AppError.of("DOCUMENT_UNKNOWN", 400, def.label);
+  return def;
+}
+
+/**
+ * A file that already exists as a `files` row (uploaded straight to the
+ * bucket and confirmed, or just created from base64) becomes the document
+ * `key` of the intake: the previous file goes, the row is written, the log
+ * and the status follow the same rules as always (uploadDocument's second
+ * half since 2026-10-26).
+ */
+async function attachDocument({ intake, key, stored, by, staff = false, validUntil, signedAt, link, def = null }) {
+  def = def || assertDocumentSlot({ key, staff, link });
+  const until = def.validity === "dated" ? parseDate(validUntil) : undefined;
+  const signed = def.validity === "signed" && staff ? parseDate(signedAt) || new Date() : undefined;
+  const d = docOf(intake, key);
+  if (!staff && d.status === "received") throw AppError.of("DOCUMENT_LOCKED", 400);
+  if (d.file?.stored && String(d.file.stored) !== String(stored._id)) await removeFile(intake, d);
   const now = new Date();
-  d.file = { name, stored: stored._id, storedName: undefined, mime: kind.mime, size: buffer.length, thumb: !!thumbBuf, uploadedAt: now, by: staff ? by : "student" };
+  const name = stored.name || `${key}`;
+  d.file = { name, stored: stored._id, storedName: undefined, mime: stored.mime, size: stored.size, thumb: storedFiles.hasThumb(stored), uploadedAt: now, by: staff ? by : "student" };
   d.note = undefined;
   const confirmed = staff && (def.validity !== "dated" || until);
   if (confirmed) {
@@ -968,6 +988,8 @@ function publicView(intake, person, link = null) {
         key: d.key, label: d.label, hint: d.hint, optional: !!d.optional,
         status: row?.status || "missing",
         fileName: row?.file?.name || null,
+        /** The `files` row - what a signed read is asked for (the link's /files/:id/url). */
+        fileId: row?.file?.name && row.file.stored ? String(row.file.stored) : null,
         /** The file itself: its type and size, and whether a thumbnail exists (GET …/documents/:key/file | /thumb). */
         mime: row?.file?.name ? row.file.mime || null : null,
         size: row?.file?.name ? row.file.size || null : null,
@@ -1012,6 +1034,9 @@ module.exports = {
   linksOf,
   resolveToken,
   uploadDocument,
+  attachDocument,
+  assertDocumentSlot,
+  DOC_BY_KEY,
   signWaiver,
   waiverOf,
   removeStudentDocument,

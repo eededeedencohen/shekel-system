@@ -19,6 +19,7 @@ const crypto = require("crypto");
 const mongoose = require("mongoose");
 const Supplier = require("../models/Supplier");
 const StoredFile = require("../models/StoredFile");
+const storedFiles = require("./storedFiles");
 const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
 const {
@@ -237,7 +238,7 @@ async function adminAction(s, { action, target, key, state, note, value, step, o
     case "fileRemove": {
       const row = rowOf(s, key);
       if (!row) throw AppError.of("SUPPLIER_FILE_UNKNOWN", 400, String(key));
-      if (row.file?.stored) await StoredFile.deleteOne({ _id: row.file.stored });
+      if (row.file?.stored) await storedFiles.destroy(row.file.stored);
       row.file = {};
       row.notApplicable = false;
       row.review = { state: "pending", fields: [] };
@@ -249,7 +250,7 @@ async function adminAction(s, { action, target, key, state, note, value, step, o
       const row = rowOf(s, key);
       const onIt = value !== false;
       if (onIt && row.file?.stored) {
-        await StoredFile.deleteOne({ _id: row.file.stored });
+        await storedFiles.destroy(row.file.stored);
         row.file = {};
       }
       row.notApplicable = onIt;
@@ -295,7 +296,7 @@ async function adminAction(s, { action, target, key, state, note, value, step, o
 /** The supplier and every stored file of theirs. */
 async function remove(s) {
   const ids = (s.files || []).map((r) => r.file?.stored).filter(Boolean);
-  if (ids.length) await StoredFile.deleteMany({ _id: { $in: ids } });
+  await storedFiles.destroyMany(ids);
   await Supplier.deleteOne({ _id: s._id });
 }
 
@@ -384,23 +385,35 @@ async function submitForm(s, body = {}) {
   return settle(s);
 }
 
-/** One certificate: base64 in, StoredFile out. An approved file is locked. */
-async function uploadFile(s, { key, fileName, mime, data, thumb }) {
+/** The certificate slot a file may go on (its definition), or the typed refusal; an approved file is locked. */
+function assertFileSlot(s, key) {
   const def = FILE_BY_KEY[key];
   if (!def) throw AppError.of("SUPPLIER_FILE_UNKNOWN", 400, String(key));
   const row = rowOf(s, key);
   if (row.review?.state === "ok") throw AppError.of("SUPPLIER_FILE_LOCKED", 400);
+  return { def, row };
+}
+
+/** One certificate: base64 in, StoredFile out. An approved file is locked. */
+async function uploadFile(s, { key, fileName, mime, data, thumb }) {
+  assertFileSlot(s, key);
   const kind = fileKind(mime, fileName);
   const buffer = Buffer.isBuffer(data) ? data : Buffer.from(String(data || "").replace(/^data:[^;]+;base64,/, ""), "base64");
   if (!kind || buffer.length === 0 || buffer.length > MAX_FILE_BYTES) throw AppError.of("DOCUMENT_INVALID", 400);
   const thumbBuf = parseThumb(thumb);
-  if (row.file?.stored) await StoredFile.deleteOne({ _id: row.file.stored });
   const name = clean(fileName, 120) || `${key}.${kind.ext}`;
-  const stored = await StoredFile.create({ name, mime: kind.mime, size: buffer.length, data: buffer, ...(thumbBuf && { thumb: thumbBuf }) });
+  const stored = await StoredFile.create({ name, mime: kind.mime, size: buffer.length, data: buffer, ...(thumbBuf && { thumb: thumbBuf }), family: "suppliers", owner: { kind: "supplier", id: s._id, slot: key }, uploadedBy: { token: "supplier" } });
+  return attachFile(s, { key, stored });
+}
+
+/** A `files` row (uploaded straight to the bucket and confirmed, or just made from base64) becomes the certificate `key` (uploadFile's second half since 2026-10-26). */
+async function attachFile(s, { key, stored }) {
+  const { def, row } = assertFileSlot(s, key);
+  if (row.file?.stored && String(row.file.stored) !== String(stored._id)) await storedFiles.destroy(row.file.stored);
   const now = new Date();
   const wasBad = row.review?.state === "bad";
   const again = !!row.file?.stored || row.notApplicable;
-  row.file = { stored: stored._id, name, mime: kind.mime, size: buffer.length, thumb: !!thumbBuf, uploadedAt: now };
+  row.file = { stored: stored._id, name: stored.name, mime: stored.mime, size: stored.size, thumb: storedFiles.hasThumb(stored), uploadedAt: now };
   row.notApplicable = false;
   row.review = { state: "pending", fields: [] };
   s.finishedAt = null;
@@ -423,7 +436,7 @@ async function removeFile(s, key) {
   const row = rowOf(s, key);
   if (!row) throw AppError.of("SUPPLIER_FILE_UNKNOWN", 400, String(key));
   if (row.review?.state === "ok") throw AppError.of("SUPPLIER_FILE_LOCKED", 400);
-  if (row.file?.stored) await StoredFile.deleteOne({ _id: row.file.stored });
+  if (row.file?.stored) await storedFiles.destroy(row.file.stored);
   row.file = {};
   row.notApplicable = false;
   row.review = { state: "pending", fields: [] };
@@ -440,7 +453,7 @@ async function setNotApplicable(s, key, value) {
   if (row.review?.state === "ok") throw AppError.of("SUPPLIER_FILE_LOCKED", 400);
   const on = value !== false;
   if (on && row.file?.stored) {
-    await StoredFile.deleteOne({ _id: row.file.stored });
+    await storedFiles.destroy(row.file.stored);
     row.file = {};
   }
   const wasBad = row.review?.state === "bad";
@@ -492,6 +505,8 @@ const fileRowView = (s, key) => {
     required: !!def.required,
     hint: def.hint || null,
     fileName: row.file?.name || null,
+    /** The `files` row - what a signed read is asked for (GET /api/files/:id/url, or the link's /uploads/:id/url). */
+    fileId: row.file?.stored ? String(row.file.stored) : null,
     mime: row.file?.mime || null,
     size: row.file?.size || null,
     thumb: !!row.file?.thumb,
@@ -545,6 +560,9 @@ function staffView(s) {
 module.exports = {
   MAX_FILE_BYTES,
   INLINE_MIMES,
+  FILE_BY_KEY,
+  assertFileSlot,
+  attachFile,
   computeStatus,
   fileCounts,
   filesComplete,

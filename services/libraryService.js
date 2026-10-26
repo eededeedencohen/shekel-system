@@ -29,6 +29,8 @@ const AppError = require("../utils/AppError");
 const { withTxn } = require("../utils/withTxn");
 const { LIBRARY, BOOK_SOURCES } = require("../utils/domain");
 const lookup = require("./bookLookupService");
+const StoredFile = require("../models/StoredFile");
+const storedFiles = require("./storedFiles");
 
 const DAY = 86400000;
 // every image type a browser draws in <img> (HEIC is not one - the page converts it first)
@@ -46,7 +48,7 @@ function coverPath(book) {
   if (!book?.cover?.storedName) return null;
   return path.join(coverDir(), book.cover.storedName);
 }
-/** The cover's bytes: the record's own, else the legacy file if it still exists. */
+/** The cover's bytes: the record's own, else the legacy file if it still exists (a bucket cover has none here - the route redirects). */
 function coverBuffer(book) {
   // (a mongoose Buffer IS a Buffer - never reach for `.buffer`, that is the whole shared pool)
   if (book?.cover?.data?.length) return Buffer.isBuffer(book.cover.data) ? book.cover.data : Buffer.from(book.cover.data);
@@ -54,17 +56,34 @@ function coverBuffer(book) {
   if (p && fs.existsSync(p)) return fs.readFileSync(p);
   return null;
 }
-function removeCover(book) {
+/** Everything the cover was - the bucket's row, the legacy disk file, the inline bytes - goes. */
+async function removeCover(book) {
   const p = coverPath(book);
   if (p && fs.existsSync(p)) fs.unlinkSync(p);
+  if (book?.cover?.file) await storedFiles.destroy(book.cover.file);
   book.cover = undefined;
 }
-/** Validate + store a cover in the record. */
-function saveCover(book, cover) {
+/** The cover a book may carry (the bucket flow's check): the image types a browser draws, ≤ 3MB. */
+function acceptCover(mime) {
+  const m = String(mime || "").toLowerCase().split(";")[0].trim();
+  return COVER_MIME_EXT[m] ? { mime: m, ext: COVER_MIME_EXT[m] } : null;
+}
+/** Validate + store a cover in the record (legacy: the bytes inline). */
+async function saveCover(book, cover) {
   const mime = String(cover?.mime || "").toLowerCase();
   if (!COVER_MIME_EXT[mime] || !cover.buffer?.length || cover.buffer.length > MAX_COVER_BYTES) throw AppError.of("COVER_INVALID", 400);
-  removeCover(book);
+  await removeCover(book);
   book.cover = { data: cover.buffer, mime, size: cover.buffer.length, savedAt: new Date() };
+}
+/** A cover uploaded straight to the bucket (fileService, family "library") and confirmed becomes the book's. */
+async function saveCoverFile(book, fileId) {
+  const file = await StoredFile.findOne({ _id: fileId, family: "library", status: "ready" });
+  if (!file) throw AppError.of("NOT_FOUND", 404, "כריכה");
+  if (book.cover?.file && String(book.cover.file) === String(file._id)) return;
+  await removeCover(book);
+  book.cover = { file: file._id, mime: file.mime, size: file.size, savedAt: new Date() };
+  file.owner = { kind: "book", id: book._id };
+  await storedFiles.markAttached(file);
 }
 
 /** "data:image/png;base64,…" → { mime, buffer } (COVER_INVALID otherwise). */
@@ -141,7 +160,7 @@ async function loadBook(bookId) {
  * Add a book. `cover` is { mime, buffer } (a data URL the page sent, or
  * what the lookup downloaded); without one, `imageUrl` is fetched best-effort.
  */
-async function createBook({ data, by, cover }) {
+async function createBook({ data, by, cover, coverFile = null }) {
   const barcode = lookup.normalizeBarcode(data.barcode);
   if (!barcode) throw AppError.of("BARCODE_INVALID", 400);
   if (!data.title || !String(data.title).trim()) throw AppError.of("MISSING_FIELDS", 400, "title");
@@ -159,11 +178,13 @@ async function createBook({ data, by, cover }) {
   book.addedBy = by || book.addedBy;
   if (!data.source) book.source = "manual";
 
-  if (cover) saveCover(book, cover);
+  await book.save();
+  if (coverFile) await saveCoverFile(book, coverFile);
+  else if (cover) await saveCover(book, cover);
   else if (data.imageUrl && data.fetchCover !== false) {
     try {
       const dl = await lookup.downloadCover(data.imageUrl);
-      if (dl && COVER_MIME_EXT[dl.mime]) saveCover(book, dl);
+      if (dl && COVER_MIME_EXT[dl.mime]) await saveCover(book, dl);
     } catch {
       /* the cover is a nicety - the book is added without it */
     }
@@ -172,7 +193,7 @@ async function createBook({ data, by, cover }) {
   return book;
 }
 
-async function updateBook({ bookId, data, by, cover, removeCoverFlag }) {
+async function updateBook({ bookId, data, by, cover, coverFile = null, removeCoverFlag }) {
   const book = await loadBook(bookId);
   if (data.barcode !== undefined) {
     const barcode = lookup.normalizeBarcode(data.barcode);
@@ -185,8 +206,9 @@ async function updateBook({ bookId, data, by, cover, removeCoverFlag }) {
   }
   assignFields(book, data);
   if (data.title !== undefined && !book.title) throw AppError.of("MISSING_FIELDS", 400, "title");
-  if (removeCoverFlag) removeCover(book);
-  if (cover) saveCover(book, cover);
+  if (removeCoverFlag) await removeCover(book);
+  if (coverFile) await saveCoverFile(book, coverFile);
+  else if (cover) await saveCover(book, cover);
   await book.save();
   return book;
 }
@@ -269,6 +291,9 @@ module.exports = {
   coverBuffer,
   parseDataUrl,
   saveCover,
+  saveCoverFile,
+  acceptCover,
+  MAX_COVER_BYTES,
   parseDueDate,
   assertDueDate,
   startOfToday,

@@ -13,6 +13,8 @@ const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 const { notModified } = require("../utils/sendFile");
 const suppliers = require("../services/supplierService");
+const files = require("../services/fileService");
+const storedFiles = require("../services/storedFiles");
 
 const by = (req) => req.actor?.name || req.account?.name || "";
 
@@ -77,6 +79,7 @@ exports.remove = catchAsync(async (req, res) => {
 async function sendFile(req, res, s) {
   const row = suppliers.rowOf(s, req.params.key);
   if (!row?.file?.stored) throw AppError.of("NOT_FOUND", 404, "קובץ");
+  if (await storedFiles.redirectIfRemote(req, res, row.file.stored)) return;
   if (notModified(req, res, `${row.file.stored}-${row.file.uploadedAt ? new Date(row.file.uploadedAt).getTime() : 0}`)) return;
   const file = await suppliers.fileOf(row);
   if (!file) throw AppError.of("NOT_FOUND", 404, "קובץ");
@@ -89,6 +92,7 @@ async function sendFile(req, res, s) {
 async function sendThumb(req, res, s) {
   const row = suppliers.rowOf(s, req.params.key);
   if (!row?.file?.stored) throw AppError.of("NOT_FOUND", 404, "תמונה מוקטנת");
+  if (await storedFiles.redirectIfRemote(req, res, row.file.stored, { thumb: true })) return;
   if (notModified(req, res, `${row.file.stored}-${row.file.uploadedAt ? new Date(row.file.uploadedAt).getTime() : 0}-thumb`)) return;
   const thumb = await suppliers.thumbOf(row);
   if (!thumb) throw AppError.of("NOT_FOUND", 404, "תמונה מוקטנת");
@@ -122,6 +126,32 @@ exports.publicNotApplicable = catchAsync(async (req, res) => {
 });
 
 exports.publicFinish = catchAsync(async (req, res) => publicAnswer(res, await suppliers.finish(await resolve(req))));
+
+/* ── the bucket (2026-10-26): the supplier uploads straight to it behind the link ── */
+
+const tokenActor = async (req) => ({ token: { kind: "supplier", supplier: await resolve(req) } });
+
+/** POST /api/public/supplier/:token/upload-url - { key, name, mime, size, thumb } */
+exports.publicUploadUrl = catchAsync(async (req, res) => {
+  const actor = await tokenActor(req);
+  const b = req.body || {};
+  if (!b.key || !b.mime) throw AppError.of("MISSING_FIELDS", 400, "key, mime");
+  const out = await files.beginUpload({ actor, family: "suppliers", owner: { id: actor.token.supplier._id, slot: b.key }, name: b.name, mime: b.mime, size: b.size, thumb: b.thumb === true });
+  res.status(201).json({ status: "success", data: out });
+});
+
+/** POST /api/public/supplier/:token/uploads/:id/confirm → { view } */
+exports.publicConfirm = catchAsync(async (req, res) => {
+  const out = await files.confirmUpload({ actor: await tokenActor(req), fileId: req.params.id, meta: {} });
+  res.status(200).json({ status: "success", data: out });
+});
+
+/** GET /api/public/supplier/:token/uploads/:id/url?thumb=1 */
+exports.publicFileUrl = catchAsync(async (req, res) => {
+  const out = await files.signedRead({ actor: await tokenActor(req), fileId: req.params.id, thumb: req.query.thumb === "1", download: req.query.download === "1" });
+  res.set("Cache-Control", "private, no-store");
+  res.status(200).json({ status: "success", data: out });
+});
 
 exports.publicFile = catchAsync(async (req, res) => sendFile(req, res, await resolve(req)));
 exports.publicThumb = catchAsync(async (req, res) => sendThumb(req, res, await resolve(req)));

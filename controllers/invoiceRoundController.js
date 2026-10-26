@@ -10,6 +10,8 @@ const AppError = require("../utils/AppError");
 const { notModified } = require("../utils/sendFile");
 const rounds = require("../services/invoiceRoundService");
 const { lensOf } = require("../services/lensService");
+const files = require("../services/fileService");
+const storedFiles = require("../services/storedFiles");
 
 const by = (req) => req.actor?.name || req.account?.name || "";
 
@@ -111,8 +113,39 @@ exports.publicRemoveInvoice = catchAsync(async (req, res) => publicAnswer(res, a
 
 exports.publicDone = catchAsync(async (req, res) => publicAnswer(res, await rounds.complete(await resolve(req), { note: req.body?.note })));
 
+/* ── the bucket (2026-10-26): the teacher uploads the invoice straight to it behind the link ── */
+
+const tokenActor = async (req, opts) => ({ token: { kind: "invoiceRequest", request: await resolve(req, opts) } });
+
+/** POST /api/public/invoices/:token/upload-url - { name, mime, size, thumb } */
+exports.publicUploadUrl = catchAsync(async (req, res) => {
+  const actor = await tokenActor(req);
+  const b = req.body || {};
+  if (!b.mime) throw AppError.of("MISSING_FIELDS", 400, "mime");
+  const out = await files.beginUpload({ actor, family: "invoices", owner: {}, name: b.name, mime: b.mime, size: b.size, thumb: b.thumb === true });
+  res.status(201).json({ status: "success", data: out });
+});
+
+/** POST /api/public/invoices/:token/uploads/:id/confirm - { sessions } → { view } */
+exports.publicConfirm = catchAsync(async (req, res) => {
+  const out = await files.confirmUpload({ actor: await tokenActor(req), fileId: req.params.id, meta: { sessions: (req.body || {}).sessions } });
+  res.status(200).json({ status: "success", data: out });
+});
+
+/** GET /api/public/invoices/:token/uploads/:id/url?thumb=1 */
+exports.publicFileUrl = catchAsync(async (req, res) => {
+  const out = await files.signedRead({ actor: await tokenActor(req, { readWhenDone: true }), fileId: req.params.id, thumb: req.query.thumb === "1", download: req.query.download === "1" });
+  res.set("Cache-Control", "private, no-store");
+  res.status(200).json({ status: "success", data: out });
+});
+
 exports.publicImage = catchAsync(async (req, res) => {
-  const file = await rounds.imageOf(await resolve(req, { readWhenDone: true }), req.params.iid, req.query.thumb === "1");
+  const thumb = req.query.thumb === "1";
+  const r = await resolve(req, { readWhenDone: true });
+  const inv = await rounds.invoiceOfRequest(r, req.params.iid);
+  if (await storedFiles.redirectIfRemote(req, res, inv.file, { thumb })) return;
+  if (thumb && (await storedFiles.redirectIfRemote(req, res, inv.file))) return;
+  const file = await rounds.imageOf(r, req.params.iid, thumb);
   if (notModified(req, res, `${file._id}-${file.updatedAt ? new Date(file.updatedAt).getTime() : 0}`)) return;
   res.type(file.mime);
   res.send(file.data);

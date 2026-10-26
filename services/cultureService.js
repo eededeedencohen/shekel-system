@@ -24,6 +24,7 @@ const Event = require("../models/Event");
 const EventRegistration = require("../models/EventRegistration");
 const Voucher = require("../models/Voucher");
 const StoredFile = require("../models/StoredFile");
+const storedFiles = require("./storedFiles");
 const images = require("./voucherImageService");
 const { Person } = require("../models/Person");
 const { Profile } = require("../models/profiles");
@@ -386,6 +387,14 @@ function parseImageData(dataUrl, max = MAX_IMAGE_BYTES) {
   return { mime: normMime(mime), buffer };
 }
 
+/** The picture a voucher may carry (the bucket flow's check): the image types, ≤ 8MB. */
+function acceptVoucherImage(mime) {
+  const m = String(mime || "").toLowerCase().split(";")[0].trim();
+  if (!IMAGE_MIMES.has(m)) return null;
+  const norm = normMime(m);
+  return { mime: norm, ext: norm.replace("image/", "") };
+}
+
 /** The stored file id the body asks for (or undefined = no change / none). */
 async function resolveVoucherImage(data = {}) {
   if (data.imageFrom) {
@@ -393,17 +402,24 @@ async function resolveVoucherImage(data = {}) {
     if (!other || !other.image) throw AppError.of("NOT_FOUND", 404, "תמונת השובר");
     return other.image;
   }
+  // a picture uploaded straight to the bucket (fileService, family "culture") and confirmed
+  if (data.imageFile) {
+    const file = await StoredFile.findOne({ _id: data.imageFile, family: "culture", status: "ready" });
+    if (!file) throw AppError.of("NOT_FOUND", 404, "תמונת השובר");
+    if (!file.attachedAt) await storedFiles.markAttached(file);
+    return file._id;
+  }
   if (data.imageData) {
     const { mime, buffer } = parseImageData(data.imageData);
     const thumb = data.imageThumb ? parseImageData(data.imageThumb, MAX_THUMB_BYTES).buffer : undefined;
-    const file = await StoredFile.create({ name: data.imageName || "תמונת השובר", mime, size: buffer.length, data: buffer, thumb });
+    const file = await StoredFile.create({ name: data.imageName || "תמונת השובר", mime, size: buffer.length, data: buffer, thumb, family: "culture", owner: { kind: "voucher" } });
     return file._id;
   }
   if (data.imageUrl) {
     const got = await images.fetchImage(String(data.imageUrl).trim());
     if (!got) throw AppError.of("VOUCHER_IMAGE_FETCH", 400);
     if (!IMAGE_MIMES.has(got.mime) || got.buffer.length > MAX_IMAGE_BYTES) throw AppError.of("VOUCHER_IMAGE_INVALID", 400);
-    const file = await StoredFile.create({ name: data.imageName || got.from, mime: normMime(got.mime), size: got.buffer.length, data: got.buffer });
+    const file = await StoredFile.create({ name: data.imageName || got.from, mime: normMime(got.mime), size: got.buffer.length, data: got.buffer, family: "culture", owner: { kind: "voucher" } });
     return file._id;
   }
   return undefined;
@@ -413,7 +429,7 @@ async function resolveVoucherImage(data = {}) {
 async function releaseVoucherImage(fileId) {
   if (!fileId) return;
   const still = await Voucher.countDocuments({ image: fileId });
-  if (!still) await StoredFile.deleteOne({ _id: fileId });
+  if (!still) await storedFiles.destroy(fileId);
 }
 
 async function createVoucher({ by, data }) {
@@ -426,7 +442,7 @@ async function createVoucher({ by, data }) {
     return await Voucher.create({ ...fields, ...(image && { image }) });
   } catch (e) {
     // a fresh upload that found no voucher to belong to
-    if (image && !data.imageFrom) await StoredFile.deleteOne({ _id: image }).catch(() => {});
+    if (image && !data.imageFrom) await storedFiles.destroy(image).catch(() => {});
     if (e.code === 11000) throw AppError.of("VOUCHER_NUMBER_TAKEN", 409, fields.number);
     throw e;
   }
@@ -446,6 +462,18 @@ async function setVoucherImage({ voucherId, by, data = {} }) {
     if (String(image) === String(before)) return v;
     v.image = image;
   }
+  await v.save();
+  await releaseVoucherImage(before);
+  return v;
+}
+
+/** A picture uploaded straight to the bucket for an EXISTING voucher (fileService; the culture family gate already passed). */
+async function setVoucherImageFile({ voucherId, fileId }) {
+  const v = await requireVoucher(voucherId);
+  const before = v.image;
+  const image = await resolveVoucherImage({ imageFile: fileId });
+  if (String(image) === String(before)) return v;
+  v.image = image;
   await v.save();
   await releaseVoucherImage(before);
   return v;
@@ -524,5 +552,5 @@ module.exports = {
   register, cancelRegistration, reportAttendance, promoteNext, renumberWaitlist, registeredCount,
   // vouchers
   createVoucher, updateVoucher, grantVoucher, redeemVoucher, revokeGrant, deleteVoucher,
-  setVoucherImage, voucherImageOf, searchVoucherImages,
+  setVoucherImage, setVoucherImageFile, voucherImageOf, searchVoucherImages, acceptVoucherImage,
 };

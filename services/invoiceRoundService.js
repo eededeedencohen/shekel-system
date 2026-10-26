@@ -560,7 +560,7 @@ async function healLessons(sessions) {
   return n;
 }
 
-async function addInvoice(r, { imageData, imageName, thumb, sessionIds }) {
+async function addInvoice(r, { imageData, imageName, thumb, stored = null, sessionIds }) {
   assertOpen(r);
   const wanted = Array.isArray(sessionIds) ? new Set(sessionIds.map(String)) : new Set();
   if (!wanted.size) throw AppError.of("INVOICE_NO_SESSIONS", 400);
@@ -593,6 +593,7 @@ async function addInvoice(r, { imageData, imageName, thumb, sessionIds }) {
     imageData,
     imageName,
     thumb,
+    stored,
     by: `${teacher?.firstName || ""} ${teacher?.lastName || ""}`.trim() || "המורה",
     note: `${monthLabel(round.month)} · דרך הקישור`,
     requestId: r._id,
@@ -621,16 +622,22 @@ async function complete(r, { note } = {}) {
   return r;
 }
 
-/** The file of an invoice of this request (`thumb`: its small JPEG): one that came through the link, or the teacher's own on the month's lessons. */
-async function imageOf(r, invoiceId, thumb = false) {
-  const inv = isId(invoiceId) && (await Invoice.findOne({ _id: invoiceId }).select("request teacher").lean());
+/** An invoice this request may show: one that came through the link, or the teacher's own on the month's lessons → { _id, file, teacher, request }. */
+async function invoiceOfRequest(r, invoiceId) {
+  const inv = isId(invoiceId) && (await Invoice.findOne({ _id: invoiceId }).select("request teacher file").lean());
   if (!inv) throw AppError.of("NOT_FOUND", 404, "חשבונית");
   await attachLessons(r.sessions); // the month's lesson rows the request has not noted yet (never saved here)
   const mine =
     String(inv.request) === String(r._id) ||
     (String(inv.teacher) === String(r.teacher) && (await InvoiceLesson.exists({ invoice: inv._id, lesson: { $in: r.sessions.map((s) => s.lesson).filter(Boolean) } })));
   if (!mine) throw AppError.of("NOT_FOUND", 404, "חשבונית");
-  return invoices.imageOf({ invoiceId, thumb });
+  return inv;
+}
+
+/** The file of an invoice of this request (`thumb`: its small JPEG) - legacy bytes; a bucket file is answered by a redirect in the controller. */
+async function imageOf(r, invoiceId, thumb = false) {
+  const inv = await invoiceOfRequest(r, invoiceId);
+  return invoices.imageOf({ invoiceId: inv._id, thumb });
 }
 
 /* ───────────────────────── the super admin's corrections (the state machine, section 08) ─────────────────────────
@@ -900,6 +907,7 @@ module.exports = {
   publicView,
   addInvoice,
   removeInvoice,
+  invoiceOfRequest,
   complete,
   imageOf,
   adminAction,

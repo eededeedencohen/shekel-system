@@ -345,6 +345,20 @@ function buildFilter(M, q) {
 const LIMIT_DEFAULT = 50;
 const LIMIT_MAX = 200;
 
+/** Bytes never travel in the explorer's JSON (2026-10-26): the binary paths each model keeps are left out of every read. */
+const HIDDEN_BY_MODEL = {
+  StoredFile: "-data -thumb",
+  Book: "-cover.data",
+  Waiver: "-signatures.student -signatures.witness -signatures.guardian",
+};
+const hidden = (M) => HIDDEN_BY_MODEL[M.modelName] || "";
+
+/** GET /api/db/storage - how full the database and the files bucket are (services/storageUsageService). */
+exports.getStorage = catchAsync(async (req, res) => {
+  const storage = await require("../services/storageUsageService").usage({ fresh: req.query.fresh === "1" });
+  res.status(200).json({ status: "success", data: { storage } });
+});
+
 /** GET /api/db/schema */
 exports.getDbSchema = catchAsync(async (req, res) => {
   const collections = await Promise.all(
@@ -414,6 +428,7 @@ exports.getDbCollection = catchAsync(async (req, res, next) => {
   const [total, docs] = await Promise.all([
     M.countDocuments(filter),
     M.find(filter)
+      .select(hidden(M))
       .sort(sort)
       .skip((page - 1) * limit)
       .limit(limit)
@@ -444,7 +459,7 @@ exports.getDbRecord = catchAsync(async (req, res, next) => {
     return next(new AppError("מזהה רשומה לא חוקי", 400));
   }
 
-  const doc = await M.findById(req.params.id).lean();
+  const doc = await M.findById(req.params.id).select(hidden(M)).lean();
   if (!doc) return next(new AppError("הרשומה לא נמצאה", 404));
 
   const labels = await resolveRefLabels(M, [doc]);

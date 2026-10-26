@@ -23,6 +23,7 @@ const InvoiceLesson = require("../models/InvoiceLesson");
 const InvoiceRequest = require("../models/InvoiceRequest");
 const InvoiceRound = require("../models/InvoiceRound");
 const StoredFile = require("../models/StoredFile");
+const storedFiles = require("./storedFiles");
 const Lesson = require("../models/Lesson");
 const Cycle = require("../models/Cycle");
 const { Person } = require("../models/Person");
@@ -132,8 +133,8 @@ async function shape(invoices) {
   const requestIds = [...new Set(invoices.map((i) => i.request).filter(Boolean).map(String))];
   const [rows, files, requests] = await Promise.all([
     InvoiceLesson.find({ invoice: { $in: ids } }).select("invoice lesson").lean(),
-    // whether a thumbnail exists, without pulling its bytes
-    StoredFile.aggregate([{ $match: { _id: { $in: invoices.map((i) => i.file) } } }, { $project: { name: 1, mime: 1, size: 1, thumb: { $gt: [{ $binarySize: { $ifNull: ["$thumb", ""] } }, 0] } } }]),
+    // whether a thumbnail exists (in the bucket, or legacy bytes), without pulling any bytes
+    StoredFile.aggregate([{ $match: { _id: { $in: invoices.map((i) => i.file) } } }, { $project: { name: 1, mime: 1, size: 1, storageKey: 1, thumb: { $or: [{ $gt: [{ $strLenCP: { $ifNull: ["$thumbKey", ""] } }, 0] }, { $gt: [{ $binarySize: { $ifNull: ["$thumb", ""] } }, 0] }] } } }]),
     requestIds.length ? InvoiceRequest.find({ _id: { $in: requestIds } }).select("completedAt round").lean() : [],
   ]);
   const roundIds = [...new Set(requests.map((r) => String(r.round)))];
@@ -202,22 +203,36 @@ async function imageOf({ invoiceId, thumb = false }) {
 /** The duplicate-key error of the unique lesson index → the typed 409. */
 const billedTwice = (e) => (e && e.code === 11000 ? AppError.of("INVOICE_LESSON_BILLED", 409) : e);
 
+/** The file an invoice may be: the types the page accepts, ≤ 8MB (the bucket flow's check; the legacy data URL goes through parseImage). */
+function acceptInvoiceFile(mime) {
+  const m = String(mime || "").toLowerCase().split(";")[0].trim();
+  if (!FILE_MIMES.has(m)) return null;
+  const norm = NORMAL_MIME[m] || m;
+  return { mime: norm, ext: norm === "application/pdf" ? "pdf" : norm.replace("image/", "") };
+}
+
 /**
  * A new invoice: { teacherId, lessonIds, imageData (data URL of an image or
- * a PDF), imageName, thumb (data URL of a small JPEG, optional), by, note }.
+ * a PDF), imageName, thumb (data URL of a small JPEG, optional), by, note }
+ * - or, since 2026-10-26, `stored` (a confirmed `files` row in the bucket)
+ * in place of the data URL. A row made here for a refused invoice is taken
+ * back; a bucket row is the caller's (fileService) to keep or drop.
  */
-async function createInvoice({ teacherId, lessonIds, imageData, imageName, thumb, by, note, cycleIds = null, requestId = null }) {
+async function createInvoice({ teacherId, lessonIds, imageData, imageName, thumb, stored = null, by, note, cycleIds = null, requestId = null }) {
   await assertTeacher({ teacherId });
   const ids = await assertLessonsOfTeacher({ teacherId, lessonIds, cycleIds });
-  const image = parseImage(imageData);
-  const thumbBuf = parseThumb(thumb);
+  const image = stored ? null : parseImage(imageData);
+  const thumbBuf = stored ? null : parseThumb(thumb);
   const invoiceId = await withTxn(async (session) => {
     const opts = session ? { session } : {};
     let fileId = null;
     let newId = null;
     try {
-      const [file] = await StoredFile.create([{ name: imageName || undefined, mime: image.mime, size: image.buffer.length, data: image.buffer, ...(thumbBuf && { thumb: thumbBuf }) }], opts);
-      fileId = file._id;
+      let file = stored;
+      if (!file) {
+        [file] = await StoredFile.create([{ name: imageName || undefined, mime: image.mime, size: image.buffer.length, data: image.buffer, ...(thumbBuf && { thumb: thumbBuf }), family: "invoices", owner: { kind: "person", id: teacherId }, uploadedBy: { label: by } }], opts);
+        fileId = file._id;
+      }
       const [invoice] = await Invoice.create([{ teacher: teacherId, file: file._id, uploadedBy: by, note: note || undefined, request: requestId || null }], opts);
       newId = invoice._id;
       await InvoiceLesson.insertMany(ids.map((lesson) => ({ invoice: invoice._id, lesson })), { ...opts, ordered: true });
@@ -232,6 +247,7 @@ async function createInvoice({ teacherId, lessonIds, imageData, imageName, thumb
       throw billedTwice(e);
     }
   });
+  if (stored) await StoredFile.updateOne({ _id: stored._id }, { $set: { "owner.kind": "invoice", "owner.id": invoiceId } });
   return getInvoice({ invoiceId });
 }
 
@@ -261,20 +277,21 @@ async function updateInvoice({ invoiceId, lessonIds, note, cycleIds = null }) {
   return getInvoice({ invoiceId });
 }
 
-/** Remove an invoice: its lesson rows and its picture go with it. */
+/** Remove an invoice: its lesson rows and its picture go with it (the bucket's objects after the rows). */
 async function deleteInvoice({ invoiceId }) {
   const invoice = await loadInvoice(invoiceId);
   await withTxn(async (session) => {
     const opts = session ? { session } : {};
     await InvoiceLesson.deleteMany({ invoice: invoice._id }, opts);
     await Invoice.deleteOne({ _id: invoice._id }, opts);
-    await StoredFile.deleteOne({ _id: invoice.file }, opts);
+    await storedFiles.destroy(invoice.file, { session });
   });
 }
 
 module.exports = {
   MAX_IMAGE_BYTES,
   parseImage,
+  acceptInvoiceFile,
   lessonsOfTeacher,
   listInvoices,
   getInvoice,

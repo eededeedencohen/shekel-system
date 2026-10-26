@@ -10,6 +10,7 @@ const catchAsync = require("../utils/catchAsync");
 const { notModified } = require("../utils/sendFile");
 const docs = require("../services/personDocumentService");
 const lens = require("../services/lensService");
+const storedFiles = require("../services/storedFiles");
 
 const by = (req) => req.actor?.name || req.account?.name || "";
 
@@ -38,6 +39,7 @@ exports.remove = catchAsync(async (req, res) => {
 
 exports.file = catchAsync(async (req, res) => {
   const doc = await docs.load({ personId: req.params.id, docId: req.params.docId });
+  if (await storedFiles.redirectIfRemote(req, res, doc.file)) return;
   if (notModified(req, res, `${doc.file}-${new Date(doc.uploadedAt).getTime()}`)) return;
   const file = await docs.fileOf(doc);
   if (!file) throw AppError.of("NOT_FOUND", 404, "קובץ");
@@ -49,6 +51,7 @@ exports.file = catchAsync(async (req, res) => {
 
 exports.thumb = catchAsync(async (req, res) => {
   const doc = await docs.load({ personId: req.params.id, docId: req.params.docId });
+  if (await storedFiles.redirectIfRemote(req, res, doc.file, { thumb: true })) return;
   if (notModified(req, res, `${doc.file}-${new Date(doc.uploadedAt).getTime()}-thumb`)) return;
   const thumb = await docs.thumbOf(doc);
   if (!thumb) throw AppError.of("NOT_FOUND", 404, "תמונה מוקטנת");

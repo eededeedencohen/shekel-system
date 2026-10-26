@@ -7,3 +7,5 @@
  */
 
 process.env.NODE_ENV = "test";
+// the files bucket is a Map in the tests (services/storage/memoryStorage) - no network, no keys
+process.env.STORAGE_DRIVER = "memory";

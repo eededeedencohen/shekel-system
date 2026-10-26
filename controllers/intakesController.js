@@ -20,6 +20,7 @@ const catchAsync = require("../utils/catchAsync");
 const { notModified, docTag } = require("../utils/sendFile");
 const intake = require("../services/intakeService");
 const lens = require("../services/lensService");
+const storedFiles = require("../services/storedFiles");
 
 const PERSON_POP = { path: "person", select: "firstName lastName phone email gender birthDate avatar deletedAt" };
 const SUBJECT_POP = { path: "landing.preferences.subjects", select: "name category" };
@@ -148,6 +149,8 @@ exports.getDocumentFile = catchAsync(async (req, res, next) => {
   const doc = await load(req);
   const row = (doc.documents || []).find((d) => d.key === req.params.key);
   if (!row?.file?.name) return next(AppError.of("NOT_FOUND", 404, "קובץ"));
+  // a file already in the bucket is answered with a signed link (services/storedFiles)
+  if (await storedFiles.redirectIfRemote(req, res, row.file.stored)) return;
   // a replaced file must never show its old bytes: revalidated every time, 304 while unchanged
   if (notModified(req, res, docTag(row))) return;
   const file = await intake.documentFile(doc, row);
@@ -188,6 +191,7 @@ exports.getDocumentThumb = catchAsync(async (req, res, next) => {
   const doc = await load(req);
   const row = (doc.documents || []).find((d) => d.key === req.params.key);
   if (!row?.file?.thumb) return next(AppError.of("NOT_FOUND", 404, "תמונה מוקטנת"));
+  if (await storedFiles.redirectIfRemote(req, res, row.file.stored, { thumb: true })) return;
   if (notModified(req, res, docTag(row, "-thumb"))) return;
   const thumb = await intake.documentThumb(row);
   if (!thumb) return next(AppError.of("NOT_FOUND", 404, "תמונה מוקטנת"));
