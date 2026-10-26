@@ -131,28 +131,16 @@ exports.fileUrl = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: out });
 });
 
-/** GET /api/public/join/:token/documents/:key/file - the person looks at what they (or the office) uploaded. */
+/** GET /api/public/join/:token/documents/:key/file - the person looks at what they (or the office) uploaded: a 302 to a signed read. */
 exports.fileByToken = catchAsync(async (req, res) => {
-  const { doc, row } = await rowForLink(req);
-  if (await storedFiles.redirectIfRemote(req, res, row?.file?.stored)) return;
-  const file = row ? await intake.documentFile(doc, row) : null;
-  if (!file) throw AppError.of("NOT_FOUND", 404, "קובץ");
-  res.type(file.mime || "application/octet-stream");
-  const disposition = intake.INLINE_MIMES.has(file.mime) ? "inline" : "attachment";
-  res.setHeader("Content-Disposition", `${disposition}; filename*=UTF-8''${encodeURIComponent(file.name || req.params.key)}`);
-  res.set("Cache-Control", "private, no-store");
-  res.send(file.data);
+  const { row } = await rowForLink(req);
+  if (!(await storedFiles.redirectIfRemote(req, res, row?.file?.stored))) throw AppError.of("NOT_FOUND", 404, "קובץ");
 });
 
-/** GET /api/public/join/:token/documents/:key/thumb */
+/** GET /api/public/join/:token/documents/:key/thumb - a 302 to the thumbnail in the bucket. */
 exports.thumbByToken = catchAsync(async (req, res) => {
   const { row } = await rowForLink(req);
-  if (await storedFiles.redirectIfRemote(req, res, row?.file?.stored, { thumb: true })) return;
-  const thumb = row ? await intake.documentThumb(row) : null;
-  if (!thumb) throw AppError.of("NOT_FOUND", 404, "תמונה מוקטנת");
-  res.type(thumb.mime);
-  res.set("Cache-Control", "private, no-store");
-  res.send(thumb.data);
+  if (!(await storedFiles.redirectIfRemote(req, res, row?.file?.stored, { thumb: true }))) throw AppError.of("NOT_FOUND", 404, "תמונה מוקטנת");
 });
 
 /** DELETE /api/public/join/:token/documents/:key - pull back an unconfirmed upload. */

@@ -634,12 +634,6 @@ async function invoiceOfRequest(r, invoiceId) {
   return inv;
 }
 
-/** The file of an invoice of this request (`thumb`: its small JPEG) - legacy bytes; a bucket file is answered by a redirect in the controller. */
-async function imageOf(r, invoiceId, thumb = false) {
-  const inv = await invoiceOfRequest(r, invoiceId);
-  return invoices.imageOf({ invoiceId: inv._id, thumb });
-}
-
 /* ───────────────────────── the super admin's corrections (the state machine, section 08) ─────────────────────────
  * Every action rewrites facts and the status follows from them as always. Five rules each one keeps:
  *   1. an invoice goes as a unit (its rows, its file) - invoiceService.deleteInvoice;
@@ -909,7 +903,6 @@ module.exports = {
   removeInvoice,
   invoiceOfRequest,
   complete,
-  imageOf,
   adminAction,
   orphanSweep,
 };

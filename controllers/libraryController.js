@@ -18,7 +18,6 @@ const Book = require("../models/Book");
 const Loan = require("../models/Loan");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
-const { notModified } = require("../utils/sendFile");
 const library = require("../services/libraryService");
 const lookup = require("../services/bookLookupService");
 const storedFiles = require("../services/storedFiles");
@@ -114,17 +113,10 @@ exports.deleteBook = catchAsync(async (req, res) => {
   res.status(204).json({ status: "success", data: null });
 });
 
-/** GET /api/library/books/:id/cover - the stored image, inline (from the record). */
+/** GET /api/library/books/:id/cover - a plain link to the cover: a 302 to a signed read of the bucket. */
 exports.getCover = catchAsync(async (req, res, next) => {
-  const book = await Book.findById(req.params.id);
-  // a cover already in the bucket: a signed link
-  if (book?.cover?.file && (await storedFiles.redirectIfRemote(req, res, book.cover.file))) return;
-  const bytes = book && library.coverBuffer(book);
-  if (!bytes) return next(AppError.of("NOT_FOUND", 404, "כריכה"));
-  // revalidated every time (utils/sendFile): a changed cover never shows its old bytes
-  if (notModified(req, res, `${book._id}-${book.cover?.savedAt ? new Date(book.cover.savedAt).getTime() : 0}`)) return;
-  res.type(book.cover.mime || "image/jpeg");
-  res.send(bytes);
+  const book = await Book.findById(req.params.id).select("cover").lean();
+  if (!(await storedFiles.redirectIfRemote(req, res, book?.cover?.file))) return next(AppError.of("NOT_FOUND", 404, "כריכה"));
 });
 
 /** GET /api/library/loans?open=true|false&student=&book= */

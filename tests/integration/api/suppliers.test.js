@@ -154,9 +154,11 @@ describe("/api/suppliers + /api/public/supplier/:token", () => {
     expect(one.body.data.view.counts).toMatchObject({ total: 4, done: 1, ok: 0, bad: 0 });
     const row = one.body.data.view.files.find((f) => f.key === "books");
     expect(row).toMatchObject({ fileName: "a.png", mime: "image/png", thumb: true, done: true });
-    // the bytes stream back behind the link, with a thumbnail
-    expect((await request(app).get(`${pub(t)}/files/books/file`)).status).toBe(200);
-    expect((await request(app).get(`${pub(t)}/files/books/thumb`)).status).toBe(200);
+    // the plain links behind the link answer with a signed read of the bucket, the file and its thumbnail
+    const file = await request(app).get(`${pub(t)}/files/books/file`);
+    expect(file.status).toBe(302);
+    expect(file.headers.location).toMatch(/^memory:\/\/get\/suppliers\//);
+    expect((await request(app).get(`${pub(t)}/files/books/thumb`)).headers.location).toMatch(/\.thumb\.jpg\?/);
     expect((await request(app).get(`${pub(t)}/files/withholding/file`)).status).toBe(404);
 
     await request(app).put(`${pub(t)}/form`).send(GOOD_FORM);

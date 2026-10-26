@@ -8,19 +8,14 @@
  * at AwaitingPlacement with its held seat until the managers enter the
  * start date (→ Placed). A reserved seat is what parks a college lead at
  * Intake. Documents carry validity (the psychiatric report its own date,
- * the waiver a year from its signature), files live in the database, the
+ * the waiver a year from its signature), files live in the bucket, the
  * links expire.
  */
 
-const fs = require("fs");
-const os = require("os");
-const path = require("path");
-
-// Legacy disk files would go to a temp dir, never into server/uploads.
-process.env.UPLOAD_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "shekel-intake-"));
-
 const request = require("supertest");
 const app = require("../../../app");
+const storage = require("../../../services/storage");
+const bucket = require("../../helpers/bucket");
 const Intake = require("../../../models/Intake");
 const UploadLink = require("../../../models/UploadLink");
 const StoredFile = require("../../../models/StoredFile");
@@ -125,7 +120,7 @@ describe("POST /api/public/join", () => {
 });
 
 describe("the personal documents link", () => {
-  it("uploads a file INTO THE DATABASE, replaces it, and refuses junk", async () => {
+  it("uploads a file into the bucket, replaces it, and refuses junk", async () => {
     const { token } = (await submit({})).body.data;
     const up = await request(app)
       .post(`/api/public/join/${token}/documents`)
@@ -138,15 +133,18 @@ describe("the personal documents link", () => {
     let intake = await Intake.findOne({});
     const first = intake.documents.find((d) => d.key === "psychiatric").file;
     expect(first.stored).toBeTruthy();
-    expect(first.storedName).toBeUndefined();
     expect(await StoredFile.countDocuments()).toBe(1);
-    expect(fs.readdirSync(process.env.UPLOAD_DIR)).toEqual([]); // nothing on the disk any more
+    const firstRow = await StoredFile.findById(first.stored).lean();
+    expect(firstRow.storageKey).toMatch(new RegExp(`^intake/${intake._id}/`));
+    expect(firstRow.data).toBeUndefined(); // the bytes are in the bucket, never in the row
+    expect(storage.has(firstRow.storageKey)).toBe(true);
 
-    // replace → the old bytes are gone from the files table
+    // replace → the old row and its object are gone
     await request(app)
       .post(`/api/public/join/${token}/documents`)
       .send({ key: "psychiatric", fileName: "psy2.png", mime: "image/png", data: PNG_1PX });
     expect(await StoredFile.countDocuments()).toBe(1);
+    expect(storage.has(firstRow.storageKey)).toBe(false);
     intake = await Intake.findOne({});
     expect(String(intake.documents.find((d) => d.key === "psychiatric").file.stored)).not.toBe(String(first.stored));
 
@@ -164,15 +162,15 @@ describe("the personal documents link", () => {
       .post(`/api/public/join/${token}/documents`)
       .send({ key: "socialClub", fileName: "IMG_0001.HEIC", mime: "application/octet-stream", data: PNG_1PX });
     expect(heic.status).toBe(200);
-    // a real photo (well over the old 100kb JSON default) goes through
+    // a photo of a few hundred KB still fits the JSON road (an old tab)
     const big = await request(app)
       .post(`/api/public/join/${token}/documents`)
-      .send({ key: "waiver", fileName: "photo.jpg", mime: "image/jpeg", data: Buffer.alloc(3 * 1024 * 1024, 7).toString("base64") });
+      .send({ key: "waiver", fileName: "photo.jpg", mime: "image/jpeg", data: Buffer.alloc(600 * 1024, 7).toString("base64") });
     expect(big.status).toBe(200);
-    // over the limit → a clean 413, not "Something went wrong"
+    // a real photo does not travel in JSON any more (the browser PUTs it to the bucket): over the 2MB body limit → a clean 413, not "Something went wrong"
     const huge = await request(app)
       .post(`/api/public/join/${token}/documents`)
-      .send({ key: "waiver", fileName: "photo.jpg", mime: "image/jpeg", data: Buffer.alloc(13 * 1024 * 1024, 7).toString("base64") });
+      .send({ key: "waiver", fileName: "photo.jpg", mime: "image/jpeg", data: Buffer.alloc(3 * 1024 * 1024, 7).toString("base64") });
     expect(huge.status).toBe(413);
     expect(huge.body.code).toBe("PAYLOAD_TOO_LARGE");
     // שקדיה is not a document any more - nothing to upload under that key
@@ -482,13 +480,15 @@ describe("the social worker's flow", () => {
       .send({ key: "psychosocial", fileName: "ps.png", mime: "image/png", data: PNG_1PX, thumb: `data:image/jpeg;base64,${PNG_1PX}`, by: "ייטב" });
     expect(up.status).toBe(200);
     expect(up.body.data.intake.documents.find((d) => d.key === "psychosocial").file.thumb).toBe(true);
+    // the plain thumbnail link answers with a signed read of the small JPEG in the bucket
     const thumb = await request(app).get(`/api/intakes/${intakeId}/documents/psychosocial/thumb`);
-    expect(thumb.status).toBe(200);
-    expect(thumb.headers["content-type"]).toMatch(/image\/jpeg/);
-    expect(thumb.body.length).toBe(Buffer.from(PNG_1PX, "base64").length);
-    // the JSON of the stored file never carries the bytes
+    expect(bucket.keyOf(thumb)).toMatch(/\.thumb\.jpg$/);
+    expect(bucket.mimeOf(thumb)).toBe("image/jpeg");
+    expect((await bucket.bytesOf(thumb)).length).toBe(Buffer.from(PNG_1PX, "base64").length);
+    // the row holds the facts of the thumbnail, never bytes
     const stored = await StoredFile.findOne();
-    expect(stored.toJSON().thumb).toBeUndefined();
+    expect(stored.thumbKey).toBe(`${stored.storageKey}.thumb.jpg`);
+    expect(stored.thumbSize).toBe(Buffer.from(PNG_1PX, "base64").length);
     expect(stored.toJSON().data).toBeUndefined();
 
     await request(app).post(`/api/public/join/${token}/documents`).send({ key: "socialClub", fileName: "club.png", mime: "image/png", data: PNG_1PX });
@@ -496,11 +496,10 @@ describe("the social worker's flow", () => {
     const view = (await request(app).get(`/api/public/join/${token}`)).body.data.view;
     expect(view.documents.find((d) => d.key === "psychosocial")).toMatchObject({ thumb: true, mime: "image/png", size: Buffer.from(PNG_1PX, "base64").length });
     expect(view.documents.find((d) => d.key === "socialClub")).toMatchObject({ thumb: false });
-    // the person's own view of the files behind the link
+    // the person's own view of the files behind the link: signed reads too
     const mine = await request(app).get(`/api/public/join/${token}/documents/psychosocial/file`);
-    expect(mine.status).toBe(200);
-    expect(mine.headers["content-type"]).toMatch(/image\/png/);
-    expect((await request(app).get(`/api/public/join/${token}/documents/psychosocial/thumb`)).status).toBe(200);
+    expect(bucket.mimeOf(mine)).toBe("image/png");
+    expect(bucket.keyOf(await request(app).get(`/api/public/join/${token}/documents/psychosocial/thumb`))).toMatch(/\.thumb\.jpg$/);
     expect((await request(app).get(`/api/public/join/${token}/documents/psychiatric/file`)).status).toBe(404);
     expect((await request(app).get(`/api/public/join/nope/documents/psychosocial/file`)).status).toBe(404);
   });
@@ -544,8 +543,14 @@ describe("the social worker's flow", () => {
     expect(w.parties.find((p) => p.key === "other").label).toBe("מרפאה");
     expect(w.witness).toMatchObject({ firstName: "ייטב", role: "עו\"ס" });
     expect(w.signatures).toEqual({ student: true, witness: true, guardian: false });
+    expect(w.signatureKeys).toBeUndefined();
     expect(w.file).toBe(row.file.stored);
-    expect((await Waiver.findById(w._id)).signatures.student.length).toBe(Buffer.from(PNG_1PX, "base64").length);
+    // the signatures themselves sit in the bucket under the agreement's id
+    const saved = await Waiver.findById(w._id);
+    expect(saved.signatureKeys.student).toBe(`waiver/${w._id}/student.png`);
+    expect(saved.signatureKeys.witness).toBe(`waiver/${w._id}/witness.png`);
+    expect(saved.signatureKeys.guardian).toBeUndefined();
+    expect((await storage.getBuffer(saved.signatureKeys.student)).length).toBe(Buffer.from(PNG_1PX, "base64").length);
     // the record row
     const act = res.body.data.activity;
     expect(act.kind).toBe("waiver");
@@ -557,29 +562,24 @@ describe("the social worker's flow", () => {
     expect(got.status).toBe(200);
     expect(got.body.data.waiver._id).toBe(w._id);
     const file = await request(app).get(`/api/intakes/${intakeId}/documents/waiver/file`);
-    expect(file.status).toBe(200);
-    expect(file.headers["content-type"]).toMatch(/application\/pdf/);
-    expect((await request(app).get(`/api/intakes/${intakeId}/documents/waiver/thumb`)).status).toBe(200);
+    expect(bucket.mimeOf(file)).toBe("application/pdf");
+    expect(bucket.keyOf(await request(app).get(`/api/intakes/${intakeId}/documents/waiver/thumb`))).toMatch(/\.thumb\.jpg$/);
   });
 
-  it("serves a stored file to staff (from the database) and lists the record by person", async () => {
+  it("answers the staff's plain file link with a signed read of the bucket and lists the record by person", async () => {
     const { token, intakeId } = (await submit({})).body.data;
     await request(app).post(`/api/public/join/${token}/documents`).send({ key: "psychosocial", fileName: "ps.png", mime: "image/png", data: PNG_1PX });
     const file = await request(app).get(`/api/intakes/${intakeId}/documents/psychosocial/file`);
-    expect(file.status).toBe(200);
-    expect(file.headers["content-type"]).toMatch(/image\/png/);
-    expect(file.body.length).toBe(Buffer.from(PNG_1PX, "base64").length);
+    const key = bucket.keyOf(file);
+    expect(bucket.mimeOf(file)).toBe("image/png");
+    expect((await bucket.bytesOf(file)).length).toBe(Buffer.from(PNG_1PX, "base64").length);
     expect((await request(app).get(`/api/intakes/${intakeId}/documents/psychiatric/file`)).status).toBe(404);
-    // the bytes are revalidated every time: a 304 while unchanged, fresh bytes once the file is replaced
-    expect(file.headers["cache-control"]).toBe("private, no-cache");
-    const etag = file.headers.etag;
-    expect(etag).toBeTruthy();
-    expect((await request(app).get(`/api/intakes/${intakeId}/documents/psychosocial/file`).set("If-None-Match", etag)).status).toBe(304);
-    await new Promise((r) => setTimeout(r, 5)); // a later upload time
+    // the redirect is never cached: a replaced file is a new object under a new key, the old one is gone
+    expect(file.headers["cache-control"]).toBe("private, no-store");
     await request(app).post(`/api/public/join/${token}/documents`).send({ key: "psychosocial", fileName: "ps2.png", mime: "image/png", data: PNG_1PX });
-    const again = await request(app).get(`/api/intakes/${intakeId}/documents/psychosocial/file`).set("If-None-Match", etag);
-    expect(again.status).toBe(200);
-    expect(again.headers.etag).not.toBe(etag);
+    const again = await request(app).get(`/api/intakes/${intakeId}/documents/psychosocial/file`);
+    expect(bucket.keyOf(again)).not.toBe(key);
+    expect(storage.has(key)).toBe(false);
     const intake = await Intake.findById(intakeId);
     const byPerson = await request(app).get(`/api/intakes/person/${intake.person}`);
     expect(byPerson.status).toBe(200);

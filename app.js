@@ -29,17 +29,18 @@ const app = express();
 // (the session cookie is marked Secure on https).
 app.set("trust proxy", 1);
 
-// Global middleware. ONE body limit for the whole API: uploads (intake
-// documents, book covers) travel as base64 in JSON - 8MB of file is ~11MB
-// of body - and a router-level express.json() never gets to raise the
-// limit once this global one has already refused the body (that was the
-// "Something went wrong" of 2026-09-17 on every real photo).
+// Global middleware. ONE body limit for the whole API (a router-level
+// express.json() never gets to raise it once this one refused the body -
+// the "Something went wrong" of 2026-09-17). Since the S3 move (2026-10-26)
+// no file travels in JSON - the browser PUTs it to the bucket - so 2MB is
+// plenty: the biggest body left is a signed waiver's three PNG signatures
+// (≤ 256KB each, base64) plus the form.
 app.use(cors());
 // Every answer leaves gzipped - the JSON slices and the client bundle alike. Nothing was compressed
 // before (Eden, 2026-10-25: שמרית's phone took "הרבה מאוד זמן לטעון"): her boot was ~2MB of JSON over
 // the air plus a 2.4MB bundle after every deploy; repeated shapes squeeze five to eight times.
 app.use(compression());
-app.use(express.json({ limit: "16mb" }));
+app.use(express.json({ limit: "2mb" }));
 
 // Request logging - colourised "dev" format. Enabled only in development;
 // kept off for production (use combined+file there) and tests (keeps Jest

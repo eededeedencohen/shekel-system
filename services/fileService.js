@@ -13,8 +13,8 @@
  *                    through the family's own function - the previous
  *                    file of that slot goes, the pending tag goes;
  *   3. signedRead    may the caller see this file? → a signed GET
- *                    (60 seconds); legacy rows (bytes still in the
- *                    database) answer the app's streaming route instead;
+ *                    (60 seconds) - the bucket is the only place bytes
+ *                    live since stage 3 (2026-10-26);
  *   4. remove        a pending row (an upload that failed), or a ready
  *                    file through the family's own removal.
  *
@@ -321,36 +321,14 @@ async function assertRead(actor, row) {
   await access.assert(actor.req, row);
 }
 
-/**
- * A legacy row (bytes still in the database) read behind a public link:
- * the link's own content route, which needs no session (the staff route
- * /api/files/:id/bytes would answer 401 there).
- */
-async function legacyPublicUrl(actor, row, thumb) {
-  const t = actor.token;
-  if (t.kind === "intake") return `/api/public/join/${encodeURIComponent(t.link?.token || t.intake.landing?.token || "")}/documents/${row.owner?.slot}/${thumb ? "thumb" : "file"}`;
-  if (t.kind === "supplier") return `/api/public/supplier/${encodeURIComponent(t.supplier.link?.token || "")}/files/${row.owner?.slot}/${thumb ? "thumb" : "file"}`;
-  if (t.kind === "invoiceRequest") {
-    const Invoice = require("../models/Invoice");
-    const inv = await Invoice.findOne({ file: row._id }).select("_id").lean();
-    return inv ? `/api/public/invoices/${encodeURIComponent(t.request.token)}/invoices/${inv._id}/image${thumb ? "?thumb=1" : ""}` : null;
-  }
-  return null;
-}
-
-/** Step 3. → { url, expiresAt, legacy, mime, name, size } for the file or its thumbnail. */
+/** Step 3. → { url, expiresAt, mime, name, size } for the file or its thumbnail. */
 async function signedRead({ actor, fileId, thumb = false, download = false }) {
-  const row = isId(fileId) && (await StoredFile.findById(fileId).select("-data -thumb"));
+  const row = isId(fileId) && (await StoredFile.findById(fileId));
   if (!row) throw AppError.of("NOT_FOUND", 404, "קובץ");
   if (row.status !== "ready") throw AppError.of("FILE_NOT_READY", 409);
   await assertRead(actor, row);
   const signed = await storedFiles.signedRead(row, { thumb, download });
-  if (!signed) throw AppError.of("NOT_FOUND", 404, "תמונה מוקטנת");
-  if (signed.legacy && actor.token) {
-    const url = await legacyPublicUrl(actor, row, thumb);
-    if (!url) throw AppError.of("NOT_FOUND", 404, "קובץ");
-    signed.url = url;
-  }
+  if (!signed) throw AppError.of("NOT_FOUND", 404, thumb ? "תמונה מוקטנת" : "קובץ");
   return signed;
 }
 
@@ -358,7 +336,7 @@ async function signedRead({ actor, fileId, thumb = false, download = false }) {
 async function signedReads({ actor, ids, thumb = false }) {
   const out = {};
   const wanted = [...new Set((ids || []).map(String).filter(isId))].slice(0, 200);
-  const rows = await StoredFile.find({ _id: { $in: wanted }, status: "ready" }).select("-data -thumb");
+  const rows = await StoredFile.find({ _id: { $in: wanted }, status: "ready" });
   for (const row of rows) {
     try {
       await assertRead(actor, row);
@@ -371,18 +349,9 @@ async function signedReads({ actor, ids, thumb = false }) {
   return out;
 }
 
-/** The legacy bytes of a row the caller may read (the streaming route for files not yet in the bucket). */
-async function legacyBytes({ actor, fileId, thumb = false }) {
-  const row = isId(fileId) && (await StoredFile.findById(fileId));
-  if (!row) throw AppError.of("NOT_FOUND", 404, "קובץ");
-  await assertRead(actor, row);
-  if (thumb) return row.thumb?.length ? { mime: "image/jpeg", data: row.thumb, name: `${row.name || "file"}.thumb.jpg` } : null;
-  return row.data?.length ? { mime: row.mime, data: row.data, name: row.name } : null;
-}
-
 /** Step 4. A pending row goes with its objects; a ready one goes the family's way. */
 async function remove({ actor, fileId }) {
-  const row = isId(fileId) && (await StoredFile.findById(fileId).select("-data -thumb"));
+  const row = isId(fileId) && (await StoredFile.findById(fileId));
   if (!row) throw AppError.of("NOT_FOUND", 404, "קובץ");
   const rule = ruleOf(row.family);
   await rule.begin(actor, { id: row.owner?.id, slot: row.owner?.slot });
@@ -390,4 +359,4 @@ async function remove({ actor, fileId }) {
   return rule.detach(row, { actor });
 }
 
-module.exports = { FAMILY_RULES, beginUpload, confirmUpload, signedRead, signedReads, legacyBytes, remove };
+module.exports = { FAMILY_RULES, beginUpload, confirmUpload, signedRead, signedReads, remove };

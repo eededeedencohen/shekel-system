@@ -10,6 +10,7 @@ const app = require("../../../app");
 const Invoice = require("../../../models/Invoice");
 const InvoiceLesson = require("../../../models/InvoiceLesson");
 const StoredFile = require("../../../models/StoredFile");
+const bucket = require("../../helpers/bucket");
 const { makeTeacher, makeStudent, makeCycle, makeLesson } = require("../../helpers/factories");
 
 const PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
@@ -88,16 +89,18 @@ describe("POST /api/invoices", () => {
     const pdf = await post({ ...body, imageData: "data:application/pdf;base64,JVBERi0xLjQKJeLjz9MKMSAwIG9iago8PD4+CmVuZG9iagp0cmFpbGVyCjw8L1Jvb3QgMSAwIFI+Pg==", imageName: "inv.pdf", thumb: IMAGE });
     expect(pdf.status).toBe(201);
     expect(pdf.body.data.invoice.file).toMatchObject({ name: "inv.pdf", mime: "application/pdf", thumb: true });
+    // the plain links answer with a signed read of the bucket
     const file = await request(app).get(`/api/invoices/${pdf.body.data.invoice._id}/image`);
-    expect(file.headers["content-type"]).toMatch(/application\/pdf/);
+    expect(bucket.mimeOf(file)).toBe("application/pdf");
     const thumb = await request(app).get(`/api/invoices/${pdf.body.data.invoice._id}/image?thumb=1`);
-    expect(thumb.status).toBe(200);
-    expect(thumb.headers["content-type"]).toMatch(/image\/jpeg/); // the uploader's small JPEG
-    expect(thumb.body.length).toBe(Buffer.from(PNG_B64, "base64").length);
-    // a picture without a thumbnail answers with itself; a PDF without one is not found
+    expect(bucket.keyOf(thumb)).toMatch(/\.thumb\.jpg$/); // the uploader's small JPEG
+    expect((await bucket.bytesOf(thumb)).length).toBe(Buffer.from(PNG_B64, "base64").length);
+    // a picture without a thumbnail answers with itself
     const pic = (await post({ ...body, lessons: [lessons[1]._id], imageData: IMAGE })).body.data.invoice;
     expect(pic.file.thumb).toBe(false);
-    expect((await request(app).get(`/api/invoices/${pic._id}/image?thumb=1`)).headers["content-type"]).toMatch(/image\/png/);
+    const self = await request(app).get(`/api/invoices/${pic._id}/image?thumb=1`);
+    expect(bucket.keyOf(self)).not.toMatch(/\.thumb\.jpg$/);
+    expect(bucket.mimeOf(self)).toBe("image/png");
     expect((await post({ ...body, imageData: "data:text/plain;base64,aGk=" })).body.code).toBe("INVOICE_IMAGE_INVALID");
     expect((await post({ ...body, imageData: "hello" })).body.code).toBe("INVOICE_IMAGE_INVALID");
     expect((await post(body)).status).toBe(400);
@@ -124,9 +127,8 @@ describe("reading invoices", () => {
     expect(list.body.data.invoices.map((i) => i._id)).toEqual([b._id, a._id]);
 
     const img = await request(app).get(`/api/invoices/${a._id}/image`);
-    expect(img.status).toBe(200);
-    expect(img.headers["content-type"]).toMatch(/image\/png/);
-    expect(img.body.length).toBe(Buffer.from(PNG_B64, "base64").length);
+    expect(bucket.mimeOf(img)).toBe("image/png");
+    expect((await bucket.bytesOf(img)).length).toBe(Buffer.from(PNG_B64, "base64").length);
 
     const mine = await request(app).get(`/api/invoices/lessons?teacher=${teacher._id}`);
     expect(mine.status).toBe(200);

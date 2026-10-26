@@ -14,14 +14,12 @@
  *  - Books are soft-deleted, never while on loan; re-adding a deleted
  *    barcode restores the record (its loan history comes back with it).
  *
- * Covers live IN the book record (`cover.data`, see models/Book) since
- * 2026-09-22 - the deploy wipes the disk. UPLOAD_DIR/real/books/ (the
- * legacy layout, written before the worlds were retired) is only read by
- * the migration and by the cover route's legacy fallback.
+ * A cover is a `files` row in the bucket (`cover.file`, see models/Book,
+ * since 2026-10-26): the page uploads one straight to the bucket, a cover
+ * the lookup downloaded or the page sent as a data URL goes up from here
+ * (storedFiles.createFromBuffer).
  */
 
-const fs = require("fs");
-const path = require("path");
 const Book = require("../models/Book");
 const Loan = require("../models/Loan");
 const { Person } = require("../models/Person");
@@ -38,28 +36,8 @@ const COVER_MIME_EXT = { "image/jpeg": "jpg", "image/jpg": "jpg", "image/pjpeg":
 const MAX_COVER_BYTES = lookup.MAX_COVER_BYTES;
 
 /* ───────────────────────── files ───────────────────────── */
-
-function uploadRoot() {
-  return process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads");
-}
-const coverDir = () => path.join(uploadRoot(), "real", "books");
-/** Absolute path of a LEGACY on-disk cover (null when the record has none). */
-function coverPath(book) {
-  if (!book?.cover?.storedName) return null;
-  return path.join(coverDir(), book.cover.storedName);
-}
-/** The cover's bytes: the record's own, else the legacy file if it still exists (a bucket cover has none here - the route redirects). */
-function coverBuffer(book) {
-  // (a mongoose Buffer IS a Buffer - never reach for `.buffer`, that is the whole shared pool)
-  if (book?.cover?.data?.length) return Buffer.isBuffer(book.cover.data) ? book.cover.data : Buffer.from(book.cover.data);
-  const p = coverPath(book);
-  if (p && fs.existsSync(p)) return fs.readFileSync(p);
-  return null;
-}
-/** Everything the cover was - the bucket's row, the legacy disk file, the inline bytes - goes. */
+/** The cover's row and its object go. */
 async function removeCover(book) {
-  const p = coverPath(book);
-  if (p && fs.existsSync(p)) fs.unlinkSync(p);
   if (book?.cover?.file) await storedFiles.destroy(book.cover.file);
   book.cover = undefined;
 }
@@ -68,12 +46,13 @@ function acceptCover(mime) {
   const m = String(mime || "").toLowerCase().split(";")[0].trim();
   return COVER_MIME_EXT[m] ? { mime: m, ext: COVER_MIME_EXT[m] } : null;
 }
-/** Validate + store a cover in the record (legacy: the bytes inline). */
+/** Validate + store a cover the server holds (a data URL from the page, a download the lookup made): to the bucket, never inline. */
 async function saveCover(book, cover) {
   const mime = String(cover?.mime || "").toLowerCase();
   if (!COVER_MIME_EXT[mime] || !cover.buffer?.length || cover.buffer.length > MAX_COVER_BYTES) throw AppError.of("COVER_INVALID", 400);
   await removeCover(book);
-  book.cover = { data: cover.buffer, mime, size: cover.buffer.length, savedAt: new Date() };
+  const file = await storedFiles.createFromBuffer({ name: `${book.title || "cover"}.${COVER_MIME_EXT[mime]}`, mime, buffer: cover.buffer, family: "library", owner: { kind: "book", id: book._id } });
+  book.cover = { file: file._id, mime, size: cover.buffer.length, savedAt: new Date() };
 }
 /** A cover uploaded straight to the bucket (fileService, family "library") and confirmed becomes the book's. */
 async function saveCoverFile(book, fileId) {
@@ -286,14 +265,12 @@ async function returnBook({ loanId, by, note }) {
 }
 
 module.exports = {
-  uploadRoot,
-  coverPath,
-  coverBuffer,
   parseDataUrl,
   saveCover,
   saveCoverFile,
   acceptCover,
   MAX_COVER_BYTES,
+  removeCover,
   parseDueDate,
   assertDueDate,
   startOfToday,

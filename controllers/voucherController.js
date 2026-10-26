@@ -9,7 +9,6 @@ const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
 const culture = require("../services/cultureService");
 const voucherImages = require("../services/voucherImageService");
-const { notModified } = require("../utils/sendFile");
 const storedFiles = require("../services/storedFiles");
 
 const POP = [
@@ -89,17 +88,13 @@ exports.fetchImage = catchAsync(async (req, res, next) => {
   res.type(got.mime).send(got.buffer);
 });
 
-/** GET /api/vouchers/:id/image[?thumb=1] - the picture of the place (a plain link) */
+/** GET /api/vouchers/:id/image[?thumb=1] - the picture of the place (a plain link): a 302 to a signed read (the thumbnail, else the picture itself) */
 exports.getImage = catchAsync(async (req, res, next) => {
   const thumb = req.query.thumb === "1";
-  // a picture already in the bucket: a signed link (the thumbnail, else the picture itself)
   const v = await Voucher.findOne({ _id: req.params.id }).select("image").lean();
   if (v?.image && (await storedFiles.redirectIfRemote(req, res, v.image, { thumb }))) return;
   if (v?.image && thumb && (await storedFiles.redirectIfRemote(req, res, v.image))) return;
-  const got = await culture.voucherImageOf(req.params.id, thumb);
-  if (!got) return next(AppError.of("NOT_FOUND", 404, "תמונת השובר"));
-  if (notModified(req, res, got.tag)) return;
-  res.type(got.mime).send(got.data);
+  next(AppError.of("NOT_FOUND", 404, "תמונת השובר"));
 });
 
 /** PATCH /api/vouchers/:id/image - body { by*, imageData(+imageThumb, imageName) | imageUrl | imageFrom | remove: true } */

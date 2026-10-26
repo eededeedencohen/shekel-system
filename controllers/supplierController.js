@@ -11,7 +11,6 @@
 const Supplier = require("../models/Supplier");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
-const { notModified } = require("../utils/sendFile");
 const suppliers = require("../services/supplierService");
 const files = require("../services/fileService");
 const storedFiles = require("../services/storedFiles");
@@ -74,30 +73,16 @@ exports.remove = catchAsync(async (req, res) => {
   res.status(204).json({ status: "success", data: null });
 });
 
-/* ───────────────────────── stored bytes (staff and public) ───────────────────────── */
+/* ───────────────────────── the stored files (staff and public): plain links, a 302 to a signed read of the bucket ───────────────────────── */
 
 async function sendFile(req, res, s) {
   const row = suppliers.rowOf(s, req.params.key);
-  if (!row?.file?.stored) throw AppError.of("NOT_FOUND", 404, "קובץ");
-  if (await storedFiles.redirectIfRemote(req, res, row.file.stored)) return;
-  if (notModified(req, res, `${row.file.stored}-${row.file.uploadedAt ? new Date(row.file.uploadedAt).getTime() : 0}`)) return;
-  const file = await suppliers.fileOf(row);
-  if (!file) throw AppError.of("NOT_FOUND", 404, "קובץ");
-  res.type(file.mime || "application/octet-stream");
-  const disposition = suppliers.INLINE_MIMES.has(file.mime) ? "inline" : "attachment";
-  res.setHeader("Content-Disposition", `${disposition}; filename*=UTF-8''${encodeURIComponent(file.name || req.params.key)}`);
-  res.send(file.data);
+  if (!(await storedFiles.redirectIfRemote(req, res, row?.file?.stored))) throw AppError.of("NOT_FOUND", 404, "קובץ");
 }
 
 async function sendThumb(req, res, s) {
   const row = suppliers.rowOf(s, req.params.key);
-  if (!row?.file?.stored) throw AppError.of("NOT_FOUND", 404, "תמונה מוקטנת");
-  if (await storedFiles.redirectIfRemote(req, res, row.file.stored, { thumb: true })) return;
-  if (notModified(req, res, `${row.file.stored}-${row.file.uploadedAt ? new Date(row.file.uploadedAt).getTime() : 0}-thumb`)) return;
-  const thumb = await suppliers.thumbOf(row);
-  if (!thumb) throw AppError.of("NOT_FOUND", 404, "תמונה מוקטנת");
-  res.type(thumb.mime);
-  res.send(thumb.data);
+  if (!(await storedFiles.redirectIfRemote(req, res, row?.file?.stored, { thumb: true }))) throw AppError.of("NOT_FOUND", 404, "תמונה מוקטנת");
 }
 
 exports.staffFile = catchAsync(async (req, res) => sendFile(req, res, await load(req)));

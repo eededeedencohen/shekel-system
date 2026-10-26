@@ -1,14 +1,14 @@
 /**
  * @file personDocumentService - a person's own papers (PersonDocument):
  * a teacher's syllabus and whatever else the staff files on them. The
- * bytes go to `files` (StoredFile): since 2026-10-26 straight to the
- * bucket (fileService → `attach`), before that as base64 (`add`). The
- * row carries the facts the page lists.
+ * file is a `files` row in the bucket (StoredFile): uploaded by the
+ * browser (fileService → `attach`), or sent as base64 by an old tab
+ * (`add`, which puts the bytes in the bucket itself). The row carries
+ * the facts the page lists.
  * @module services/personDocumentService
  */
 
 const PersonDocument = require("../models/PersonDocument");
-const StoredFile = require("../models/StoredFile");
 const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
 const { PERSON_DOCUMENT_KIND_KEYS } = require("../utils/domain");
@@ -49,7 +49,7 @@ async function assertPerson(personId) {
   return person;
 }
 
-/** Legacy path: base64 in → a `files` row in the database → the document row. */
+/** The base64 road (old tabs, the tests): the bytes go to the bucket, then the document row. */
 async function add({ personId, kind, label, fileName, mime, data, thumb, by, note }) {
   await assertPerson(personId);
   const k = PERSON_DOCUMENT_KIND_KEYS.includes(kind) ? kind : "other";
@@ -58,7 +58,8 @@ async function add({ personId, kind, label, fileName, mime, data, thumb, by, not
   if (!fk || buffer.length === 0 || buffer.length > MAX_FILE_BYTES) throw AppError.of("PERSON_DOCUMENT_INVALID", 400);
   const thumbBuf = parseThumb(thumb);
   const name = clean(fileName, 120) || `${k}.${fk.ext}`;
-  const stored = await StoredFile.create({ name, mime: fk.mime, size: buffer.length, data: buffer, ...(thumbBuf && { thumb: thumbBuf }), family: "people", owner: { kind: "person", id: personId }, uploadedBy: { label: clean(by, 80) } });
+  // the bytes go to the bucket from here (never to the database)
+  const stored = await storedFiles.createFromBuffer({ name, mime: fk.mime, buffer, thumb: thumbBuf, family: "people", owner: { kind: "person", id: personId }, uploadedBy: { label: clean(by, 80) } });
   return attach({ personId, stored, kind: k, label, note, by });
 }
 
@@ -93,16 +94,4 @@ async function remove({ personId, docId }) {
   await PersonDocument.deleteOne({ _id: doc._id });
 }
 
-/** The bytes → { mime, name, data } | null (legacy rows; a bucket file is answered by a redirect in the controller). */
-async function fileOf(doc) {
-  const f = await StoredFile.findById(doc.file).select("name mime data");
-  return f && f.data?.length ? { mime: doc.mime || f.mime, name: doc.name || f.name, data: f.data } : null;
-}
-
-async function thumbOf(doc) {
-  if (!doc.thumb) return null;
-  const f = await StoredFile.findById(doc.file).select("thumb");
-  return f?.thumb?.length ? { mime: "image/jpeg", data: f.thumb } : null;
-}
-
-module.exports = { list, add, attach, assertPerson, load, remove, fileOf, thumbOf, INLINE_MIMES };
+module.exports = { list, add, attach, assertPerson, load, remove, INLINE_MIMES };

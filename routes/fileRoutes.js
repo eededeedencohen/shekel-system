@@ -15,7 +15,6 @@ router.post("/upload-url", c.uploadUrl);
 router.post("/urls", c.urls);
 router.post("/:id/confirm", c.confirm);
 router.get("/:id/url", c.url);
-router.get("/:id/bytes", c.bytes);
 router.delete("/:id", c.remove);
 
 module.exports = router;

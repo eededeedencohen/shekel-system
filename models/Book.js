@@ -9,22 +9,16 @@
  *
  * The details come from the scan flow (services/bookLookupService pulls
  * title / author / summary / cover from booknet, then Google Books) or
- * were typed by hand - `source` says which. The cover image lives IN the
- * record (`cover.data`, 2026-09-22): the server's disk is wiped on every
- * deploy, so a file on it was gone within days (Eden: "שהתמונות יישמרו").
- * Covers are small (the page shrinks a photo to ~700px before sending;
- * booknet's are ~40KB), and a cover up to INLINE_COVER_BYTES travels with
- * the book itself as `coverData` (a data URL) in every JSON - the client
- * keeps it in its boot state and shows it at once, no second request.
- * Bigger ones are fetched from GET /books/:id/cover. Books are
- * soft-deleted so old loans keep their title.
+ * were typed by hand - `source` says which. The cover image is a file in
+ * the bucket (`cover.file` → models/StoredFile, since 2026-10-26; before
+ * that the bytes sat in the record, and before 2026-09-22 on the server's
+ * disk, which the deploy wiped - Eden: "שהתמונות יישמרו"). The client
+ * reads it through a signed link (lib/fileCache). Books are soft-deleted
+ * so old loans keep their title.
  */
 
 const mongoose = require("mongoose");
 const { BOOK_SOURCES } = require("../utils/domain");
-
-/** A cover this small is inlined into the book's JSON. */
-const INLINE_COVER_BYTES = 96 * 1024;
 
 const bookSchema = new mongoose.Schema(
   {
@@ -42,12 +36,9 @@ const bookSchema = new mongoose.Schema(
     productUrl: { type: String, trim: true },
     /** The remote cover image (kept for re-download / reference). */
     imageUrl: { type: String, trim: true },
-    /** The stored cover: a `files` row in the bucket (since 2026-10-26), else the image bytes themselves (legacy, see the header). */
+    /** The stored cover: a `files` row in the bucket and its facts. */
     cover: {
       file: { type: mongoose.Schema.Types.ObjectId, ref: "StoredFile" },
-      data: { type: Buffer },
-      /** Legacy (until scripts/migrateCoversToDb.js ran): the file's name under UPLOAD_DIR/real/books/ (written before the worlds were retired). */
-      storedName: { type: String, trim: true },
       mime: { type: String, trim: true },
       size: { type: Number, min: 0 },
       savedAt: { type: Date },
@@ -65,22 +56,4 @@ const bookSchema = new mongoose.Schema(
 bookSchema.index({ barcode: 1 }, { unique: true });
 bookSchema.index({ deletedAt: 1, title: 1 });
 
-/**
- * JSON never carries the raw bytes: a small cover becomes `coverData`
- * (a data URL, ready for <img src>), a big one is left to the cover route.
- */
-function stripCover(doc, ret) {
-  const c = ret.cover;
-  if (c && c.data) {
-    const buf = Buffer.isBuffer(c.data) ? c.data : Buffer.from(c.data);
-    if (buf.length && buf.length <= INLINE_COVER_BYTES && c.mime) ret.coverData = `data:${c.mime};base64,${buf.toString("base64")}`;
-    delete c.data;
-  }
-  return ret;
-}
-bookSchema.set("toJSON", { transform: stripCover });
-bookSchema.set("toObject", { transform: stripCover });
-
-const Book = mongoose.model("Book", bookSchema);
-Book.INLINE_COVER_BYTES = INLINE_COVER_BYTES;
-module.exports = Book;
+module.exports = mongoose.model("Book", bookSchema);

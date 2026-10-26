@@ -7,7 +7,6 @@
 
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/AppError");
-const { notModified } = require("../utils/sendFile");
 const rounds = require("../services/invoiceRoundService");
 const { lensOf } = require("../services/lensService");
 const files = require("../services/fileService");
@@ -139,14 +138,12 @@ exports.publicFileUrl = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: out });
 });
 
+/** A plain link to an invoice's file behind the link: a 302 to a signed read (the thumbnail, else the picture itself). */
 exports.publicImage = catchAsync(async (req, res) => {
   const thumb = req.query.thumb === "1";
   const r = await resolve(req, { readWhenDone: true });
   const inv = await rounds.invoiceOfRequest(r, req.params.iid);
   if (await storedFiles.redirectIfRemote(req, res, inv.file, { thumb })) return;
   if (thumb && (await storedFiles.redirectIfRemote(req, res, inv.file))) return;
-  const file = await rounds.imageOf(r, req.params.iid, thumb);
-  if (notModified(req, res, `${file._id}-${file.updatedAt ? new Date(file.updatedAt).getTime() : 0}`)) return;
-  res.type(file.mime);
-  res.send(file.data);
+  throw AppError.of("NOT_FOUND", 404, thumb ? "תמונה מוקטנת" : "קובץ החשבונית");
 });

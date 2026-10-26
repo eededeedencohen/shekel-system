@@ -133,8 +133,8 @@ async function shape(invoices) {
   const requestIds = [...new Set(invoices.map((i) => i.request).filter(Boolean).map(String))];
   const [rows, files, requests] = await Promise.all([
     InvoiceLesson.find({ invoice: { $in: ids } }).select("invoice lesson").lean(),
-    // whether a thumbnail exists (in the bucket, or legacy bytes), without pulling any bytes
-    StoredFile.aggregate([{ $match: { _id: { $in: invoices.map((i) => i.file) } } }, { $project: { name: 1, mime: 1, size: 1, storageKey: 1, thumb: { $or: [{ $gt: [{ $strLenCP: { $ifNull: ["$thumbKey", ""] } }, 0] }, { $gt: [{ $binarySize: { $ifNull: ["$thumb", ""] } }, 0] }] } } }]),
+    // the file's facts and whether it has a thumbnail in the bucket
+    StoredFile.aggregate([{ $match: { _id: { $in: invoices.map((i) => i.file) } } }, { $project: { name: 1, mime: 1, size: 1, storageKey: 1, thumb: { $gt: [{ $strLenCP: { $ifNull: ["$thumbKey", ""] } }, 0] } } }]),
     requestIds.length ? InvoiceRequest.find({ _id: { $in: requestIds } }).select("completedAt round").lean() : [],
   ]);
   const roundIds = [...new Set(requests.map((r) => String(r.round)))];
@@ -185,21 +185,6 @@ async function getInvoice({ invoiceId }) {
   return (await shape([invoice.toObject()]))[0];
 }
 
-/**
- * The bytes of the file (and their type); with `thumb` the small JPEG the
- * uploader rendered - an image without one answers with itself, a PDF
- * without one is not found (the page shows the PDF glyph).
- */
-async function imageOf({ invoiceId, thumb = false }) {
-  const invoice = await loadInvoice(invoiceId);
-  const file = await StoredFile.findOne({ _id: invoice.file });
-  if (!file) throw AppError.of("NOT_FOUND", 404, "קובץ החשבונית");
-  if (!thumb) return file;
-  if (file.thumb?.length) return { _id: file._id, updatedAt: file.updatedAt, mime: "image/jpeg", data: file.thumb };
-  if (file.mime.startsWith("image/")) return file;
-  throw AppError.of("NOT_FOUND", 404, "תמונה מוקטנת");
-}
-
 /** The duplicate-key error of the unique lesson index → the typed 409. */
 const billedTwice = (e) => (e && e.code === 11000 ? AppError.of("INVOICE_LESSON_BILLED", 409) : e);
 
@@ -223,31 +208,32 @@ async function createInvoice({ teacherId, lessonIds, imageData, imageName, thumb
   const ids = await assertLessonsOfTeacher({ teacherId, lessonIds, cycleIds });
   const image = stored ? null : parseImage(imageData);
   const thumbBuf = stored ? null : parseThumb(thumb);
-  const invoiceId = await withTxn(async (session) => {
-    const opts = session ? { session } : {};
-    let fileId = null;
-    let newId = null;
-    try {
-      let file = stored;
-      if (!file) {
-        [file] = await StoredFile.create([{ name: imageName || undefined, mime: image.mime, size: image.buffer.length, data: image.buffer, ...(thumbBuf && { thumb: thumbBuf }), family: "invoices", owner: { kind: "person", id: teacherId }, uploadedBy: { label: by } }], opts);
-        fileId = file._id;
+  // the legacy base64 road: the bytes go to the bucket from here (never to the database); a refused invoice takes its file back
+  const file = stored || (await storedFiles.createFromBuffer({ name: imageName || undefined, mime: image.mime, buffer: image.buffer, thumb: thumbBuf, family: "invoices", owner: { kind: "person", id: teacherId }, uploadedBy: { label: by } }));
+  let invoiceId;
+  try {
+    invoiceId = await withTxn(async (session) => {
+      const opts = session ? { session } : {};
+      let newId = null;
+      try {
+        const [invoice] = await Invoice.create([{ teacher: teacherId, file: file._id, uploadedBy: by, note: note || undefined, request: requestId || null }], opts);
+        newId = invoice._id;
+        await InvoiceLesson.insertMany(ids.map((lesson) => ({ invoice: invoice._id, lesson })), { ...opts, ordered: true });
+        return invoice._id;
+      } catch (e) {
+        // no transaction (tests): take back what was written before the refusal
+        if (!session && newId) {
+          await InvoiceLesson.deleteMany({ invoice: newId });
+          await Invoice.deleteOne({ _id: newId });
+        }
+        throw billedTwice(e);
       }
-      const [invoice] = await Invoice.create([{ teacher: teacherId, file: file._id, uploadedBy: by, note: note || undefined, request: requestId || null }], opts);
-      newId = invoice._id;
-      await InvoiceLesson.insertMany(ids.map((lesson) => ({ invoice: invoice._id, lesson })), { ...opts, ordered: true });
-      return invoice._id;
-    } catch (e) {
-      // no transaction (tests): take back what was written before the refusal
-      if (!session) {
-        if (newId) await InvoiceLesson.deleteMany({ invoice: newId });
-        if (newId) await Invoice.deleteOne({ _id: newId });
-        if (fileId) await StoredFile.deleteOne({ _id: fileId });
-      }
-      throw billedTwice(e);
-    }
-  });
-  if (stored) await StoredFile.updateOne({ _id: stored._id }, { $set: { "owner.kind": "invoice", "owner.id": invoiceId } });
+    });
+  } catch (e) {
+    if (!stored) await storedFiles.destroy(file._id).catch(() => {});
+    throw e;
+  }
+  await StoredFile.updateOne({ _id: file._id }, { $set: { "owner.kind": "invoice", "owner.id": invoiceId } });
   return getInvoice({ invoiceId });
 }
 
@@ -296,7 +282,6 @@ module.exports = {
   listInvoices,
   getInvoice,
   visibleTo,
-  imageOf,
   createInvoice,
   updateInvoice,
   deleteInvoice,

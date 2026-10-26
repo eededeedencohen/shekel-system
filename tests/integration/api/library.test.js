@@ -4,18 +4,13 @@
  * (one copy per book, no Fri/Shabbat return days), soft delete + restore.
  */
 
-const fs = require("fs");
-const os = require("os");
-const path = require("path");
-
-// Covers go to a temp dir, never into server/uploads.
-process.env.UPLOAD_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "shekel-library-"));
-
 const request = require("supertest");
 const app = require("../../../app");
 const Loan = require("../../../models/Loan");
 const Book = require("../../../models/Book");
+const bucket = require("../../helpers/bucket");
 const lookup = require("../../../services/bookLookupService");
+const StoredFile = require("../../../models/StoredFile");
 const { makeStudent, makeBook } = require("../../helpers/factories");
 
 const PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
@@ -142,16 +137,17 @@ describe("POST /api/library/books", () => {
     expect(book.addedBy).toBe("נעה");
     expect(book.cover.mime).toBe("image/png");
     expect(book.cover.size).toBe(PNG.length);
-    // the bytes live in the record and a small cover rides inline with the book (never raw)
-    expect(book.cover.data).toBeUndefined();
-    expect(book.coverData).toBe(DATA_URL);
+    // the bytes went to the bucket: the book carries the file's id, never bytes
+    expect(book.cover.file).toBeTruthy();
+    expect(book.coverData).toBeUndefined();
     const listed = (await request(app).get("/api/library/books")).body.data.books.find((b) => b._id === book._id);
-    expect(listed.coverData).toBe(DATA_URL);
+    expect(listed.cover.file).toBe(book.cover.file);
+    expect((await StoredFile.findById(book.cover.file).lean()).storageKey).toMatch(new RegExp(`^library/${book._id}/`));
 
+    // the plain cover link answers with a signed read of the bucket
     const cover = await request(app).get(`/api/library/books/${book._id}/cover`);
-    expect(cover.status).toBe(200);
-    expect(cover.headers["content-type"]).toMatch(/image\/png/);
-    expect(Number(cover.headers["content-length"])).toBe(PNG.length);
+    expect(bucket.mimeOf(cover)).toBe("image/png");
+    expect((await bucket.bytesOf(cover)).length).toBe(PNG.length);
 
     const dupZero = await request(app).post("/api/library/books").send({ barcode: "036200054208", title: "כפול עם אפס" });
     expect(dupZero.status).toBe(409);
@@ -280,7 +276,8 @@ describe("DELETE + restore", () => {
     expect(up.body.data.book.title).toBe("ב");
     expect(up.body.data.book.year).toBe(2020);
     expect(up.body.data.book.cover?.mime).toBeUndefined();
-    expect(up.body.data.book.coverData).toBeUndefined();
+    expect(up.body.data.book.cover?.file).toBeUndefined();
+    expect(await StoredFile.countDocuments({ family: "library" })).toBe(0); // the cover's row and object went with it
     expect((await request(app).get(`/api/library/books/${id}/cover`)).status).toBe(404);
     expect((await request(app).patch(`/api/library/books/${id}`).send({ title: "" })).body.code).toBe("MISSING_FIELDS");
   });

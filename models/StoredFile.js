@@ -9,12 +9,13 @@
  * here too (`family`, `owner`), so an access check can start from the file.
  *
  * WHERE THE BYTES ARE (the S3 move, 2026-10-26, project-files/specs/
- * files-s3-plan.html): a new file lives in the private bucket under
- * `storageKey` (its thumbnail under `thumbKey`) and the row holds the
- * facts only; a file from before still carries `data` / `thumb` until the
- * migration script moved it. `status` is "pending" between the signed
- * upload and the server's confirmation (HeadObject: size and type), then
- * "ready". JSON never carries bytes.
+ * files-s3-plan.html): in the private bucket, under `storageKey` (the
+ * thumbnail under `thumbKey`) - the row holds the facts only. The last
+ * rows that carried bytes in the database were moved by
+ * scripts/migrateFilesToS3.js and the `data` / `thumb` fields are gone.
+ * `status` is "pending" between the signed upload and the server's
+ * confirmation (HeadObject: size and type), then "ready". JSON never
+ * carries bytes.
  */
 
 const mongoose = require("mongoose");
@@ -28,20 +29,12 @@ const storedFileSchema = new mongoose.Schema(
     name: { type: String, trim: true },
     mime: { type: String, required: true, trim: true },
     size: { type: Number, min: 0 },
-    /** Legacy: the bytes in the database (files from before the S3 move). */
-    data: { type: Buffer },
-    /**
-     * Legacy: a small JPEG of the file (≤ 256KB) the uploader rendered - an
-     * image shrunk, a PDF's first page - so a list can show what the file
-     * looks like without pulling the bytes (2026-10-11).
-     */
-    thumb: { type: Buffer },
     savedAt: { type: Date, default: Date.now },
 
-    /* ── the bucket (2026-10-26) ── */
+    /* ── the bucket ── */
     /** `<family>/<ownerId>/<uuid>` - not guessable, never derived from the name. */
     storageKey: { type: String, trim: true },
-    /** The thumbnail's key (`<storageKey>.thumb.jpg`), when the uploader sent one. */
+    /** The thumbnail's key (`<storageKey>.thumb.jpg`), when the uploader sent one (a JPEG ≤ 256KB: an image shrunk, a PDF's first page). */
     thumbKey: { type: String, trim: true },
     thumbSize: { type: Number, min: 0 },
     status: { type: String, enum: FILE_STATUSES, default: "ready" },
@@ -70,14 +63,6 @@ const storedFileSchema = new mongoose.Schema(
 storedFileSchema.index({ storageKey: 1 }, { unique: true, sparse: true });
 storedFileSchema.index({ family: 1, "owner.id": 1 });
 storedFileSchema.index({ status: 1, createdAt: 1 });
-
-function stripData(doc, ret) {
-  delete ret.data;
-  delete ret.thumb;
-  return ret;
-}
-storedFileSchema.set("toJSON", { transform: stripData });
-storedFileSchema.set("toObject", { transform: stripData });
 
 const StoredFile = mongoose.model("StoredFile", storedFileSchema);
 StoredFile.FAMILIES = FILE_FAMILIES;

@@ -6,9 +6,10 @@
  * כדי שאדע מתי כדאי לעשות אותם בתשלום". The database from `db.stats()` and
  * `$collStats` per collection against Atlas M0's 512MB; the bucket from
  * the `files` rows themselves (sizes the server verified at confirm - no
- * ListBucket permission needed; older versions in the recycle bin are not
- * counted, the page says so); and what still sits as bytes INSIDE the
- * database (the legacy rows the migration will move). Cached ten minutes.
+ * ListBucket permission needed; older versions in the recycle bin and the
+ * waiver signatures - a few KB each - are not counted). Since stage 3 of
+ * the S3 move (2026-10-26) no file bytes sit in the database at all.
+ * Cached ten minutes.
  */
 
 const mongoose = require("mongoose");
@@ -45,15 +46,9 @@ async function usage({ fresh = false } = {}) {
   const db = mongoose.connection.db;
   const stats = await db.stats();
   const collections = await collectionStats(db);
-  const [bucketRows, legacyRows] = await Promise.all([
-    StoredFile.aggregate([
-      { $match: { storageKey: { $exists: true, $ne: null } } },
-      { $group: { _id: "$family", files: { $sum: 1 }, bytes: { $sum: { $ifNull: ["$size", 0] } }, thumbBytes: { $sum: { $ifNull: ["$thumbSize", 0] } }, pending: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] } } } },
-    ]),
-    StoredFile.aggregate([
-      { $match: { data: { $exists: true, $ne: null } } },
-      { $group: { _id: "$family", files: { $sum: 1 }, bytes: { $sum: { $binarySize: "$data" } }, thumbBytes: { $sum: { $binarySize: { $ifNull: ["$thumb", ""] } } } } },
-    ]),
+  const bucketRows = await StoredFile.aggregate([
+    { $match: { storageKey: { $exists: true, $ne: null } } },
+    { $group: { _id: "$family", files: { $sum: 1 }, bytes: { $sum: { $ifNull: ["$size", 0] } }, thumbBytes: { $sum: { $ifNull: ["$thumbSize", 0] } }, pending: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] } } } },
   ]);
   const byFamily = (rows) => rows.map((r) => ({ family: r._id || "other", files: r.files, bytes: r.bytes + (r.thumbBytes || 0), pending: r.pending || 0 })).sort((a, b) => b.bytes - a.bytes);
   const value = {
@@ -77,11 +72,6 @@ async function usage({ fresh = false } = {}) {
       files: sum(bucketRows, "files"),
       pending: sum(bucketRows, "pending"),
       byFamily: byFamily(bucketRows),
-    },
-    legacyInMongo: {
-      usedBytes: sum(legacyRows, "bytes") + sum(legacyRows, "thumbBytes"),
-      files: sum(legacyRows, "files"),
-      byFamily: byFamily(legacyRows),
     },
   };
   cache = { at: Date.now(), value };

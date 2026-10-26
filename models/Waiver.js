@@ -15,8 +15,10 @@
  *
  * The person's ID number is written on the signed page only - never
  * here, never on the person (the house rule: ID numbers are not stored).
- * The signature images never travel in JSON (the signed page carries
- * them).
+ * The signature images (PNGs drawn on the pad) live in the bucket under
+ * `signatureKeys` (waiver/<id>/<who>.png, since 2026-10-26 - before that
+ * as bytes in this row) and never travel in JSON: `signatures` in the
+ * JSON says only which ones exist (the signed page carries them).
  */
 
 const mongoose = require("mongoose");
@@ -58,11 +60,11 @@ const waiverSchema = new mongoose.Schema(
       phone: { type: String, trim: true },
       address: { type: String, trim: true },
     },
-    /** PNG images drawn on the screen (never in JSON). */
-    signatures: {
-      student: { type: Buffer },
-      witness: { type: Buffer },
-      guardian: { type: Buffer },
+    /** The bucket keys of the PNG signatures drawn on the screen (never in JSON). */
+    signatureKeys: {
+      student: { type: String, trim: true },
+      witness: { type: String, trim: true },
+      guardian: { type: String, trim: true },
     },
     /** The signed page, as stored for the intake's "waiver" document. */
     file: { type: mongoose.Schema.Types.ObjectId, ref: "StoredFile" },
@@ -74,14 +76,11 @@ const waiverSchema = new mongoose.Schema(
 
 waiverSchema.index({ intake: 1, signedAt: -1 });
 
+/** JSON says which signatures exist, never where they are. */
 function stripSignatures(doc, ret) {
-  if (ret.signatures) {
-    ret.signatures = {
-      student: !!(doc.signatures?.student?.length),
-      witness: !!(doc.signatures?.witness?.length),
-      guardian: !!(doc.signatures?.guardian?.length),
-    };
-  }
+  const k = ret.signatureKeys || {};
+  delete ret.signatureKeys;
+  ret.signatures = { student: !!k.student, witness: !!k.witness, guardian: !!k.guardian };
   return ret;
 }
 waiverSchema.set("toJSON", { transform: stripSignatures });

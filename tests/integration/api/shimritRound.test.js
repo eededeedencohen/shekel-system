@@ -99,9 +99,10 @@ describe("a person's documents", () => {
     const all = await request(app).get("/api/people/documents");
     expect(all.body.data.documents.map((x) => x._id)).toEqual([d._id]);
 
+    // the plain link answers with a signed read of the bucket
     const file = await request(app).get(`/api/people/${t._id}/documents/${d._id}/file`);
-    expect(file.status).toBe(200);
-    expect(file.headers["content-type"]).toMatch(/image\/png/);
+    expect(file.status).toBe(302);
+    expect(file.headers.location).toMatch(/^memory:\/\/get\/people\/.*mime=image%2Fpng/);
 
     const bad = await request(app).post(`/api/people/${t._id}/documents`).send({ kind: "syllabus", fileName: "x.exe", mime: "application/x-msdownload", data: IMAGE });
     expect(bad.status).toBe(400);
@@ -208,7 +209,7 @@ describe("the monthly invoice round", () => {
     expect(String(inv.teacher)).toBe(String(teacher._id));
     expect(inv.uploadedBy).toBe("אביה טסט");
     const image = await request(app).get(`${url}/invoices/${inv._id}/image`);
-    expect(image.status).toBe(200);
+    expect(image.status).toBe(302); // a signed read of the bucket
     // a lesson sits on one invoice only
     expect((await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "again.png", sessions: [ids[0]] })).body.code).toBe("INVOICE_LESSON_BILLED");
 
@@ -276,7 +277,7 @@ describe("the state machine of the invoices (2026-10-22)", () => {
     const view = await request(app).get(url);
     expect(view.status).toBe(200);
     expect(view.body.data.view).toMatchObject({ done: true, linkLive: false });
-    expect((await request(app).get(`${url}/invoices/${view.body.data.view.invoices[0]._id}/image`)).status).toBe(200);
+    expect((await request(app).get(`${url}/invoices/${view.body.data.view.invoices[0]._id}/image`)).status).toBe(302);
     expect((await upload(url, [ids[1]])).status).toBe(410);
     // decision 2: the mail taken back opens the links again
     await request(app).post(`/api/invoice-rounds/${round._id}/mail`).send({ sent: false });
@@ -324,7 +325,7 @@ describe("the state machine of the invoices (2026-10-22)", () => {
     const view = (await request(app).get(url)).body.data.view;
     expect(view.invoices).toHaveLength(1);
     expect(view.invoices[0].fromFile).toBe(true);
-    expect((await request(app).get(`${url}/invoices/${view.invoices[0]._id}/image`)).status).toBe(200);
+    expect((await request(app).get(`${url}/invoices/${view.invoices[0]._id}/image`)).status).toBe(302);
     // never the teacher's to take back; the session is billed for the link
     expect((await request(app).delete(`${url}/invoices/${view.invoices[0]._id}`)).body.code).toBe("INVOICE_NOT_YOURS");
     expect((await upload(url, [ids[2]])).body.code).toBe("INVOICE_LESSON_BILLED");

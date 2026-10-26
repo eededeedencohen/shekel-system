@@ -34,11 +34,9 @@
  * `screening` the facts of the first call (her stage 1), `committeeDate`
  * the rehab committee's date (the evaluation clock), `shkedia` the
  * admission in שקדיה (her stage 5).
- * `documents[]` holds one row per INTAKE_DOCUMENTS key - the file bytes
- * live in `files` (models/StoredFile, `file.stored`); records from before
- * 2026-10-07 may still point at the disk (`file.storedName`, read-only
- * until scripts/migrateDocsToDb.js moves them). Rows of retired keys are
- * dropped on save.
+ * `documents[]` holds one row per INTAKE_DOCUMENTS key - the file is a
+ * `files` row (models/StoredFile, `file.stored`) whose bytes sit in the
+ * bucket. Rows of retired keys are dropped on save.
  */
 
 const mongoose = require("mongoose");
@@ -64,10 +62,8 @@ const documentSchema = new mongoose.Schema(
     /** The stored file, when one was uploaded (student or staff). */
     file: {
       name: { type: String, trim: true },
-      /** The bytes, in the `files` collection (since 2026-10-07). */
+      /** The `files` row (since 2026-10-07; its bytes in the bucket since 2026-10-26). */
       stored: { type: mongoose.Schema.Types.ObjectId, ref: "StoredFile" },
-      /** Legacy: a file still on the server's disk (UPLOAD_DIR/real/<intakeId>/, written before the worlds were retired). */
-      storedName: { type: String, trim: true },
       mime: { type: String, trim: true },
       size: { type: Number, min: 0 },
       /** The stored file carries a thumbnail (GET …/documents/:key/thumb). */

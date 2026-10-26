@@ -19,7 +19,7 @@ require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") }
 const mongoose = require("mongoose");
 const connectDB = require("../config/db");
 const Intake = require("../models/Intake");
-const StoredFile = require("../models/StoredFile");
+const storedFiles = require("../services/storedFiles");
 const intakeService = require("../services/intakeService");
 
 const DRY = process.argv.includes("--dry");
@@ -36,17 +36,8 @@ const DRY = process.argv.includes("--dry");
       rec.log.push({ action: "shkedia", by: "מיגרציה", note: `נקלט/ה בשקדיה · הועבר מהאישור הישן${row.validUntil ? ` (היה בתוקף עד ${new Date(row.validUntil).toLocaleDateString("he-IL")})` : ""}` });
       moved++;
     }
-    if (row?.file?.stored && !DRY) await StoredFile.deleteOne({ _id: row.file.stored });
-    if (row?.file?.storedName) {
-      const p = intakeService.documentPath(rec, row);
-      if (p && !DRY) {
-        try {
-          require("fs").unlinkSync(p);
-        } catch {
-          /* already gone */
-        }
-      }
-    }
+    // the approval's file (the row and its bytes, wherever they are) goes with the row
+    if (row?.file?.stored && !DRY) await storedFiles.destroy(row.file.stored);
     rec.documents = rec.documents.filter((d) => d.key !== "shkedia");
     rec.status = intakeService.computeStatus(rec);
     dropped++;

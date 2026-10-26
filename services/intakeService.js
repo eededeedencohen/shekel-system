@@ -40,23 +40,22 @@
  *
  * One `intakes` record per person (the human is met once, whatever the
  * programs); `settle()` keeps every active student profile of the person
- * in step with it. File bytes live in the `files` collection (the server's
- * disk is wiped on every deploy); records from before 2026-10-07 may still
- * point at the disk until scripts/migrateDocsToDb.js moves them.
+ * in step with it. A document is a `files` row whose bytes live in the
+ * bucket (services/storedFiles, since 2026-10-26).
  *
  * Actors are persona strings (`by`) until auth exists, like the rest of
  * the pipeline; the landing page acts as LANDING_ACTOR.
  */
 
 const crypto = require("crypto");
-const fs = require("fs");
-const path = require("path");
+const mongoose = require("mongoose");
 const { Person } = require("../models/Person");
 const { Profile } = require("../models/profiles");
 const Intake = require("../models/Intake");
 const UploadLink = require("../models/UploadLink");
 const StoredFile = require("../models/StoredFile");
 const storedFiles = require("./storedFiles");
+const storage = require("./storage");
 const Waiver = require("../models/Waiver");
 const Enrollment = require("../models/Enrollment");
 const Subject = require("../models/Subject");
@@ -126,39 +125,9 @@ function fileKind(mime, fileName) {
 
 /* ───────────────────────── files ───────────────────────── */
 
-/** Root of the LEGACY document store on disk - env-overridable (tests use a temp dir). */
-function uploadRoot() {
-  return process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads");
-}
-// legacy rows written before 2026-10-25 sit under uploads/real/<intakeId>/ - "real" was the former dataset segment
-const fileDir = (intake) => path.join(uploadRoot(), "real", String(intake._id));
-/** Absolute path of a document's legacy disk file (null when it is not on the disk). */
-function documentPath(intake, doc) {
-  if (!doc?.file?.storedName) return null;
-  return path.join(fileDir(intake), doc.file.storedName);
-}
-/** The bytes of a document - from the `files` table, else (legacy) the disk. → { mime, name, data } | null */
-async function documentFile(intake, doc) {
-  if (!doc?.file) return null;
-  if (doc.file.stored) {
-    const f = await StoredFile.findById(doc.file.stored).select("name mime data");
-    if (f) return { mime: doc.file.mime || f.mime, name: doc.file.name || f.name, data: f.data };
-  }
-  const p = documentPath(intake, doc);
-  if (p && fs.existsSync(p)) return { mime: doc.file.mime, name: doc.file.name || doc.file.storedName, data: fs.readFileSync(p) };
-  return null;
-}
-async function removeFile(intake, doc) {
-  // the row and its bytes, in the bucket or in the database (services/storedFiles)
+/** The document's `files` row and its objects in the bucket go (services/storedFiles). */
+async function removeFile(doc) {
   if (doc?.file?.stored) await storedFiles.destroy(doc.file.stored);
-  const p = documentPath(intake, doc);
-  if (p && fs.existsSync(p)) fs.unlinkSync(p);
-}
-/** The thumbnail of a document's file (a JPEG the uploader rendered) → { mime, data } | null */
-async function documentThumb(doc) {
-  if (!doc?.file?.stored || !doc.file.thumb) return null;
-  const f = await StoredFile.findById(doc.file.stored).select("thumb");
-  return f?.thumb?.length ? { mime: "image/jpeg", data: f.thumb } : null;
 }
 /** A thumbnail as sent by the client: base64 JPEG (data-URI tolerated), ≤ 256KB. Anything else is ignored. */
 const MAX_THUMB_BYTES = 256 * 1024;
@@ -534,7 +503,8 @@ async function uploadDocument({ intake, key, fileName, mime, data, thumb, by, st
   if (!staff && d.status === "received") throw AppError.of("DOCUMENT_LOCKED", 400);
   const name = clean(fileName, 120) || `${key}.${kind.ext}`;
   const thumbBuf = parseThumb(thumb);
-  const stored = await StoredFile.create({ name, mime: kind.mime, size: buffer.length, data: buffer, ...(thumbBuf && { thumb: thumbBuf }), family: "intake", owner: { kind: "intake", id: intake._id, slot: key }, uploadedBy: { label: staff ? clean(by, 80) : "student" } });
+  // the bytes go to the bucket from here (never to the database) - the legacy base64 road, kept for old tabs and the tests
+  const stored = await storedFiles.createFromBuffer({ name, mime: kind.mime, buffer, thumb: thumbBuf, family: "intake", owner: { kind: "intake", id: intake._id, slot: key }, uploadedBy: { label: staff ? clean(by, 80) : "student" } });
   return attachDocument({ intake, key, stored, by, staff, validUntil, signedAt, link, def });
 }
 
@@ -560,10 +530,10 @@ async function attachDocument({ intake, key, stored, by, staff = false, validUnt
   const signed = def.validity === "signed" && staff ? parseDate(signedAt) || new Date() : undefined;
   const d = docOf(intake, key);
   if (!staff && d.status === "received") throw AppError.of("DOCUMENT_LOCKED", 400);
-  if (d.file?.stored && String(d.file.stored) !== String(stored._id)) await removeFile(intake, d);
+  if (d.file?.stored && String(d.file.stored) !== String(stored._id)) await removeFile(d);
   const now = new Date();
   const name = stored.name || `${key}`;
-  d.file = { name, stored: stored._id, storedName: undefined, mime: stored.mime, size: stored.size, thumb: storedFiles.hasThumb(stored), uploadedAt: now, by: staff ? by : "student" };
+  d.file = { name, stored: stored._id, mime: stored.mime, size: stored.size, thumb: storedFiles.hasThumb(stored), uploadedAt: now, by: staff ? by : "student" };
   d.note = undefined;
   const confirmed = staff && (def.validity !== "dated" || until);
   if (confirmed) {
@@ -671,11 +641,20 @@ async function signWaiver({ intake, by, signedAt, explained, parties, witness, g
   intake.log.push({ action: "docReceived", at: when, by, note: `${DOC_BY_KEY.waiver.label} · נחתם דיגיטלית · עד/ה: ${witnessName}${w.role ? ` (${w.role})` : ""}` });
   await intake.save();
 
+  // the signatures themselves go to the bucket under the agreement's id (never into the database)
+  const waiverId = new mongoose.Types.ObjectId();
+  const signatureKeys = {};
+  for (const [who, png] of Object.entries({ student: studentSig, witness: witnessSig, guardian: guardianSig })) {
+    if (!png) continue;
+    signatureKeys[who] = `waiver/${waiverId}/${who}.png`;
+    await storage.putBuffer({ key: signatureKeys[who], body: png, mime: "image/png" });
+  }
   const waiver = await Waiver.create({
+    _id: waiverId,
     intake: intake._id, person: intake.person,
     signedAt: when, validUntil: row.validUntil, by, explained: true,
     parties: list, witness: w, guardian: g,
-    signatures: { student: studentSig, witness: witnessSig, guardian: guardianSig || undefined },
+    signatureKeys,
     file: row.file?.stored,
   });
   const lines = [
@@ -700,7 +679,7 @@ async function removeStudentDocument({ intake, key }) {
   const d = docOf(intake, key);
   if (d.status === "received") throw AppError.of("DOCUMENT_LOCKED", 400);
   if (d.status !== "uploaded") return intake;
-  await removeFile(intake, d);
+  await removeFile(d);
   d.file = undefined;
   d.status = "missing";
   intake.log.push({ action: "docReset", by: LANDING_ACTOR, note: DOC_BY_KEY[key].label });
@@ -759,8 +738,8 @@ async function setDocumentStatus({ intake, key, status, by, note, validUntil, si
     d.note = clean(note, 300);
     intake.log.push({ action: "docRejected", at: now, by, note: `${label}${note ? ` · ${note}` : ""}` });
   } else if (status === "missing") {
-    const hadFile = !!(d.file?.stored || d.file?.storedName);
-    await removeFile(intake, d);
+    const hadFile = !!d.file?.stored;
+    await removeFile(d);
     d.file = undefined;
     d.status = "missing";
     d.receivedAt = undefined;
@@ -1027,10 +1006,6 @@ module.exports = {
   fileKind,
   INLINE_MIMES,
   MIME_EXT,
-  uploadRoot,
-  documentPath,
-  documentFile,
-  documentThumb,
   docOk,
   docExpired,
   missingDocs,

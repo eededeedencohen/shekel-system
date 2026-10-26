@@ -17,7 +17,6 @@ const Intake = require("../models/Intake");
 const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
-const { notModified, docTag } = require("../utils/sendFile");
 const intake = require("../services/intakeService");
 const lens = require("../services/lensService");
 const storedFiles = require("../services/storedFiles");
@@ -144,22 +143,11 @@ exports.uploadDocument = catchAsync(async (req, res, next) => {
   res.status(200).json({ status: "success", data: { intake: await populated(doc), moved } });
 });
 
-/** GET /api/intakes/:id/documents/:key/file - the stored file, inline (from the database; the disk for old records). */
+/** GET /api/intakes/:id/documents/:key/file - a plain link to the stored file: a 302 to a signed read of the bucket (services/storedFiles). */
 exports.getDocumentFile = catchAsync(async (req, res, next) => {
   const doc = await load(req);
   const row = (doc.documents || []).find((d) => d.key === req.params.key);
-  if (!row?.file?.name) return next(AppError.of("NOT_FOUND", 404, "קובץ"));
-  // a file already in the bucket is answered with a signed link (services/storedFiles)
-  if (await storedFiles.redirectIfRemote(req, res, row.file.stored)) return;
-  // a replaced file must never show its old bytes: revalidated every time, 304 while unchanged
-  if (notModified(req, res, docTag(row))) return;
-  const file = await intake.documentFile(doc, row);
-  if (!file) return next(AppError.of("NOT_FOUND", 404, "קובץ"));
-  res.type(file.mime || "application/octet-stream");
-  // images and PDFs open in the tab; a Word file is downloaded under its name
-  const disposition = intake.INLINE_MIMES.has(file.mime) ? "inline" : "attachment";
-  res.setHeader("Content-Disposition", `${disposition}; filename*=UTF-8''${encodeURIComponent(file.name || req.params.key)}`);
-  res.send(file.data);
+  if (!row?.file?.name || !(await storedFiles.redirectIfRemote(req, res, row.file.stored))) return next(AppError.of("NOT_FOUND", 404, "קובץ"));
 });
 
 /**
@@ -186,17 +174,11 @@ exports.getWaiver = catchAsync(async (req, res, next) => {
   res.status(200).json({ status: "success", data: { waiver } });
 });
 
-/** GET /api/intakes/:id/documents/:key/thumb - the thumbnail the uploader rendered (404 when there is none). */
+/** GET /api/intakes/:id/documents/:key/thumb - the thumbnail the uploader rendered: a 302 to the bucket (404 when there is none). */
 exports.getDocumentThumb = catchAsync(async (req, res, next) => {
   const doc = await load(req);
   const row = (doc.documents || []).find((d) => d.key === req.params.key);
-  if (!row?.file?.thumb) return next(AppError.of("NOT_FOUND", 404, "תמונה מוקטנת"));
-  if (await storedFiles.redirectIfRemote(req, res, row.file.stored, { thumb: true })) return;
-  if (notModified(req, res, docTag(row, "-thumb"))) return;
-  const thumb = await intake.documentThumb(row);
-  if (!thumb) return next(AppError.of("NOT_FOUND", 404, "תמונה מוקטנת"));
-  res.type(thumb.mime);
-  res.send(thumb.data);
+  if (!row?.file?.thumb || !(await storedFiles.redirectIfRemote(req, res, row.file.stored, { thumb: true }))) return next(AppError.of("NOT_FOUND", 404, "תמונה מוקטנת"));
 });
 
 /** PATCH /api/intakes/:id/shkedia - { enteredAt, by, decisionNo, note } or { clear: true, by } */

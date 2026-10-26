@@ -64,7 +64,7 @@ describe("the files bucket - a signed-in persona", () => {
     // signed reads: the file, its thumbnail, many at once
     const url = await request(app).get(`/api/files/${fileId}/url`);
     expect(url.status).toBe(200);
-    expect(url.body.data).toMatchObject({ legacy: false, mime: "image/png", name: "סילבוס.png", size: PNG.length });
+    expect(url.body.data).toMatchObject({ mime: "image/png", name: "סילבוס.png", size: PNG.length });
     expect(url.body.data.url).toContain(storageKey);
     expect(new Date(url.body.data.expiresAt).getTime()).toBeGreaterThan(Date.now());
     expect(new Date(url.body.data.expiresAt).getTime()).toBeLessThanOrEqual(Date.now() + 61000);
@@ -162,24 +162,24 @@ describe("the files bucket - a signed-in persona", () => {
     expect(storage.has(storageKey)).toBe(false);
   });
 
-  it("a legacy file (bytes still in the database) is read through the app's own route, under the same access check", async () => {
+  it("a base64 upload (an old tab, the tests) lands in the bucket too - the server puts it there, the row never holds bytes", async () => {
     const t = await makeTeacher();
-    const legacy = await request(app).post(`/api/people/${t._id}/documents`).send({ kind: "other", fileName: "ישן.png", mime: "image/png", data: PNG.toString("base64") });
-    expect(legacy.status).toBe(201);
-    const fileId = legacy.body.data.document.file;
+    const old = await request(app).post(`/api/people/${t._id}/documents`).send({ kind: "other", fileName: "ישן.png", mime: "image/png", data: PNG.toString("base64") });
+    expect(old.status).toBe(201);
+    const fileId = old.body.data.document.file;
+    const row = await StoredFile.findById(fileId).lean();
+    expect(row.storageKey).toMatch(new RegExp(`^people/${t._id}/`));
+    expect(row.status).toBe("ready");
+    expect(row.attachedAt).toBeTruthy();
+    expect(row.data).toBeUndefined();
+    expect(Buffer.compare(await storage.getBuffer(row.storageKey), PNG)).toBe(0);
     const url = await request(app).get(`/api/files/${fileId}/url`);
-    expect(url.body.data).toMatchObject({ legacy: true, url: `/api/files/${fileId}/bytes`, mime: "image/png" });
-    const bytes = await request(app).get(`/api/files/${fileId}/bytes`);
-    expect(bytes.status).toBe(200);
-    expect(bytes.headers["content-type"]).toMatch(/image\/png/);
-    expect(Buffer.compare(bytes.body, PNG)).toBe(0);
-    // the old route still streams it (no storageKey → no redirect)
-    expect((await request(app).get(`/api/people/${t._id}/documents/${legacy.body.data.document._id}/file`)).status).toBe(200);
-    // the explorer shows the row without its bytes
+    expect(url.body.data.url).toContain(row.storageKey);
+    expect((await request(app).get(`/api/people/${t._id}/documents/${old.body.data.document._id}/file`)).status).toBe(302);
+    // the explorer shows the row's facts
     const db = await request(app).get(`/api/db/files/${fileId}`);
     expect(db.status).toBe(200);
-    expect(db.body.data.doc.data).toBeUndefined();
-    expect(db.body.data.doc.mime).toBe("image/png");
+    expect(db.body.data.doc).toMatchObject({ mime: "image/png", storageKey: row.storageKey });
   });
 
   it("GET /api/db/storage says how full the database and the bucket are", async () => {
@@ -196,7 +196,7 @@ describe("the files bucket - a signed-in persona", () => {
     expect(s.bucket.usedBytes).toBe(PNG.length);
     expect(s.bucket.files).toBe(1);
     expect(s.bucket.byFamily).toEqual([{ family: "people", files: 1, bytes: PNG.length, pending: 0 }]);
-    expect(s.legacyInMongo.files).toBe(0);
+    expect(s.legacyInMongo).toBeUndefined(); // no bytes live in the database any more
   });
 });
 
@@ -233,7 +233,7 @@ describe("the files bucket - the lens decides per file", () => {
     expect(refused.body.code).toBe("OUT_OF_SCOPE");
     const many = await request(app).post("/api/files/urls").set("Cookie", tamar).send({ ids: [fT, fA] });
     expect(Object.keys(many.body.data.urls)).toEqual([fT]);
-    expect((await request(app).get(`/api/files/${fA}/bytes`).set("Cookie", tamar)).status).toBe(403);
+    expect((await request(app).get(`/api/files/${fA}/url?thumb=1`).set("Cookie", tamar)).status).toBe(403);
     expect((await request(app).post("/api/files/upload-url").set("Cookie", tamar).send({ family: "people", owner: { id: A._id }, name: "p.png", mime: "image/png", size: 5 })).status).toBe(403);
     expect((await request(app).delete(`/api/files/${fA}`).set("Cookie", tamar)).status).toBe(403);
     expect((await request(app).delete(`/api/files/${fT}`).set("Cookie", tamar)).status).toBe(204);

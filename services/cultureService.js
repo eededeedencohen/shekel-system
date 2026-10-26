@@ -409,17 +409,18 @@ async function resolveVoucherImage(data = {}) {
     if (!file.attachedAt) await storedFiles.markAttached(file);
     return file._id;
   }
+  // the bytes go to the bucket from here (never to the database): a legacy base64 upload, or a picture the server fetched from the web
   if (data.imageData) {
     const { mime, buffer } = parseImageData(data.imageData);
-    const thumb = data.imageThumb ? parseImageData(data.imageThumb, MAX_THUMB_BYTES).buffer : undefined;
-    const file = await StoredFile.create({ name: data.imageName || "תמונת השובר", mime, size: buffer.length, data: buffer, thumb, family: "culture", owner: { kind: "voucher" } });
+    const thumb = data.imageThumb ? parseImageData(data.imageThumb, MAX_THUMB_BYTES).buffer : null;
+    const file = await storedFiles.createFromBuffer({ name: data.imageName || "תמונת השובר", mime, buffer, thumb, family: "culture", owner: { kind: "voucher" } });
     return file._id;
   }
   if (data.imageUrl) {
     const got = await images.fetchImage(String(data.imageUrl).trim());
     if (!got) throw AppError.of("VOUCHER_IMAGE_FETCH", 400);
     if (!IMAGE_MIMES.has(got.mime) || got.buffer.length > MAX_IMAGE_BYTES) throw AppError.of("VOUCHER_IMAGE_INVALID", 400);
-    const file = await StoredFile.create({ name: data.imageName || got.from, mime: normMime(got.mime), size: got.buffer.length, data: got.buffer, family: "culture", owner: { kind: "voucher" } });
+    const file = await storedFiles.createFromBuffer({ name: data.imageName || got.from, mime: normMime(got.mime), buffer: got.buffer, family: "culture", owner: { kind: "voucher" } });
     return file._id;
   }
   return undefined;
@@ -477,16 +478,6 @@ async function setVoucherImageFile({ voucherId, fileId }) {
   await v.save();
   await releaseVoucherImage(before);
   return v;
-}
-
-/** The bytes of a voucher's picture: the small JPEG when asked for and there is one, else the file. */
-async function voucherImageOf(voucherId, wantThumb) {
-  const v = await Voucher.findOne({ _id: voucherId }).select("image").lean();
-  if (!v || !v.image) return null;
-  const file = await StoredFile.findById(v.image).select(wantThumb ? "mime thumb data updatedAt" : "mime data updatedAt");
-  if (!file) return null;
-  const thumb = wantThumb && file.thumb && file.thumb.length ? file.thumb : null;
-  return { mime: thumb ? "image/jpeg" : file.mime, data: thumb || file.data, tag: `${file._id}-${new Date(file.updatedAt).getTime()}${thumb ? "-t" : ""}` };
 }
 
 /** Pictures on the web for a place name (voucherImageService). */
@@ -552,5 +543,5 @@ module.exports = {
   register, cancelRegistration, reportAttendance, promoteNext, renumberWaitlist, registeredCount,
   // vouchers
   createVoucher, updateVoucher, grantVoucher, redeemVoucher, revokeGrant, deleteVoucher,
-  setVoucherImage, setVoucherImageFile, voucherImageOf, searchVoucherImages, acceptVoucherImage,
+  setVoucherImage, setVoucherImageFile, searchVoucherImages, acceptVoucherImage,
 };

@@ -402,7 +402,8 @@ async function uploadFile(s, { key, fileName, mime, data, thumb }) {
   if (!kind || buffer.length === 0 || buffer.length > MAX_FILE_BYTES) throw AppError.of("DOCUMENT_INVALID", 400);
   const thumbBuf = parseThumb(thumb);
   const name = clean(fileName, 120) || `${key}.${kind.ext}`;
-  const stored = await StoredFile.create({ name, mime: kind.mime, size: buffer.length, data: buffer, ...(thumbBuf && { thumb: thumbBuf }), family: "suppliers", owner: { kind: "supplier", id: s._id, slot: key }, uploadedBy: { token: "supplier" } });
+  // the bytes go to the bucket from here (never to the database) - the legacy base64 road, kept for old tabs and the tests
+  const stored = await storedFiles.createFromBuffer({ name, mime: kind.mime, buffer, thumb: thumbBuf, family: "suppliers", owner: { kind: "supplier", id: s._id, slot: key }, uploadedBy: { token: "supplier" } });
   return attachFile(s, { key, stored });
 }
 
@@ -478,18 +479,6 @@ async function finish(s) {
   s.finishedAt = now;
   s.updates.push({ at: now, kind: "finish", text: again ? "שלח/ה הכול מחדש - הטופס וכל האישורים בפנים" : "סיים/ה - הטופס וכל האישורים נשלחו" });
   return settle(s);
-}
-
-/** The bytes of a row's file → { mime, name, data } | null */
-async function fileOf(row) {
-  if (!row?.file?.stored) return null;
-  const f = await StoredFile.findById(row.file.stored).select("name mime data");
-  return f ? { mime: row.file.mime || f.mime, name: row.file.name || f.name, data: f.data } : null;
-}
-async function thumbOf(row) {
-  if (!row?.file?.stored || !row.file.thumb) return null;
-  const f = await StoredFile.findById(row.file.stored).select("thumb");
-  return f?.thumb?.length ? { mime: "image/jpeg", data: f.thumb } : null;
 }
 
 /* ───────────────────────── views ───────────────────────── */
@@ -581,8 +570,6 @@ module.exports = {
   removeFile,
   setNotApplicable,
   finish,
-  fileOf,
-  thumbOf,
   rowOf,
   publicView,
   staffView,

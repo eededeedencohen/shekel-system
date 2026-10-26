@@ -278,6 +278,7 @@ describe("vouchers", () => {
 describe("voucher pictures", () => {
   const images = require("../../../services/voucherImageService");
   const StoredFile = require("../../../models/StoredFile");
+  const bucket = require("../../helpers/bucket");
   // a 1×1 PNG
   const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
   const pngBytes = Buffer.from(PNG.split(",")[1], "base64");
@@ -291,14 +292,14 @@ describe("voucher pictures", () => {
     expect(fileId).toBeTruthy();
     expect(await StoredFile.countDocuments()).toBe(1);
 
-    // the picture is served, small or full, with an ETag
+    // the picture's plain links answer with a signed read of the bucket, small or full
     const thumb = await request(app).get(`/api/vouchers/${first.body.data.voucher._id}/image?thumb=1`);
-    expect(thumb.status).toBe(200);
-    expect(thumb.headers["content-type"]).toMatch(/image\/jpeg/);
+    expect(bucket.keyOf(thumb)).toMatch(/^culture\/.*\.thumb\.jpg$/);
+    expect(bucket.mimeOf(thumb)).toBe("image/jpeg");
     const full = await request(app).get(`/api/vouchers/${first.body.data.voucher._id}/image`);
-    expect(full.headers["content-type"]).toMatch(/image\/png/);
-    expect(Buffer.compare(full.body, pngBytes)).toBe(0);
-    expect((await request(app).get(`/api/vouchers/${first.body.data.voucher._id}/image`).set("If-None-Match", full.headers.etag)).status).toBe(304);
+    expect(bucket.mimeOf(full)).toBe("image/png");
+    expect(Buffer.compare(await bucket.bytesOf(full), pngBytes)).toBe(0);
+    expect(full.headers["cache-control"]).toBe("private, no-store");
 
     // the second voucher of the place: the same file, no new upload
     const second = await request(app).post("/api/vouchers").send({ by: staff._id, name: "סינמה סיטי", number: "P-2", imageFrom: first.body.data.voucher._id });
