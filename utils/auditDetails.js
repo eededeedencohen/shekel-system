@@ -629,7 +629,9 @@ const SPECIAL = [
  * { summary, facts, changes, label } for one write. `before` is what
  * `snapshot()` returned before the handler ran (null when there was none).
  */
-async function details({ method, path, route, body, answer, before }) {
+async function details({ method, path, route, body, answer, before, backfill = false }) {
+  // backfill (scripts/backfillAuditWords): the row is told again from its kept payload; the target's
+  // picture is today's, so "what changed" cannot be known and is left empty
   const safeBody = body && typeof body === "object" ? body : {};
   const refs = {};
   collectRefs(safeBody, refs);
@@ -639,7 +641,7 @@ async function details({ method, path, route, body, answer, before }) {
   if (before?.id && before.label) names[before.id] = before.label;
 
   const facts = factsOf(safeBody, names);
-  const changes = (method === "PUT" || method === "PATCH") && before?.doc ? changesOf(before.doc, safeBody, names) : [];
+  const changes = !backfill && (method === "PUT" || method === "PATCH") && before?.doc ? changesOf(before.doc, safeBody, names) : [];
   let summary = "";
   let ownFacts = null;
   const special = SPECIAL.find(([re]) => re.test(`${method} ${route}`));
