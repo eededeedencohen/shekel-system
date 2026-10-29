@@ -21,6 +21,7 @@
 const AuditEvent = require("../models/AuditEvent");
 const StaffLogin = require("../models/StaffLogin");
 const { describe } = require("./auditDescribe");
+const { clientIp } = require("./clientIp");
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const SKIP = [/^\/auth\/(login|logout|forgot|ping)$/, /^\/auth\/reset(\/|$)/, /^\/public(\/|$)/, /^\/files\/(upload-url|urls)$/, /^\/db(\/|$)/];
@@ -56,7 +57,7 @@ async function record({ req, path, status, answer, ms }) {
     kind: desc.kind,
     target: desc.target,
     payload: desc.payload,
-    ip: req.ip || "",
+    ip: clientIp(req),
     ms,
   });
   if (req.sessionId) await StaffLogin.updateOne({ session: req.sessionId }, { $inc: { actions: 1 } });

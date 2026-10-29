@@ -10,11 +10,13 @@
 const catchAsync = require("../utils/catchAsync");
 const auth = require("../services/authService");
 const { setSessionCookie, clearSessionCookie, tokenOf } = require("../utils/auth");
+const { clientIp } = require("../utils/clientIp");
 
 const ok = (res, data, code = 200) => res.status(code).json({ status: "success", data });
 
 exports.login = catchAsync(async (req, res) => {
-  const { account, token } = await auth.login({ ...req.body, ip: req.ip, userAgent: req.get("user-agent") });
+  // the lockout keys on req.ip (one hop, like the rate limiter); the sign-in row records the person's own address
+  const { account, token } = await auth.login({ ...req.body, ip: req.ip, userAgent: req.get("user-agent"), clientIp: clientIp(req) });
   setSessionCookie(req, res, token);
   ok(res, { account });
 });
@@ -45,7 +47,7 @@ exports.resetInfo = catchAsync(async (req, res) => {
 });
 
 exports.resetPassword = catchAsync(async (req, res) => {
-  const { account, token } = await auth.resetPassword(req.params.token, req.body?.password, req.get("user-agent"), req.ip);
+  const { account, token } = await auth.resetPassword(req.params.token, req.body?.password, req.get("user-agent"), clientIp(req));
   setSessionCookie(req, res, token);
   ok(res, { account });
 });

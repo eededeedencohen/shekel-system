@@ -71,6 +71,16 @@ describe("the sign-ins (StaffLogin)", () => {
     expect(after.map((r) => r.endReason)).toEqual(["disabled", "password"]);
   });
 
+  test("behind Cloudflare the row records the person's address, not the edge's", async () => {
+    const res = await request(app).post("/api/auth/login").set("User-Agent", PC_UA).set("CF-Connecting-IP", "84.95.1.2").send({ username: "hagai", password: defaultPasswordFor("hagai") });
+    expect(res.status).toBe(200);
+    const row = await StaffLogin.findOne({ account: await idOf("hagai") }).lean();
+    expect(row.ip).toBe("84.95.1.2");
+    await request(app).post("/api/rooms").set("Cookie", cookieOf(res)).set("X-Forwarded-For", "84.95.1.3, 172.69.1.1").send({ name: "חדר מרחוק" }).expect(201);
+    await flush();
+    expect((await AuditEvent.findOne().lean()).ip).toBe("84.95.1.3");
+  });
+
   test("a sign-in not seen for a month is read and written as expired", async () => {
     await signIn("hagai");
     const hagai = await idOf("hagai");

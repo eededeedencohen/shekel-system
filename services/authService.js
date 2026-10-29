@@ -159,7 +159,7 @@ const LOCK_MS = 5 * 60 * 1000;
 const WINDOW_MS = 10 * 60 * 1000;
 let dummyHash = null; // compared against when the user name is unknown (same timing)
 
-async function login({ username, password, ip, userAgent }) {
+async function login({ username, password, ip, userAgent, clientIp }) {
   const u = String(username || "").trim().toLowerCase();
   const key = `${ip || ""}|${u}`;
   const now = Date.now();
@@ -183,7 +183,7 @@ async function login({ username, password, ip, userAgent }) {
   attempts.delete(key);
   account.lastLoginAt = new Date();
   await account.save();
-  const token = await openSession(account, { userAgent, ip, how: "password" });
+  const token = await openSession(account, { userAgent, ip: clientIp || ip, how: "password" });
   return { account: publicAccount(account), token };
 }
 
