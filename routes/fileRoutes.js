@@ -10,8 +10,9 @@
 const express = require("express");
 const router = express.Router();
 const c = require("../controllers/fileController");
+const { uploadLimiter } = require("../utils/security");
 
-router.post("/upload-url", c.uploadUrl);
+router.post("/upload-url", uploadLimiter, c.uploadUrl);
 router.post("/urls", c.urls);
 router.post("/:id/confirm", c.confirm);
 router.get("/:id/url", c.url);

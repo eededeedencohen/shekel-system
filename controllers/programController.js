@@ -29,7 +29,8 @@ exports.transferProgram = catchAsync(async (req, res, next) => {
   const { from, to, note, stage, at } = req.body;
   const by = byOf(req);
   if (!from || !to) return next(AppError.of("MISSING_FIELDS", 400, "from, to"));
-  lens.assertProfileKind(req, to); // the destination must be a program the persona has (lensService)
+  lens.assertProfileKind(req, from); // both sides must be programs the persona has (lensService; `from` since 2026-10-27)
+  lens.assertProfileKind(req, to);
   const { effects } = await transfer({ personId: req.params.id, from, to, by, note, stage, at });
   await respondWithPerson(res, req.params.id, { effects });
 });

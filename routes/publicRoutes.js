@@ -14,6 +14,7 @@ const { joinOptions, join, viewByToken, uploadByToken, removeByToken, fileByToke
 const supplier = require("../controllers/supplierController");
 const invoiceLink = require("../controllers/invoiceRoundController");
 const hostelReport = require("../controllers/hostelReportController");
+const { uploadLimiter } = require("../utils/security");
 
 router.get("/join/options", joinOptions);
 router.post("/join", join);
@@ -24,7 +25,7 @@ router.delete("/join/:token/documents/:key", removeByToken);
 router.get("/join/:token/documents/:key/file", fileByToken);
 router.get("/join/:token/documents/:key/thumb", thumbByToken);
 // the bucket (2026-10-26): the same three steps as /api/files, the link's token as the authority
-router.post("/join/:token/files/upload-url", fileUploadUrl);
+router.post("/join/:token/files/upload-url", uploadLimiter, fileUploadUrl);
 router.post("/join/:token/files/:id/confirm", fileConfirm);
 router.get("/join/:token/files/:id/url", fileUrl);
 
@@ -38,7 +39,7 @@ router.post("/supplier/:token/finish", supplier.publicFinish);
 router.get("/supplier/:token/files/:key/file", supplier.publicFile);
 router.get("/supplier/:token/files/:key/thumb", supplier.publicThumb);
 // the bucket (2026-10-26)
-router.post("/supplier/:token/upload-url", supplier.publicUploadUrl);
+router.post("/supplier/:token/upload-url", uploadLimiter, supplier.publicUploadUrl);
 router.post("/supplier/:token/uploads/:id/confirm", supplier.publicConfirm);
 router.get("/supplier/:token/uploads/:id/url", supplier.publicFileUrl);
 
@@ -50,7 +51,7 @@ router.delete("/invoices/:token/invoices/:iid", invoiceLink.publicRemoveInvoice)
 router.get("/invoices/:token/invoices/:iid/image", invoiceLink.publicImage);
 router.post("/invoices/:token/done", invoiceLink.publicDone);
 // the bucket (2026-10-26)
-router.post("/invoices/:token/upload-url", invoiceLink.publicUploadUrl);
+router.post("/invoices/:token/upload-url", uploadLimiter, invoiceLink.publicUploadUrl);
 router.post("/invoices/:token/uploads/:id/confirm", invoiceLink.publicConfirm);
 router.get("/invoices/:token/uploads/:id/url", invoiceLink.publicFileUrl);
 

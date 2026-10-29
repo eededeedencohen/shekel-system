@@ -117,6 +117,7 @@ const asStudentProfile = (fn) =>
     } catch (e) {
       return next(AppError.of("NOT_FOUND", 404, "סטודנט"));
     }
+    lens.assertProfileKind(req, profile.kind); // the persona's own program only (2026-10-27)
     res.set("X-Deprecated", "role-api");
     const err = await fn(profile, req);
     if (err) return next(err);

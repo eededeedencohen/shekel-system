@@ -23,19 +23,26 @@ const AppError = require("./utils/AppError");
 const globalErrorHandler = require("./controllers/errorController");
 const share = require("./utils/sharePreview");
 const { authenticate, requireSuper, requireFamily } = require("./utils/auth");
+const security = require("./utils/security");
 
 const app = express();
 // Render sits in front of us: req.secure / req.ip come from its headers
 // (the session cookie is marked Secure on https).
 app.set("trust proxy", 1);
 
-// Global middleware. ONE body limit for the whole API (a router-level
-// express.json() never gets to raise it once this one refused the body -
-// the "Something went wrong" of 2026-09-17). Since the S3 move (2026-10-26)
-// no file travels in JSON - the browser PUTs it to the bucket - so 2MB is
-// plenty: the biggest body left is a signed waiver's three PNG signatures
-// (≤ 256KB each, base64) plus the form.
-app.use(cors());
+// The front door (utils/security, 2026-10-27): the standard headers with a
+// Content-Security-Policy made for this app (scripts from here alone plus
+// index.html's one inline theme script by its hash; pictures and reads from
+// the files bucket; blob: for the cache, the previews and the pdf.js worker),
+// and CORS closed to the app's own origins (the Render address, the Vite dev
+// servers outside production) WITH credentials - no more `*`.
+app.use(security.securityHeaders({ indexHtml: path.join(__dirname, "client-dist", "index.html") }));
+app.use(cors(security.corsOptions()));
+// ONE body limit for the whole API (a router-level express.json() never gets
+// to raise it once this one refused the body - the "Something went wrong" of
+// 2026-09-17). Since the S3 move (2026-10-26) no file travels in JSON - the
+// browser PUTs it to the bucket - so 2MB is plenty: the biggest body left is
+// a signed waiver's three PNG signatures (≤ 256KB each, base64) plus the form.
 // Every answer leaves gzipped - the JSON slices and the client bundle alike. Nothing was compressed
 // before (Eden, 2026-10-25: שמרית's phone took "הרבה מאוד זמן לטעון"): her boot was ~2MB of JSON over
 // the air plus a 2.4MB bundle after every deploy; repeated shapes squeeze five to eight times.
@@ -60,6 +67,9 @@ app.get("/api/health", health);
 // member, except the public sign-up pages and the sign-in routes
 // themselves (utils/auth OPEN). req.account = who is signed in.
 app.use("/api", authenticate);
+// the doors with a rate limit (utils/security): sign-in tries, the public token pages
+app.use("/api/auth/login", security.loginLimiter);
+app.use("/api/public", security.publicLimiter);
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/accounts", require("./routes/accountRoutes"));
 

@@ -23,6 +23,8 @@ const lens = require("../services/lensService");
 
 // a profile is reachable only when its person is in the acting persona's lens (services/lensService)
 router.param("id", lens.guardByPerson(Profile));
+// ...and a WRITE on it must be of the persona's own program (a person in two programs, 2026-10-27)
+router.param("id", lens.guardProfileKind(Profile));
 
 router.get("/", getProfiles);
 router.route("/:id").get(getProfileById).patch(updateProfile).delete(deactivateProfile);

@@ -202,19 +202,23 @@ async function narrowByCycle(req, filter, field = "cycle") {
 
 const outOfScope = () => AppError.of("OUT_OF_SCOPE", 403);
 
-/** The person must be in the lens (403), and exist (404). An invalid id is the controller's own 404. */
+/** The person must be in the lens (403), and exist (404); an id that is no id is a 404 at once (2026-10-27 - never a skipped check). */
 async function assertPerson(req, id) {
+  if (id == null) return;
+  if (!isId(id)) throw AppError.of("NOT_FOUND", 404, "אדם");
   const ids = await scopeOf(req).people();
-  if (!ids || id == null || !isId(id) || ids.has(String(id))) return;
+  if (!ids || ids.has(String(id))) return;
   const exists = await Person.exists({ _id: id });
   if (!exists) throw AppError.of("NOT_FOUND", 404, "אדם");
   throw outOfScope();
 }
 
-/** The cycle must be on the lens's side (403), and exist (404). */
+/** The cycle must be on the lens's side (403), and exist (404); an id that is no id is a 404 at once. */
 async function assertCycle(req, id) {
+  if (id == null) return;
+  if (!isId(id)) throw AppError.of("NOT_FOUND", 404, "מחזור");
   const { lens } = scopeOf(req);
-  if (lens.all || id == null || !isId(id)) return;
+  if (lens.all) return;
   const cycle = await Cycle.findOne({ _id: id }).select("hostel").lean();
   if (!cycle) throw AppError.of("NOT_FOUND", 404, "מחזור");
   if (!cycleInLens(lens, cycle)) throw outOfScope();
@@ -289,6 +293,21 @@ const guardByPerson = (Model) =>
     const row = await Model.findOne({ _id: id }).select("person").lean();
     return row && { person: row.person };
   });
+/**
+ * `:id` is a profile and the request WRITES: the profile's kind must be of
+ * the persona's own program (2026-10-27, appendix A-3 - a person in two
+ * programs: the college manager may not close the culture profile).
+ */
+const guardProfileKind = (Model) => async (req, res, next, id) => {
+  try {
+    if (req.method === "GET" || scopeOf(req).lens.all || !isId(id)) return next();
+    const row = await Model.findOne({ _id: id }).select("kind").lean();
+    if (row) assertProfileKind(req, row.kind);
+    return next();
+  } catch (e) {
+    return next(e);
+  }
+};
 /** `:id` is a record of `Model` with a `cycle` field. */
 const guardByCycle = (Model) =>
   guardParam(async (id, req) => {
@@ -313,6 +332,7 @@ module.exports = {
   assertProgramTag,
   guardParam,
   guardPerson,
+  guardProfileKind,
   guardCycle,
   guardByPerson,
   guardByCycle,
