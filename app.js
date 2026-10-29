@@ -24,6 +24,7 @@ const globalErrorHandler = require("./controllers/errorController");
 const share = require("./utils/sharePreview");
 const { authenticate, requireSuper, requireFamily } = require("./utils/auth");
 const security = require("./utils/security");
+const { audit } = require("./utils/audit");
 
 const app = express();
 // Render sits in front of us: req.secure / req.ip come from its headers
@@ -67,6 +68,9 @@ app.get("/api/health", health);
 // member, except the public sign-up pages and the sign-in routes
 // themselves (utils/auth OPEN). req.account = who is signed in.
 app.use("/api", authenticate);
+// every successful write by a signed-in account is written down (utils/audit,
+// Eden 2026-10-29: the activity page says per user what they added, changed, deleted)
+app.use("/api", audit);
 // the doors with a rate limit (utils/security): sign-in tries, the public token pages
 app.use("/api/auth/login", security.loginLimiter);
 app.use("/api/public", security.publicLimiter);
@@ -123,6 +127,8 @@ app.use("/api/meta", require("./routes/metaRoutes"));
 // Read-only DB explorer (schema introspection + raw browsing) - powers the
 // in-app "בסיס הנתונים" page. Note: /schema is matched before /:collection.
 app.use("/api/db", requireSuper, require("./routes/dbRoutes"));
+// the activity pages (2026-10-29): who is online, the sign-ins, every user's writes
+app.use("/api/audit", requireSuper, require("./routes/auditRoutes"));
 
 // ── The client, served by this same process ──────────────────────────────
 // `client-dist/` is the React build that `npm run deploy` (in client/) drops

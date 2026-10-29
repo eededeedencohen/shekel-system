@@ -15,12 +15,15 @@
 
 const StaffAccount = require("../models/StaffAccount");
 const StaffSession = require("../models/StaffSession");
+const StaffLogin = require("../models/StaffLogin");
 const PasswordReset = require("../models/PasswordReset");
 const mongoose = require("mongoose");
 const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
 const { STAFF_KIND_KEYS, RESET_LINK_HOURS } = require("../utils/domain");
 const { hashPassword, verifyPassword, defaultPasswordFor, isStrongEnough, newToken, hashToken, isTokenShape } = require("../utils/password");
+const { describeUserAgent } = require("../utils/userAgent");
+const presence = require("./presenceService");
 
 const DAY = 86400000;
 const SESSION_DAYS = 30;
@@ -47,7 +50,7 @@ async function ensureSeedAccounts() {
 
 /* ───────── sessions ───────── */
 
-const cache = new Map(); // tokenHash → { account, until }
+const cache = new Map(); // tokenHash → { account, sessionId, until }
 const forget = () => cache.clear();
 
 /** What the browser learns about the signed-in account. */
@@ -64,23 +67,29 @@ const publicAccount = (a) => ({
   defaultPassword: !a.passwordChangedAt,
 });
 
-async function openSession(account, userAgent) {
+/**
+ * A new session: the live key (StaffSession, the browser's cookie) and its
+ * memory (StaffLogin - the sign-ins page, 2026-10-29: who, from where, how).
+ */
+async function openSession(account, { userAgent, ip, how = "password" } = {}) {
   const token = newToken();
-  await StaffSession.create({
+  const ua = String(userAgent || "").slice(0, 300);
+  const session = await StaffSession.create({
     account: account._id,
     tokenHash: hashToken(token),
     expiresAt: new Date(Date.now() + SESSION_DAYS * DAY),
-    userAgent: String(userAgent || "").slice(0, 300),
+    userAgent: ua,
   });
+  await StaffLogin.create({ account: account._id, session: session._id, how, ip: String(ip || "").slice(0, 60), userAgent: ua, device: describeUserAgent(ua) });
   return token;
 }
 
-/** The account a session token belongs to (null when signed out / expired / disabled). */
-async function accountForToken(token) {
+/** `{ account, sessionId }` for a session token (null when signed out / expired / disabled). */
+async function sessionForToken(token) {
   if (!token) return null;
   const h = hashToken(token);
   const hit = cache.get(h);
-  if (hit && hit.until > Date.now()) return hit.account;
+  if (hit && hit.until > Date.now()) return { account: hit.account, sessionId: hit.sessionId };
   const session = await StaffSession.findOne({ tokenHash: h }).lean();
   if (!session || session.expiresAt.getTime() <= Date.now()) {
     cache.delete(h);
@@ -92,8 +101,14 @@ async function accountForToken(token) {
   if (Date.now() - new Date(session.lastSeenAt).getTime() > 3600 * 1000) {
     StaffSession.updateOne({ _id: session._id }, { lastSeenAt: new Date(), expiresAt: new Date(Date.now() + SESSION_DAYS * DAY) }).catch(() => {});
   }
-  cache.set(h, { account, until: Date.now() + CACHE_MS });
-  return account;
+  cache.set(h, { account, sessionId: session._id, until: Date.now() + CACHE_MS });
+  return { account, sessionId: session._id };
+}
+
+/** The account a session token belongs to (null when signed out / expired / disabled). */
+async function accountForToken(token) {
+  const hit = await sessionForToken(token);
+  return hit ? hit.account : null;
 }
 
 /** A borrowed lens (utils/auth actorOf): the account by id, briefly cached like a session. */
@@ -107,19 +122,32 @@ async function accountById(id) {
   return account;
 }
 
+/** Signing out: the live key goes, the sign-in row says when and why. */
 async function endSession(token) {
   if (!token) return;
   const h = hashToken(token);
   cache.delete(h);
-  await StaffSession.deleteOne({ tokenHash: h });
+  const session = await StaffSession.findOneAndDelete({ tokenHash: h }).lean();
+  if (!session) return;
+  presence.forget(session._id);
+  await StaffLogin.updateOne({ session: session._id, endedAt: null }, { endedAt: new Date(), endReason: "logout" });
 }
 
-/** Every session of an account ends (a new password, a disabled account) - except `keepToken`'s. */
-async function endSessionsOf(accountId, keepToken) {
+/**
+ * Every session of an account ends - except `keepToken`'s - and each sign-in
+ * row records why: "password" (changed), "reset" (through a link),
+ * "disabled" (the account), "revoked" (anything else).
+ */
+async function endSessionsOf(accountId, keepToken, reason = "revoked") {
   const filter = { account: accountId };
   if (keepToken) filter.tokenHash = { $ne: hashToken(keepToken) };
+  const gone = await StaffSession.find(filter).select("_id").lean();
   await StaffSession.deleteMany(filter);
   forget();
+  if (!gone.length) return;
+  const ids = gone.map((s) => s._id);
+  ids.forEach((id) => presence.forget(id));
+  await StaffLogin.updateMany({ session: { $in: ids }, endedAt: null }, { endedAt: new Date(), endReason: reason });
 }
 
 /* ───────── signing in ───────── */
@@ -155,7 +183,7 @@ async function login({ username, password, ip, userAgent }) {
   attempts.delete(key);
   account.lastLoginAt = new Date();
   await account.save();
-  const token = await openSession(account, userAgent);
+  const token = await openSession(account, { userAgent, ip, how: "password" });
   return { account: publicAccount(account), token };
 }
 
@@ -168,7 +196,7 @@ async function changePassword(accountId, { current, next }, keepToken) {
   account.passwordChangedAt = new Date();
   account.resetRequestedAt = null;
   await account.save();
-  await endSessionsOf(account._id, keepToken); // other browsers sign in again
+  await endSessionsOf(account._id, keepToken, "password"); // other browsers sign in again
   return publicAccount(account);
 }
 
@@ -197,7 +225,7 @@ async function resetInfo(token) {
 }
 
 /** A new password through the link: every session ends, this browser is signed in. */
-async function resetPassword(token, password, userAgent) {
+async function resetPassword(token, password, userAgent, ip) {
   const { reset, account } = await liveReset(token);
   if (!isStrongEnough(password)) throw AppError.of("PASSWORD_WEAK", 400);
   account.passwordHash = await hashPassword(password);
@@ -209,8 +237,8 @@ async function resetPassword(token, password, userAgent) {
   await reset.save();
   // any other open link of this account is spent too
   await PasswordReset.updateMany({ account: account._id, usedAt: null }, { usedAt: new Date() });
-  await endSessionsOf(account._id);
-  const session = await openSession(account, userAgent);
+  await endSessionsOf(account._id, null, "reset");
+  const session = await openSession(account, { userAgent, ip, how: "reset" });
   return { account: publicAccount(account), token: session };
 }
 
@@ -283,7 +311,7 @@ async function updateAccount(id, body) {
   // a user name change keeps the password; the default-password flag says what it was made from
   Object.assign(account, fields);
   await account.save().catch(taken);
-  if (fields.active === false) await endSessionsOf(account._id);
+  if (fields.active === false) await endSessionsOf(account._id, null, "disabled");
   forget();
   return adminView(account.toObject());
 }
@@ -310,6 +338,7 @@ module.exports = {
   ensureSeedAccounts,
   publicAccount,
   accountForToken,
+  sessionForToken,
   accountById,
   endSession,
   login,

@@ -14,6 +14,7 @@
 
 const AppError = require("./AppError");
 const auth = require("../services/authService");
+const presence = require("../services/presenceService");
 
 const COOKIE = "shekel_session";
 const MAX_AGE_S = 30 * 24 * 3600;
@@ -72,10 +73,14 @@ async function authenticate(req, res, next) {
       return next();
     }
     const token = tokenOf(req);
-    req.account = token ? await auth.accountForToken(token) : null;
+    const hit = token ? await auth.sessionForToken(token) : null;
+    req.account = hit ? hit.account : null;
     if (req.account) {
       req.sessionToken = token;
+      req.sessionId = hit.sessionId;
       req.actor = await actorOf(req);
+      // the presence strip (services/presenceService): this session was just used
+      presence.touch(hit.sessionId, req.account._id);
     }
     if (req.account || OPEN.some((re) => re.test(req.path))) return next();
     return next(AppError.of("AUTH_REQUIRED", 401));

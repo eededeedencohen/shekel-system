@@ -27,6 +27,9 @@ exports.logout = catchAsync(async (req, res) => {
 
 exports.me = (req, res) => ok(res, { account: auth.publicAccount(req.account) });
 
+/** The heartbeat: authenticate already touched the session (services/presenceService); nothing to add. */
+exports.ping = (req, res) => res.status(204).end();
+
 exports.changePassword = catchAsync(async (req, res) => {
   const account = await auth.changePassword(req.account._id, req.body || {}, req.sessionToken);
   ok(res, { account });
@@ -42,7 +45,7 @@ exports.resetInfo = catchAsync(async (req, res) => {
 });
 
 exports.resetPassword = catchAsync(async (req, res) => {
-  const { account, token } = await auth.resetPassword(req.params.token, req.body?.password, req.get("user-agent"));
+  const { account, token } = await auth.resetPassword(req.params.token, req.body?.password, req.get("user-agent"), req.ip);
   setSessionCookie(req, res, token);
   ok(res, { account });
 });
