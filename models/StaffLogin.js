@@ -25,6 +25,8 @@ const staffLoginSchema = new mongoose.Schema(
     how: { type: String, enum: HOW, default: "password" },
     startedAt: { type: Date, required: true, default: Date.now },
     lastSeenAt: { type: Date, required: true, default: Date.now },
+    /** The browser said goodbye (its last tab closed, POST /auth/bye) - cleared by the next touch. The session may still be alive. */
+    leftAt: { type: Date, default: null },
     /** Empty while the session may still be alive; the view also reads an old `lastSeenAt` as expired. */
     endedAt: { type: Date, default: null },
     endReason: { type: String, enum: END_REASONS, default: null },

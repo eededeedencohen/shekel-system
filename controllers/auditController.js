@@ -27,3 +27,6 @@ exports.logins = catchAsync(async (req, res) => ok(res, await audit.logins(req.q
 exports.events = catchAsync(async (req, res) => ok(res, await audit.events(req.query)));
 
 exports.user = catchAsync(async (req, res) => ok(res, await audit.userSummary(req.params.id)));
+
+/** POST /api/audit/clear { what: ["events","logins"], user?, olderThanDays? } → { events, logins } deleted. */
+exports.clear = catchAsync(async (req, res) => ok(res, await audit.clear(req.body || {})));

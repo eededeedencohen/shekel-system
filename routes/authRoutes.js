@@ -21,5 +21,7 @@ router.post("/password", c.changePassword);
 router.get("/staff", c.staff);
 // the presence heartbeat (2026-10-29): the browser says "still here" once a minute while its tab is visible
 router.post("/ping", c.ping);
+// the goodbye: the tab closed (navigator.sendBeacon on pagehide) - the person leaves the "online" list at once
+router.post("/bye", c.bye);
 
 module.exports = router;

@@ -11,6 +11,7 @@ const catchAsync = require("../utils/catchAsync");
 const auth = require("../services/authService");
 const { setSessionCookie, clearSessionCookie, tokenOf } = require("../utils/auth");
 const { clientIp } = require("../utils/clientIp");
+const presence = require("../services/presenceService");
 
 const ok = (res, data, code = 200) => res.status(code).json({ status: "success", data });
 
@@ -31,6 +32,12 @@ exports.me = (req, res) => ok(res, { account: auth.publicAccount(req.account) })
 
 /** The heartbeat: authenticate already touched the session (services/presenceService); nothing to add. */
 exports.ping = (req, res) => res.status(204).end();
+
+/** The goodbye beacon: the tab closed - the session is off the online list until the next touch. */
+exports.bye = catchAsync(async (req, res) => {
+  await presence.bye(req.sessionId);
+  res.status(204).end();
+});
 
 exports.changePassword = catchAsync(async (req, res) => {
   const account = await auth.changePassword(req.account._id, req.body || {}, req.sessionToken);

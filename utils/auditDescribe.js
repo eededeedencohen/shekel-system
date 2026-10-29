@@ -56,6 +56,7 @@ const NOUNS = {
   accounts: ["משתמש", "account"],
   auth: ["החשבון שלי", "account"],
   files: ["קובץ", "file"],
+  audit: ["היסטוריית הפעילות", "audit"],
 };
 
 /**
@@ -206,6 +207,8 @@ const RULES = [
   ["DELETE", "/diary/:id", "מחיקת רשומה מהיומן", "diary", "delete"],
   ["POST", "/tags/people/:id", "הוספת תגית לאדם", "tag", "create"],
   ["DELETE", "/tags/people/:id/*", "הסרת תגית מאדם", "tag", "delete"],
+  // the activity page itself
+  ["POST", "/audit/clear", "ניקוי היסטוריית הפעילות", "audit", "delete"],
 ];
 
 const toRegex = (pattern) => new RegExp("^" + pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]+") + "$");
@@ -331,8 +334,9 @@ function describe({ method, path, body, answer }) {
     .split("/")
     .find((seg) => ID_RE.test(seg));
   const target = { id: idInPath || idOfAnswer(answer), label: labelOfAnswer(answer).slice(0, 120) };
-  const payload = rule.options.payload === false ? null : sanitizePayload(body);
-  return { route, title: rule.title, verb: rule.verb, kind: rule.kind, target, payload };
+  const secret = rule.options.payload === false; // a password, a token: the body stays out of every field
+  const payload = secret ? null : sanitizePayload(body);
+  return { route, title: rule.title, verb: rule.verb, kind: rule.kind, target, payload, secret };
 }
 
 module.exports = { describe, normalizeRoute, ruleFor, sanitizePayload, labelOfAnswer, RULES, NOUNS };

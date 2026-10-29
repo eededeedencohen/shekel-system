@@ -16,5 +16,6 @@ router.get("/presence", c.presence);
 router.get("/logins", c.logins);
 router.get("/events", c.events);
 router.get("/users/:id", c.user);
+router.post("/clear", c.clear);
 
 module.exports = router;

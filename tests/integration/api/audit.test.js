@@ -273,6 +273,104 @@ describe("every write written down (AuditEvent)", () => {
   });
 });
 
+describe("in words (utils/auditDetails) and the clearing", () => {
+  const { makeStudent, makeTeacher, makeCycle } = require("../../helpers/factories");
+
+  beforeEach(async () => {
+    await ensureSeedAccounts();
+    presence.reset();
+  });
+
+  test("attendance: the course by name, the date in Hebrew, every student by name with the status", async () => {
+    const teacher = await makeTeacher({ firstName: "אלישבע", lastName: "כהן" });
+    const cycle = await makeCycle({ teacher: teacher._id });
+    const a = await makeStudent({ firstName: "דנה", lastName: "לוי" });
+    const b = await makeStudent({ firstName: "יוסי", lastName: "מזרחי" });
+    const { cookie } = await signIn("hagai");
+    const res = await request(app)
+      .put("/api/lessons/attendance")
+      .set("Cookie", cookie)
+      .send({ cycle: String(cycle._id), date: "2026-10-29", records: [{ student: String(a._id), status: "Present" }, { student: String(b._id), status: "Missing", reason: "hospital", note: "חזר מחר" }] });
+    expect(res.status).toBeLessThan(300);
+    await flush();
+    const e = await AuditEvent.findOne({ route: "/lessons/attendance" }).lean();
+    expect(e.summary).toMatch(/29\.10\.26/);
+    expect(e.summary).toMatch(/2 דיווחים/);
+    expect(e.summary).toMatch(/1 נכחו/);
+    expect(e.summary).toMatch(/1 נעדרו/);
+    expect(e.summary).not.toMatch(/[0-9a-f]{24}/);
+    const byLabel = Object.fromEntries(e.facts.map((f) => [f.label, f.value]));
+    expect(byLabel["דנה לוי"]).toBe("נכח");
+    expect(byLabel["יוסי מזרחי"]).toBe("נעדר · אשפוז · חזר מחר");
+    expect(byLabel["קורס"]).toBeTruthy();
+  });
+
+  test("a seat in words; an edit says what changed from what; a deletion keeps the name it had", async () => {
+    const cycle = await makeCycle();
+    const s = await makeStudent({ firstName: "רונית", lastName: "אבן" });
+    const { cookie } = await signIn("hagai");
+    const made = await request(app).post("/api/enrollments").set("Cookie", cookie).send({ cycle: String(cycle._id), student: String(s._id), status: "active" });
+    expect(made.status).toBeLessThan(300);
+    const room = await request(app).post("/api/rooms").set("Cookie", cookie).send({ name: "חדר ישן", capacity: 8 });
+    const id = room.body.data.room._id;
+    await request(app).put(`/api/rooms/${id}`).set("Cookie", cookie).send({ name: "חדר חדש", capacity: 12, notes: "" }).expect(200);
+    await request(app).delete(`/api/rooms/${id}`).set("Cookie", cookie).expect(204);
+    await flush();
+    const seat = await AuditEvent.findOne({ route: "/enrollments" }).lean();
+    expect(seat.summary).toMatch(/^רונית אבן שובץ\/ה ל/);
+    const edit = await AuditEvent.findOne({ route: "/rooms/:id", method: "PUT" }).lean();
+    expect(edit.changes.map((c) => [c.field, c.from, c.to])).toEqual([
+      ["name", "חדר ישן", "חדר חדש"],
+      ["capacity", "8", "12"],
+    ]);
+    expect(edit.summary).toBe("שם: מ-חדר ישן ל-חדר חדש · קיבולת: מ-8 ל-12");
+    const gone = await AuditEvent.findOne({ route: "/rooms/:id", method: "DELETE" }).lean();
+    expect(gone.target.label).toBe("חדר חדש");
+    expect(gone.summary).toBe("חדר חדש");
+  });
+
+  test("the goodbye beacon takes a closed window off the online list; the sign-in row reads 'closed'", async () => {
+    const { cookie: tamar } = await signIn("tamar", PHONE_UA);
+    const { cookie: eden } = await signIn("eden");
+    expect((await request(app).get("/api/audit/presence").set("Cookie", eden)).body.data.online.map((o) => o.account.username).sort()).toEqual(["eden", "tamar"]);
+    await request(app).post("/api/auth/bye").set("Cookie", tamar).expect(204);
+    expect((await request(app).get("/api/audit/presence").set("Cookie", eden)).body.data.online.map((o) => o.account.username)).toEqual(["eden"]);
+    const tamarId = await idOf("tamar");
+    const row = (await request(app).get(`/api/audit/logins?account=${tamarId}`).set("Cookie", eden)).body.data.logins[0];
+    expect(row).toMatchObject({ live: true, state: "closed" });
+    expect(row.leftAt).toBeTruthy();
+    // the window opens again: a touch brings her back
+    await request(app).get("/api/auth/me").set("Cookie", tamar).expect(200);
+    expect((await request(app).get("/api/audit/presence").set("Cookie", eden)).body.data.online.map((o) => o.account.username).sort()).toEqual(["eden", "tamar"]);
+  });
+
+  test("clearing: the writes and the ended sign-ins go, live sign-ins stay, the clearing itself is written down", async () => {
+    const { cookie: hagai } = await signIn("hagai");
+    await request(app).post("/api/rooms").set("Cookie", hagai).send({ name: "א" }).expect(201);
+    await request(app).post("/api/auth/logout").set("Cookie", hagai).expect(200);
+    const { cookie: noa } = await signIn("noa");
+    await request(app).post("/api/rooms").set("Cookie", noa).send({ name: "ב" }).expect(201);
+    await flush();
+    const { cookie: eden } = await signIn("eden");
+    expect((await request(app).post("/api/audit/clear").set("Cookie", noa).send({ what: ["events"] })).status).toBe(403);
+    const hagaiId = await idOf("hagai");
+    const one = await request(app).post("/api/audit/clear").set("Cookie", eden).send({ what: ["events", "logins"], user: hagaiId });
+    expect(one.body.data).toEqual({ events: 1, logins: 1 });
+    await flush();
+    expect(await AuditEvent.countDocuments({ actor: hagaiId })).toBe(0);
+    expect(await StaffLogin.countDocuments({ account: hagaiId })).toBe(0);
+    const all = await request(app).post("/api/audit/clear").set("Cookie", eden).send({ what: ["events", "logins"] });
+    expect(all.body.data.events).toBe(2); // noa's room + the first clearing
+    expect(all.body.data.logins).toBe(0); // noa's and eden's sign-ins are live
+    await flush();
+    const left = await AuditEvent.find().lean();
+    expect(left).toHaveLength(1);
+    expect(left[0]).toMatchObject({ title: "ניקוי היסטוריית הפעילות", verb: "delete", kind: "audit" });
+    expect(left[0].summary).toMatch(/^נמחקו 2 פעולות ו-0 כניסות · של כולם/);
+    expect(await StaffLogin.countDocuments()).toBe(2);
+  });
+});
+
 describe("the describer (utils/auditDescribe)", () => {
   test("ids and tokens fold; the named routes answer in Hebrew; the rest fall back to the noun", () => {
     expect(normalizeRoute("/cycles/65f1a2b3c4d5e6f7a8b9c0d1/x")).toBe("/cycles/:id/x");

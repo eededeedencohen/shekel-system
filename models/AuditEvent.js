@@ -45,6 +45,10 @@ const auditEventSchema = new mongoose.Schema(
       label: { type: String, default: "" },
     },
     payload: { type: mongoose.Schema.Types.Mixed, default: null },
+    /** In words (utils/auditDetails, 2026-10-29): one line, the body as label/value pairs, and for an edit what changed. */
+    summary: { type: String, default: "" },
+    facts: { type: [{ _id: false, label: String, value: String }], default: [] },
+    changes: { type: [{ _id: false, field: String, label: String, from: String, to: String }], default: [] },
     ip: { type: String, default: "" },
     ms: { type: Number, default: 0 },
   },

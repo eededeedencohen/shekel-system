@@ -48,6 +48,8 @@ function loginView(r, now = Date.now()) {
       endReason = "expired";
     } else live = true;
   }
+  // the browser said goodbye after it was last seen: the window is closed, the key still lives
+  const closed = live && presence.isGone(r.lastSeenAt, r.leftAt);
   return {
     _id: String(r._id),
     session: String(r.session),
@@ -58,7 +60,8 @@ function loginView(r, now = Date.now()) {
     endedAt,
     endReason,
     live,
-    state: live ? presence.stateOf(r.lastSeenAt, now) : "ended",
+    state: !live ? "ended" : closed ? "closed" : presence.stateOf(r.lastSeenAt, now),
+    leftAt: closed ? r.leftAt : null,
     expiresAt: live ? expiresAt : null,
     ip: r.ip || "",
     device: r.device || {},
@@ -104,9 +107,42 @@ const eventView = (e) => ({
   kind: e.kind,
   target: e.target || { id: null, label: "" },
   payload: e.payload ?? null,
+  summary: e.summary || "",
+  facts: e.facts || [],
+  changes: e.changes || [],
   ip: e.ip || "",
   ms: e.ms || 0,
 });
+
+/**
+ * "ניקוי היסטוריית הפעילות" (Eden, 2026-10-29): the super admin empties the
+ * writes and / or the ENDED sign-ins - of everyone or of one account,
+ * everything or only what is older than `olderThanDays`. Live sign-ins
+ * stay (they are the presence). The clearing itself is a write, so the
+ * audit middleware records it with the counts.
+ */
+async function clear({ what, user, olderThanDays } = {}) {
+  const wanted = new Set(Array.isArray(what) ? what : what ? [what] : ["events"]);
+  const days = Math.max(0, parseInt(olderThanDays, 10) || 0);
+  const cutoff = days ? new Date(Date.now() - days * DAY) : null;
+  if (user && !isId(user)) throw AppError.of("NOT_FOUND", 404, "משתמש");
+  const who = user ? oid(user) : null;
+  const out = { events: 0, logins: 0 };
+  if (wanted.has("events")) {
+    const filter = {};
+    if (who) filter.$or = [{ actor: who }, { account: who }];
+    if (cutoff) filter.at = { $lt: cutoff };
+    out.events = (await AuditEvent.deleteMany(filter)).deletedCount || 0;
+  }
+  if (wanted.has("logins")) {
+    await sweepExpired();
+    const filter = { endedAt: { $ne: null } };
+    if (who) filter.account = who;
+    if (cutoff) filter.startedAt = { $lt: cutoff };
+    out.logins = (await StaffLogin.deleteMany(filter)).deletedCount || 0;
+  }
+  return out;
+}
 
 const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -229,4 +265,4 @@ async function userSummary(id) {
   };
 }
 
-module.exports = { logins, events, overview, userSummary, loginView, eventView, sweepExpired, SESSION_DAYS };
+module.exports = { logins, events, overview, userSummary, clear, loginView, eventView, sweepExpired, SESSION_DAYS };

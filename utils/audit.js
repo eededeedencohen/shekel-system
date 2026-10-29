@@ -20,11 +20,12 @@
 
 const AuditEvent = require("../models/AuditEvent");
 const StaffLogin = require("../models/StaffLogin");
-const { describe } = require("./auditDescribe");
+const { describe, normalizeRoute } = require("./auditDescribe");
+const { details, snapshot } = require("./auditDetails");
 const { clientIp } = require("./clientIp");
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-const SKIP = [/^\/auth\/(login|logout|forgot|ping)$/, /^\/auth\/reset(\/|$)/, /^\/public(\/|$)/, /^\/files\/(upload-url|urls)$/, /^\/db(\/|$)/];
+const SKIP = [/^\/auth\/(login|logout|forgot|ping|bye)$/, /^\/auth\/reset(\/|$)/, /^\/public(\/|$)/, /^\/files\/(upload-url|urls)$/, /^\/db(\/|$)/];
 
 /** The request path under /api - from originalUrl, which no router rewrites. */
 const pathOf = (req) => String(req.originalUrl || req.url || "").split("?")[0].replace(/^\/api(?=\/|$)/, "") || "/";
@@ -37,8 +38,17 @@ function track(promise) {
   return promise;
 }
 
-async function record({ req, path, status, answer, ms }) {
+async function record({ req, path, status, answer, ms, before, ip }) {
   const desc = describe({ method: req.method, path, body: req.body, answer });
+  // in words: names for ids, Hebrew for keys and values, what changed (utils/auditDetails) - never fatal;
+  // a secret route (a password) hands over no body at all
+  let words = { summary: "", facts: [], changes: [], label: "" };
+  try {
+    words = await details({ method: req.method, path, route: desc.route, body: desc.secret ? {} : req.body, answer, before });
+  } catch (err) {
+    console.error("audit: the details were not written -", err.message);
+  }
+  if (!desc.target.label && words.label) desc.target.label = words.label.slice(0, 120);
   const actor = req.actor || req.account;
   await AuditEvent.create({
     at: new Date(),
@@ -57,18 +67,29 @@ async function record({ req, path, status, answer, ms }) {
     kind: desc.kind,
     target: desc.target,
     payload: desc.payload,
-    ip: clientIp(req),
+    summary: words.summary,
+    facts: words.facts,
+    changes: words.changes,
+    ip,
     ms,
   });
   if (req.sessionId) await StaffLogin.updateOne({ session: req.sessionId }, { $inc: { actions: 1 } });
 }
 
 /** The middleware. */
-function audit(req, res, next) {
+async function audit(req, res, next) {
   if (!MUTATING.has(req.method) || !req.account || !req.account._id) return next();
   const path = pathOf(req);
   if (SKIP.some((re) => re.test(path))) return next();
   const started = Date.now();
+  const ip = clientIp(req); // read now: once the answer has left, the socket (and req.ip with it) may be gone
+  // the target as it is BEFORE the handler: an edit's "from", a deletion's name
+  let before = null;
+  try {
+    before = await snapshot(normalizeRoute(path), path);
+  } catch {
+    before = null;
+  }
   let answer = null;
   const json = res.json;
   res.json = function captured(body) {
@@ -77,7 +98,7 @@ function audit(req, res, next) {
   };
   res.on("finish", () => {
     if (res.statusCode >= 400) return;
-    track(record({ req, path, status: res.statusCode, answer, ms: Date.now() - started })).catch((err) => console.error("audit: the event was not written -", err.message));
+    track(record({ req, path, status: res.statusCode, answer, ms: Date.now() - started, before, ip })).catch((err) => console.error("audit: the event was not written -", err.message));
   });
   return next();
 }
