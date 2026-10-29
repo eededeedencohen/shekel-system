@@ -136,5 +136,16 @@ function requireKinds(...kinds) {
   };
 }
 
+/** Does this account hold a grant beside its kind (2026-10-29: "gym")? The super admin holds them all. */
+const hasFeature = (account, name) => !!account && (account.kind === "super" || (Array.isArray(account.features) && account.features.includes(name)));
+
+/** A router of a granted feature: the ACTING persona must hold it (the users page gives it), else 403 FEATURE_FORBIDDEN. */
+function requireFeature(name) {
+  return (req, res, next) => {
+    if (hasFeature(req.actor, name)) return next();
+    return next(AppError.of("FEATURE_FORBIDDEN", 403));
+  };
+}
+
 // TEST_ACCOUNT is exported for the tests alone: a suite may give the bypass actor a `person` link or another kind
-module.exports = { COOKIE, tokenOf, setSessionCookie, clearSessionCookie, authenticate, requireSuper, requireFamily, requireKinds, FAMILIES, TEST_ACCOUNT };
+module.exports = { COOKIE, tokenOf, setSessionCookie, clearSessionCookie, authenticate, requireSuper, requireFamily, requireKinds, requireFeature, hasFeature, FAMILIES, TEST_ACCOUNT };

@@ -44,6 +44,7 @@ const DiaryEntry = require("../models/DiaryEntry");
 const Lesson = require("../models/Lesson");
 const StoredFile = require("../models/StoredFile");
 const { Tag } = require("../models/Tag");
+const GymMembership = require("../models/GymMembership");
 const D = require("./domain");
 
 const ID_RE = /^[0-9a-f]{24}$/i;
@@ -96,6 +97,7 @@ const KINDS = {
   DiaryEntry: { model: DiaryEntry, select: "title kind date", name: (d) => d.title },
   Lesson: { model: Lesson, select: "cycle date", populate: [["cycle", "subject hostel"]], name: (l) => fmtDate(l.date) },
   StoredFile: { model: StoredFile, select: "name family", name: (f) => f.name },
+  GymMembership: { model: GymMembership, select: "person membership contract.signedAt", populate: [["person", "firstName lastName"]], name: (m) => personName(m.person) },
 };
 
 /** The model behind a route's first segments, for the target. */
@@ -125,6 +127,7 @@ const TARGET_BY_ROUTE = [
   [/^\/files\/:id/, "StoredFile"],
   [/^\/subjects\/:id/, "Subject"],
   [/^\/subject-categories\/:id/, "SubjectCategory"],
+  [/^\/gym\/:id/, "GymMembership"],
 ];
 
 const targetKindOf = (route) => (TARGET_BY_ROUTE.find(([re]) => re.test(route)) || [])[1] || null;
@@ -411,6 +414,7 @@ const DOC_LABELS = Object.fromEntries(D.INTAKE_DOCUMENTS.map((d) => [d.key, d.la
 const WEEKDAYS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"];
 
 const VALUE_LABELS = {
+  membership: D.GYM_MEMBERSHIP_LABELS,
   status: STATUS_LABELS,
   state: STATE_LABELS,
   stage: Object.fromEntries(D.PIPELINE_STAGES.map((s) => [s.key, s.label])),
@@ -621,6 +625,12 @@ const SPECIAL = [
   [/^POST \/accounts$/, ({ body }) => ({ summary: join([body.name, KIND_LABELS[body.kind] || body.kind, body.username]) })],
   [/^POST \/diary$/, ({ body }) => ({ summary: join([KIND_LABELS[body.kind] || "", body.title, body.date ? fmtDate(body.date) : ""]) })],
   [/^POST \/audit\/clear$/, ({ body, answer, names }) => ({ summary: join([`נמחקו ${answer?.data?.events ?? 0} פעולות ו-${answer?.data?.logins ?? 0} כניסות`, body.user ? `של ${name(names, body.user, "משתמש אחד")}` : "של כולם", body.olderThanDays ? `ישנות מ-${body.olderThanDays} יום` : "מכל הזמנים"]) })],
+  // חדר כושר
+  [/^POST \/gym$/, ({ body, names, answer }) => ({ summary: join([body.person ? name(names, body.person, "") : `${body.firstName || ""} ${body.lastName || ""}`.trim(), answer?.data?.revived ? "חזר/ה לחדר הכושר" : "נוסף/ה לחדר הכושר"]) })],
+  [/^POST \/gym\/:id\/membership$/, ({ body, before }) => ({ summary: join([before?.label, body.membership ? D.GYM_MEMBERSHIP_LABELS[body.membership] || body.membership : "המנוי נמחק", body.note]) })],
+  [/^POST \/gym\/:id\/sent$/, ({ before }) => ({ summary: join([before?.label, "הקישור להסכם נשלח בוואטסאפ"]) })],
+  [/^POST \/gym\/:id\/link$/, ({ before }) => ({ summary: join([before?.label, "קישור חדש להסכם"]) })],
+  [/^DELETE \/gym\/:id$/, ({ before }) => ({ summary: join([before?.label, "הוסר/ה מחדר הכושר"]) })],
 ];
 
 /* ───────── the entry ───────── */

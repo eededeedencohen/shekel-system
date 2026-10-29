@@ -33,6 +33,8 @@ const CATALOG = {
     { group: "program", key: "college", label: "מכללה לכל" },
     { group: "program", key: "culture", label: "תרבות לכל" },
     { group: "program", key: "hostels", label: "הוסטלים" },
+    // חדר כושר פרופיט (2026-10-29): the gym app's members, a program like the hostels
+    { group: "program", key: "gym", label: "חדר כושר" },
   ],
 };
 

@@ -45,13 +45,19 @@ const strs = (list) => list.map((x) => String(x));
 
 /* ───────────────────────── the lens ───────────────────────── */
 
-/** The persona's lens - the same four cases as PersonaContext. */
+/**
+ * The persona's lens - the same four cases as PersonaContext, plus `gym`:
+ * the חדר כושר grant (2026-10-29, utils/auth hasFeature) adds the gym's
+ * members to whatever the kind sees.
+ */
 function lensOf(actor) {
   const kind = actor?.kind || "super";
   const cultureOnly = kind === "culture";
   const collegeOnly = kind === "manager";
   const hostelsOnly = kind === "hostels";
-  return { kind, all: !cultureOnly && !collegeOnly && !hostelsOnly, cultureOnly, collegeOnly, hostelsOnly };
+  const all = !cultureOnly && !collegeOnly && !hostelsOnly;
+  const gym = all || (Array.isArray(actor?.features) && actor.features.includes("gym"));
+  return { kind, all, cultureOnly, collegeOnly, hostelsOnly, gym };
 }
 
 /** The condition on cycles (null = every cycle). */
@@ -85,13 +91,15 @@ const roleHolders = (kinds) => Profile.distinct("person", { kind: { $in: kinds }
 /** The people of a lens as a Set of id strings (null = everyone). */
 async function personIdsOf(lens) {
   if (lens.all) return null;
+  // the חדר כושר grant: its members (now or once) join whatever the kind sees
+  const gym = lens.gym ? await holdersOf(["gym"]) : [];
   if (lens.cultureOnly) {
     const [tagged, staff] = await Promise.all([holdersOf(["culture", "cultureStaff"]), roleHolders(["ManagerCulture"])]);
-    return new Set(strs([...tagged, ...staff]));
+    return new Set(strs([...tagged, ...staff, ...gym]));
   }
   if (lens.collegeOnly) {
     const [tagged, teachers] = await Promise.all([holdersOf(["college", "teacher"]), roleHolders(["Teacher"])]);
-    return new Set(strs([...tagged, ...teachers]));
+    return new Set(strs([...tagged, ...teachers, ...gym]));
   }
   // the hostels: the tagged, the hostel managers, the teachers, whoever lives in a hostel, whoever sits in a hostel cycle
   const [tagged, staff, residents, hostelCycles] = await Promise.all([
@@ -101,7 +109,7 @@ async function personIdsOf(lens) {
     Cycle.distinct("_id", { hostel: { $ne: null } }),
   ]);
   const members = hostelCycles.length ? await Enrollment.distinct("student", { cycle: { $in: hostelCycles } }) : [];
-  return new Set(strs([...tagged, ...staff, ...residents, ...members]));
+  return new Set(strs([...tagged, ...staff, ...residents, ...members, ...gym]));
 }
 
 /**
@@ -247,7 +255,7 @@ const KINDS_BY_LENS = {
   cultureOnly: ["StudentCulture", "ManagerCulture"],
 };
 const TAGS_BY_LENS = { collegeOnly: ["college"], hostelsOnly: ["hostels"], cultureOnly: ["culture"] };
-const PROGRAM_TAG_KEYS = ["college", "culture", "hostels"];
+const PROGRAM_TAG_KEYS = ["college", "culture", "hostels", "gym"];
 const lensKey = (lens) => (lens.collegeOnly ? "collegeOnly" : lens.hostelsOnly ? "hostelsOnly" : lens.cultureOnly ? "cultureOnly" : null);
 
 /** A new profile of this kind - the persona's own program only (a culture coordinator opens no college student). */
@@ -257,10 +265,16 @@ function assertProfileKind(req, kind) {
   if (!KINDS_BY_LENS[key].includes(kind)) throw outOfScope();
 }
 
-/** A program tag given or taken - the persona's own program only (role tags are not judged here). */
+/** A program tag given or taken - the persona's own program only (role tags are not judged here); "gym" needs the grant. */
 function assertProgramTag(req, tagKey) {
-  const key = lensKey(scopeOf(req).lens);
-  if (!key || !PROGRAM_TAG_KEYS.includes(tagKey)) return;
+  const { lens } = scopeOf(req);
+  if (!PROGRAM_TAG_KEYS.includes(tagKey)) return;
+  if (tagKey === "gym") {
+    if (!lens.gym) throw outOfScope();
+    return;
+  }
+  const key = lensKey(lens);
+  if (!key) return;
   if (!TAGS_BY_LENS[key].includes(tagKey)) throw outOfScope();
 }
 

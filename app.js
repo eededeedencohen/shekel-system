@@ -22,7 +22,7 @@ const compression = require("compression");
 const AppError = require("./utils/AppError");
 const globalErrorHandler = require("./controllers/errorController");
 const share = require("./utils/sharePreview");
-const { authenticate, requireSuper, requireFamily } = require("./utils/auth");
+const { authenticate, requireSuper, requireFamily, requireFeature } = require("./utils/auth");
 const security = require("./utils/security");
 const { audit } = require("./utils/audit");
 
@@ -119,6 +119,10 @@ app.use("/api/invoices", requireFamily("invoices"), require("./routes/invoiceRou
 // the monthly invoice round (שמרית's round, 2026-10-19): a temporary link
 // per teacher per month; the teacher's side is under /api/public/invoices.
 app.use("/api/invoice-rounds", requireFamily("invoices"), require("./routes/invoiceRoundRoutes"));
+// חדר כושר פרופיט (2026-10-29): the gym app's members and their signed
+// contracts - for whoever the users page granted "gym" (utils/auth requireFeature);
+// the member's own signing page is under /api/public/gym/:token.
+app.use("/api/gym", requireFeature("gym"), require("./routes/gymRoutes"));
 // יומן - every staff member's own notes and tasks
 app.use("/api/diary", require("./routes/diaryRoutes"));
 // תגיות - what a person or a cycle belongs to (roles, programs)

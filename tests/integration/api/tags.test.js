@@ -18,7 +18,7 @@ describe("the catalog", () => {
     await tags.ensureCatalog();
     await tags.ensureCatalog();
     expect(await TagGroup.countDocuments()).toBe(2);
-    expect(await Tag.countDocuments()).toBe(10);
+    expect(await Tag.countDocuments()).toBe(11); // + "gym" (2026-10-29)
     const res = await request(app).get("/api/tags");
     expect(res.status).toBe(200);
     expect(res.body.data.groups.map((g) => g.key)).toEqual(["role", "program"]);

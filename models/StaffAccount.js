@@ -18,7 +18,7 @@
  */
 
 const mongoose = require("mongoose");
-const { STAFF_KIND_KEYS } = require("../utils/domain");
+const { STAFF_KIND_KEYS, STAFF_FEATURE_KEYS } = require("../utils/domain");
 
 const staffAccountSchema = new mongoose.Schema(
   {
@@ -38,6 +38,8 @@ const staffAccountSchema = new mongoose.Schema(
      * from here; an account without one leaves its name only.
      */
     person: { type: mongoose.Schema.Types.ObjectId, ref: "Person", default: null },
+    /** Grants beside the kind (2026-10-29): "gym" = חדר כושר. The super admin needs none. */
+    features: { type: [{ type: String, enum: STAFF_FEATURE_KEYS }], default: [] },
     active: { type: Boolean, default: true },
     passwordHash: { type: String, required: true, select: false },
     passwordChangedAt: { type: Date, default: null },

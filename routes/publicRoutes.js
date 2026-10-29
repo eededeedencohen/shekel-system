@@ -14,6 +14,7 @@ const { joinOptions, join, viewByToken, uploadByToken, removeByToken, fileByToke
 const supplier = require("../controllers/supplierController");
 const invoiceLink = require("../controllers/invoiceRoundController");
 const hostelReport = require("../controllers/hostelReportController");
+const gym = require("../controllers/gymController");
 const { uploadLimiter } = require("../utils/security");
 
 router.get("/join/options", joinOptions);
@@ -65,5 +66,10 @@ router.delete("/hostel-reports/:token/extras/:xid", hostelReport.publicRemoveExt
 router.post("/hostel-reports/:token/left", hostelReport.publicAddLeft);
 router.delete("/hostel-reports/:token/left/:lid", hostelReport.publicRemoveLeft);
 router.post("/hostel-reports/:token/done", hostelReport.publicDone);
+
+// חדר כושר פרופיט (2026-10-29): the member's own signing page behind the personal link
+router.get("/gym/:token", gym.publicView);
+router.post("/gym/:token/sign", gym.publicSign);
+router.get("/gym/:token/signature", gym.publicSignature);
 
 module.exports = router;

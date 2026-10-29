@@ -57,6 +57,7 @@ const NOUNS = {
   auth: ["החשבון שלי", "account"],
   files: ["קובץ", "file"],
   audit: ["היסטוריית הפעילות", "audit"],
+  gym: ["חבר/ת חדר כושר", "gym"],
 };
 
 /**
@@ -209,6 +210,13 @@ const RULES = [
   ["DELETE", "/tags/people/:id/*", "הסרת תגית מאדם", "tag", "delete"],
   // the activity page itself
   ["POST", "/audit/clear", "ניקוי היסטוריית הפעילות", "audit", "delete"],
+  // חדר כושר
+  ["POST", "/gym", "הוספה לחדר הכושר", "gym", "create"],
+  ["PATCH", "/gym/:id", "עריכת חבר/ת חדר כושר", "gym", "update"],
+  ["POST", "/gym/:id/membership", "סטטוס מנוי בחדר הכושר", "gym", "update"],
+  ["POST", "/gym/:id/sent", "סימון: קישור ההסכם נשלח", "gym", "other"],
+  ["POST", "/gym/:id/link", "קישור חדש להסכם חדר הכושר", "gym", "other"],
+  ["DELETE", "/gym/:id", "הסרה מחדר הכושר", "gym", "delete"],
 ];
 
 const toRegex = (pattern) => new RegExp("^" + pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]+") + "$");

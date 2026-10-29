@@ -907,7 +907,53 @@ const ERROR_CODES = {
   ACCOUNT_INVALID: "חסרים פרטים למשתמש: שם, שם משתמש באנגלית ותפקיד",
   USERNAME_TAKEN: "שם המשתמש הזה כבר תפוס",
   LAST_SUPER: "חייב להישאר לפחות סופר-מנהל פעיל אחד",
+  FEATURE_FORBIDDEN: "ההרשאה הזו לא ניתנה למשתמש/ת",
+  // חדר כושר
+  GYM_EXISTS: "האדם כבר בחדר הכושר",
+  GYM_NOT_SIGNED: "אפשר לסמן מנוי רק אחרי שההסכם נחתם",
+  GYM_TRANSITION: "המעבר הזה בסטטוס המנוי לא אפשרי",
+  GYM_SIGNED_ALREADY: "ההסכם הזה כבר נחתם",
+  GYM_LINK_INVALID: "הקישור לחתימה לא תקין",
+  GYM_ID_INVALID: "מספר הזהות לא תקין",
+  GYM_PHONE_INVALID: "מספר הטלפון לא תקין",
+  GYM_SIGNATURE_REQUIRED: "חסרה חתימה",
+  GYM_LEFT: "האדם הוסר מחדר הכושר - אפשר להוסיף אותו מחדש",
 };
+
+/**
+ * חדר כושר פרופיט (Eden, 2026-10-29: the gym app moves into the system).
+ * The membership status after the signing, with the old app's transitions
+ * (none → interested / active / notInterested; active → finished …). The
+ * stage before it (ממתין / נשלח קישור / חתום) is derived, never stored.
+ */
+const GYM_MEMBERSHIPS = [
+  { key: "interested", label: "מעוניין/ת", short: "מעוניין" },
+  { key: "active", label: "מנוי בפרופיט", short: "מנוי" },
+  { key: "finished", label: "סיים/ה מנוי", short: "סיים" },
+  { key: "notInterested", label: "לא מעוניין/ת", short: "לא מעוניין" },
+];
+const GYM_MEMBERSHIP_KEYS = GYM_MEMBERSHIPS.map((m) => m.key);
+const GYM_MEMBERSHIP_LABELS = Object.fromEntries(GYM_MEMBERSHIPS.map((m) => [m.key, m.label]));
+const GYM_TRANSITIONS = {
+  none: ["interested", "active", "notInterested"],
+  interested: ["active", "notInterested"],
+  active: ["finished", "notInterested"],
+  finished: ["interested", "active", "notInterested"],
+  notInterested: ["interested", "active", "finished"],
+};
+const GYM_STAGES = [
+  { key: "waiting", label: "ממתין/ה לקישור" },
+  { key: "sent", label: "נשלח קישור לחתימה" },
+  { key: "signed", label: "חתום/ה" },
+];
+
+/**
+ * Grants beside the kind (Eden, 2026-10-29: "להעביר לעובד אחד או לתת
+ * הרשאה לעובד נוסף לחדרי כושר"): a feature is switched on per account on
+ * the users page; the super admin holds them all.
+ */
+const STAFF_FEATURES = [{ key: "gym", label: "ניהול חדר כושר", desc: "העמוד של חדר הכושר, חברי חדר הכושר ברשימת הסטודנטים, שליחת ההסכם לחתימה" }];
+const STAFF_FEATURE_KEYS = STAFF_FEATURES.map((f) => f.key);
 
 /**
  * Staff accounts (Eden, 2026-10-12: "מעכשיו שיהיה סיסמאות למשתמשים"). The
@@ -933,6 +979,9 @@ const DOMAIN_META = {
   profileKinds: PROFILE_KINDS,
   studentKinds: STUDENT_KINDS,
   programs: PROGRAMS,
+  gymMemberships: GYM_MEMBERSHIPS,
+  gymStages: GYM_STAGES,
+  staffFeatures: STAFF_FEATURES,
   profileEvents: PROFILE_EVENTS,
   eventCategoryGroups: EVENT_CATEGORY_GROUPS,
   eventCategories: EVENT_CATEGORIES,
@@ -1091,6 +1140,13 @@ module.exports = {
   ERROR_CODES,
   STAFF_KINDS,
   STAFF_KIND_KEYS,
+  STAFF_FEATURES,
+  STAFF_FEATURE_KEYS,
+  GYM_MEMBERSHIPS,
+  GYM_MEMBERSHIP_KEYS,
+  GYM_MEMBERSHIP_LABELS,
+  GYM_TRANSITIONS,
+  GYM_STAGES,
   RESET_LINK_HOURS,
   DOMAIN_META,
 };

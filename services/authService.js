@@ -20,7 +20,7 @@ const PasswordReset = require("../models/PasswordReset");
 const mongoose = require("mongoose");
 const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
-const { STAFF_KIND_KEYS, RESET_LINK_HOURS } = require("../utils/domain");
+const { STAFF_KIND_KEYS, STAFF_FEATURE_KEYS, RESET_LINK_HOURS } = require("../utils/domain");
 const { hashPassword, verifyPassword, defaultPasswordFor, isStrongEnough, newToken, hashToken, isTokenShape } = require("../utils/password");
 const { describeUserAgent } = require("../utils/userAgent");
 const presence = require("./presenceService");
@@ -64,6 +64,8 @@ const publicAccount = (a) => ({
   email: a.email || "",
   /** The staff member's own Person row, when linked (the users page) - the actor's person id on the server (utils/actor). */
   person: a.person ? String(a.person) : null,
+  /** Grants beside the kind (2026-10-29): "gym" = חדר כושר. */
+  features: Array.isArray(a.features) ? a.features : [],
   defaultPassword: !a.passwordChangedAt,
 });
 
@@ -260,11 +262,11 @@ async function listAccounts() {
 
 /** The names the app offers in its staff pickers (any signed-in user). */
 async function staffDirectory() {
-  const rows = await StaffAccount.find({ active: true }).sort({ createdAt: 1 }).select("name title kind").lean();
-  return rows.map((a) => ({ _id: String(a._id), name: a.name, title: a.title || "", kind: a.kind }));
+  const rows = await StaffAccount.find({ active: true }).sort({ createdAt: 1 }).select("name title kind features").lean();
+  return rows.map((a) => ({ _id: String(a._id), name: a.name, title: a.title || "", kind: a.kind, features: Array.isArray(a.features) ? a.features : [] }));
 }
 
-const FIELDS = ["username", "name", "title", "kind", "phone", "email", "active", "person"];
+const FIELDS = ["username", "name", "title", "kind", "phone", "email", "active", "person", "features"];
 const pick = (body) => Object.fromEntries(FIELDS.filter((k) => body[k] !== undefined).map((k) => [k, typeof body[k] === "string" ? body[k].trim() : body[k]]));
 
 function validate(fields, creating) {
@@ -275,6 +277,10 @@ function validate(fields, creating) {
   if (fields.username !== undefined && !/^[a-z][a-z0-9._-]{1,31}$/.test(fields.username)) throw AppError.of("ACCOUNT_INVALID", 400, "שם המשתמש - אותיות באנגלית");
   if (fields.name !== undefined && !fields.name) throw AppError.of("ACCOUNT_INVALID", 400);
   if (fields.kind !== undefined && !STAFF_KIND_KEYS.includes(fields.kind)) throw AppError.of("ACCOUNT_INVALID", 400);
+  if (fields.features !== undefined) {
+    if (!Array.isArray(fields.features) || fields.features.some((f) => !STAFF_FEATURE_KEYS.includes(f))) throw AppError.of("ACCOUNT_INVALID", 400, "הרשאה לא מוכרת");
+    fields.features = [...new Set(fields.features)];
+  }
   return fields;
 }
 
