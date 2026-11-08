@@ -9,7 +9,7 @@
 const DiaryEntry = require("../models/DiaryEntry");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
-const { DIARY_KINDS } = require("../utils/domain");
+const { DIARY_KINDS, DIARY_COLORS } = require("../utils/domain");
 
 const ownerOf = (req) => String(req.actor?._id || req.actor?.username || "");
 const by = (req) => req.actor?.name || req.account?.name || "";
@@ -29,6 +29,7 @@ function pick(body = {}, { creating = false } = {}) {
   }
   if ("body" in body) out.body = clean(body.body, 4000) || "";
   if ("kind" in body) out.kind = DIARY_KINDS.includes(body.kind) ? body.kind : "note";
+  if ("color" in body) out.color = DIARY_COLORS.includes(body.color) ? body.color : DIARY_COLORS[0];
   if ("done" in body) {
     out.done = !!body.done;
     out.doneAt = body.done ? new Date() : null;

@@ -8,7 +8,7 @@
  */
 
 const mongoose = require("mongoose");
-const { DIARY_KINDS } = require("../utils/domain");
+const { DIARY_KINDS, DIARY_COLORS } = require("../utils/domain");
 
 const diaryEntrySchema = new mongoose.Schema(
   {
@@ -17,6 +17,8 @@ const diaryEntrySchema = new mongoose.Schema(
     /** "2026-10-19" - a calendar day, no time zone games. */
     date: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
     kind: { type: String, enum: DIARY_KINDS, required: true, default: "note" },
+    /** The paper colour of the note (DIARY_COLORS) - the day's window shows its lines as sticky notes (Eden, 2026-11-08). */
+    color: { type: String, enum: DIARY_COLORS, default: DIARY_COLORS[0] },
     title: { type: String, required: true, trim: true, maxlength: 160 },
     body: { type: String, trim: true, maxlength: 4000 },
     done: { type: Boolean, default: false },

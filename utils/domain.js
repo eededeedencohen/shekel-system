@@ -274,6 +274,8 @@ const INVOICE_REQUEST_STATUS_LABELS = {
 };
 /** A diary entry is a note on a day, or a task that is done or not (שמרית's יומן). */
 const DIARY_KINDS = ["note", "task"];
+/** The paper colours of a diary note (Eden, 2026-11-08: "כמו פתקים עם צבעים"); the first is the default. */
+const DIARY_COLORS = ["yellow", "green", "blue", "pink", "orange", "purple"];
 /** The day of the month by which the teachers' invoices must be in (שמרית, 2026-10-19: "ב-29 לחודש החשבוניות צריכות להיות אצלי כבר"). */
 const INVOICE_DUE_DAY = 29;
 
@@ -1076,6 +1078,7 @@ module.exports = {
   INVOICE_REQUEST_STATUSES,
   INVOICE_REQUEST_STATUS_LABELS,
   DIARY_KINDS,
+  DIARY_COLORS,
   INVOICE_DUE_DAY,
   ABSENCE_REASONS,
   ABSENCE_REASON_KEYS,
