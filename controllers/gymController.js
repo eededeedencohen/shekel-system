@@ -7,6 +7,7 @@
  *   GET  /people[?q=]      students of the WHOLE system, to add one (tags, inGym, the contract's idNumber); no q = everyone
  *   POST /                 { person } or { firstName, lastName, gender, phone, notes } → 201 { membership, revived }
  *   GET|PATCH|DELETE /:id  one member; PATCH { notes, contract: { name, idNumber } }; DELETE = leaves the program
+ *   POST /:id/erase        someone who left is erased for good (row, contract, signature, the gym tag's story) → { erased, personRemoved }
  *   POST /:id/membership   { membership, note }
  *   POST /:id/sent         the link went out on WhatsApp
  *   GET|POST /:id/link     the signing link, whole (POST = a fresh token)
@@ -65,6 +66,8 @@ exports.remove = catchAsync(async (req, res) => {
   await gym.remove(req.params.id, byOf(req));
   res.status(204).end();
 });
+
+exports.erase = catchAsync(async (req, res) => ok(res, await gym.erase(req.params.id)));
 
 exports.signature = catchAsync(async (req, res, next) => {
   const GymMembership = require("../models/GymMembership");

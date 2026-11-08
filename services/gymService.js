@@ -23,7 +23,8 @@ const crypto = require("crypto");
 const mongoose = require("mongoose");
 const GymMembership = require("../models/GymMembership");
 const { Person } = require("../models/Person");
-const { PersonTag } = require("../models/PersonTag");
+const { PersonTag, PersonTagEvent } = require("../models/PersonTag");
+const Enrollment = require("../models/Enrollment");
 const { MODEL_BY_KIND } = require("../models/profiles");
 const tags = require("./tagService");
 const lens = require("./lensService");
@@ -267,6 +268,46 @@ async function remove(id, by) {
   return load(m._id);
 }
 
+/**
+ * Erasing for good (Eden, 2026-11-08: "אפשרות ב'עזבו'… למחוק גם משם, שלא
+ * יופיע גם בעזבו"): only someone who already left. The row goes with its
+ * contract, the signature PNG leaves the bucket, and the person's gym tag
+ * loses its story (the PersonTag row and its events). A person the gym
+ * made for itself - no other belonging now or ever, no course seat - is
+ * soft-deleted too, so no ghost stays in the people; anyone else stays as
+ * they are. → { erased: true, personRemoved }
+ */
+async function erase(id) {
+  const m = await live(id);
+  if (!m.endedAt) throw AppError.of("GYM_NOT_LEFT", 400);
+  const personId = m.person;
+  if (m.contract?.signatureKey) {
+    try {
+      await storage.remove(m.contract.signatureKey);
+    } catch {
+      /* a key already gone is no reason to keep the row */
+    }
+  }
+  const gymTag = (await tags.tagMap()).get("gym");
+  if (gymTag) {
+    const rows = await PersonTag.find({ person: personId, tag: gymTag._id }).select("_id").lean();
+    if (rows.length) {
+      await PersonTagEvent.deleteMany({ personTag: { $in: rows.map((r) => r._id) } });
+      await PersonTag.deleteMany({ _id: { $in: rows.map((r) => r._id) } });
+    }
+  }
+  await GymMembership.deleteOne({ _id: m._id });
+  // a person who exists only because of the gym goes too
+  const held = (await tags.tagsByPerson([personId])).get(String(personId)) || { tags: [], pastTags: [] };
+  const other = [...held.tags, ...held.pastTags].filter((k) => k !== "student");
+  let personRemoved = false;
+  if (!other.length && !(await Enrollment.exists({ student: personId }))) {
+    await Person.updateOne({ _id: personId, deletedAt: null }, { deletedAt: new Date() });
+    personRemoved = true;
+  }
+  return { erased: true, personRemoved };
+}
+
 /** A signed read of the signature PNG (60 seconds), or null. */
 async function signatureUrl(m) {
   const key = m?.contract?.signatureKey;
@@ -320,4 +361,4 @@ async function sign(token, { name, idNumber, phone, signature }) {
   return publicView(await byToken(token));
 }
 
-module.exports = { list, load, searchStudents, add, update, setMembership, markSent, link, renewLink, remove, signatureUrl, byToken, publicView, sign, stageOf, view, createGymPerson, isValidPhone, prettyPhone };
+module.exports = { list, load, searchStudents, add, update, setMembership, markSent, link, renewLink, remove, erase, signatureUrl, byToken, publicView, sign, stageOf, view, createGymPerson, isValidPhone, prettyPhone };

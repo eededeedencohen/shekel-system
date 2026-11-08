@@ -217,6 +217,7 @@ const RULES = [
   ["POST", "/gym/:id/sent", "סימון: קישור ההסכם נשלח", "gym", "other"],
   ["POST", "/gym/:id/link", "קישור חדש להסכם חדר הכושר", "gym", "other"],
   ["DELETE", "/gym/:id", "הסרה מחדר הכושר", "gym", "delete"],
+  ["POST", "/gym/:id/erase", "מחיקה לצמיתות מחדר הכושר", "gym", "delete"],
 ];
 
 const toRegex = (pattern) => new RegExp("^" + pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]+") + "$");

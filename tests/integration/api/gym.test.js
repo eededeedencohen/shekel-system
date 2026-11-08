@@ -156,6 +156,39 @@ describe("the members", () => {
     expect((await request(app).get("/api/gym/people").query({ q: "בועז" })).status).toBe(403);
   });
 
+  test("erasing for good: only after leaving; the row, the signature and the gym tag's story go; a gym-made person goes with them, a student of the system stays", async () => {
+    const { Person } = require("../../../models/Person");
+    // a person the gym made, who signed
+    const m = (await request(app).post("/api/gym").send({ firstName: "עומר", lastName: "זמני", phone: "0501112222", gender: "male" })).body.data.membership;
+    const token = (await request(app).get(`/api/gym/${m._id}/link`)).body.data.link.token;
+    await request(app).post(`/api/public/gym/${token}/sign`).send({ name: "עומר זמני", idNumber: VALID_ID, phone: "0501112222", signature: SIG });
+    expect(storage.has(`gym/${m._id}/signature.png`)).toBe(true);
+    expect((await request(app).post(`/api/gym/${m._id}/erase`)).body.code).toBe("GYM_NOT_LEFT");
+    expect((await request(app).delete(`/api/gym/${m._id}`)).status).toBe(204);
+    const erased = await request(app).post(`/api/gym/${m._id}/erase`);
+    expect(erased.status).toBe(200);
+    expect(erased.body.data).toEqual({ erased: true, personRemoved: true });
+    expect((await request(app).get(`/api/gym/${m._id}`)).status).toBe(404);
+    expect((await request(app).get("/api/gym")).body.data.memberships.map((x) => x._id)).not.toContain(m._id);
+    expect(storage.has(`gym/${m._id}/signature.png`)).toBe(false);
+    const gone = await Person.findById(m.person).lean();
+    expect(gone.deletedAt).toBeTruthy();
+    const tagsLeft = (await request(app).get(`/api/people/${m.person}`)).body.data.person;
+    expect(tagsLeft.tags).not.toContain("gym");
+    expect(tagsLeft.pastTags).not.toContain("gym");
+    // a student of the system: the row goes, the person stays whole
+    const s = await makeStudent({ firstName: "שירה", lastName: "נשארת" });
+    const m2 = (await request(app).post("/api/gym").send({ person: String(s._id) })).body.data.membership;
+    await request(app).delete(`/api/gym/${m2._id}`);
+    const erased2 = await request(app).post(`/api/gym/${m2._id}/erase`);
+    expect(erased2.body.data).toEqual({ erased: true, personRemoved: false });
+    const stays = (await request(app).get(`/api/people/${s._id}`)).body.data.person;
+    expect(stays.deletedAt).toBeFalsy();
+    expect(stays.tags).not.toContain("gym");
+    expect(stays.pastTags).not.toContain("gym");
+    expect((await request(app).post(`/api/gym/${m2._id}/erase`)).status).toBe(404);
+  });
+
   test("the lens: a hostels coordinator sees the gym's people only with the grant, and may give the gym tag only then", async () => {
     const m = (await request(app).post("/api/gym").send({ firstName: "גיל", lastName: "שמש" })).body.data.membership;
     // a resident of the hostels (in her lens), not yet in the gym

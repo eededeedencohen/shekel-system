@@ -20,6 +20,7 @@ router.get("/people", c.people); // before /:id - "people" is no member id
 router.route("/:id").get(c.get).patch(c.update).delete(c.remove);
 router.post("/:id/membership", c.setMembership);
 router.post("/:id/sent", c.markSent);
+router.post("/:id/erase", c.erase);
 router.route("/:id/link").get(c.getLink).post(c.renewLink);
 router.get("/:id/signature", c.signature);
 

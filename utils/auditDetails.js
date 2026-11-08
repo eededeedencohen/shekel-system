@@ -631,6 +631,7 @@ const SPECIAL = [
   [/^POST \/gym\/:id\/sent$/, ({ before }) => ({ summary: join([before?.label, "הקישור להסכם נשלח בוואטסאפ"]) })],
   [/^POST \/gym\/:id\/link$/, ({ before }) => ({ summary: join([before?.label, "קישור חדש להסכם"]) })],
   [/^DELETE \/gym\/:id$/, ({ before }) => ({ summary: join([before?.label, "הוסר/ה מחדר הכושר"]) })],
+  [/^POST \/gym\/:id\/erase$/, ({ before, answer }) => ({ summary: join([before?.label, "נמחק/ה לצמיתות מחדר הכושר - השורה, ההסכם והחתימה", answer?.data?.personRemoved ? "והאדם הוסר מהמערכת" : ""]) })],
 ];
 
 /* ───────── the entry ───────── */
