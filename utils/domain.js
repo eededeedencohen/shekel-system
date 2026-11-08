@@ -918,6 +918,7 @@ const ERROR_CODES = {
   GYM_PHONE_INVALID: "מספר הטלפון לא תקין",
   GYM_SIGNATURE_REQUIRED: "חסרה חתימה",
   GYM_LEFT: "האדם הוסר מחדר הכושר - אפשר להוסיף אותו מחדש",
+  GYM_NOT_STUDENT: "לחדר הכושר מצטרפים סטודנטים של שק״ל בלבד",
 };
 
 /**

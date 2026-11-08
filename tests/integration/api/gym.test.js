@@ -13,7 +13,7 @@ const { ensureSeedAccounts } = require("../../../services/authService");
 const { defaultPasswordFor } = require("../../../utils/password");
 const { isValidIsraeliId, normalizeIsraeliId } = require("../../../utils/israeliId");
 const storage = require("../../../services/storage");
-const { makeStudent } = require("../../helpers/factories");
+const { makeStudent, makeTeacher } = require("../../helpers/factories");
 
 const VALID_ID = "123456782";
 const SIG = "data:image/png;base64," + Buffer.alloc(600, 7).toString("base64");
@@ -121,6 +121,39 @@ describe("the members", () => {
     expect(renewed.token).not.toBe(token);
     expect((await request(app).get(`/api/public/gym/${token}`)).status).toBe(404);
     expect((await request(app).get(`/api/public/gym/${renewed.token}`)).status).toBe(200);
+  });
+
+  test("the search for 'הוספה לחדר הכושר' looks at every student of the system, and the grant adds one from outside the lens", async () => {
+    const a = await makeStudent({ firstName: "אביגיל", lastName: "כהן-לוי" });
+    await makeStudent({ firstName: "אביגיל", lastName: "פרץ" });
+    expect((await request(app).post("/api/gym").send({ person: String(a._id) })).status).toBe(201);
+    let found = (await request(app).get("/api/gym/people").query({ q: "אביגיל" })).body.data.people;
+    expect(found.map((p) => p.lastName).sort()).toEqual(["כהן-לוי", "פרץ"]);
+    expect(found.find((p) => p._id === String(a._id))).toMatchObject({ firstName: "אביגיל", inGym: true, idNumber: "", tags: expect.arrayContaining(["student", "gym"]) });
+    expect(found.find((p) => p.lastName === "פרץ").inGym).toBe(false);
+    // every word must be in the name
+    found = (await request(app).get("/api/gym/people").query({ q: "אביגיל פר" })).body.data.people;
+    expect(found.map((p) => p.lastName)).toEqual(["פרץ"]);
+    // no query: everyone, by name (the window lists them all and filters as one types)
+    const everyone = (await request(app).get("/api/gym/people")).body.data.people;
+    expect(everyone.map((p) => p.lastName)).toEqual(expect.arrayContaining(["כהן-לוי", "פרץ"]));
+    expect(everyone.length).toBeGreaterThanOrEqual(2);
+    // a teacher is no student: not found, not added
+    const t = await makeTeacher({ firstName: "אביגיל", lastName: "מורה" });
+    expect((await request(app).get("/api/gym/people").query({ q: "אביגיל מורה" })).body.data.people).toEqual([]);
+    expect((await request(app).post("/api/gym").send({ person: String(t._id) })).body.code).toBe("GYM_NOT_STUDENT");
+    expect((await request(app).post("/api/gym").send({ person: "nonsense" })).status).toBe(404);
+    // the hostels coordinator with the grant: a college student she does not see otherwise is found and joins
+    const b = await makeStudent({ firstName: "בועז", lastName: "מכללה" });
+    TEST_ACCOUNT.kind = "hostels";
+    TEST_ACCOUNT.features = ["gym"];
+    expect((await request(app).get("/api/people")).body.data.people.map((p) => String(p._id))).not.toContain(String(b._id));
+    expect((await request(app).get("/api/gym/people").query({ q: "בועז" })).body.data.people.map((p) => p._id)).toEqual([String(b._id)]);
+    expect((await request(app).post("/api/gym").send({ person: String(b._id) })).status).toBe(201);
+    expect((await request(app).get("/api/people")).body.data.people.map((p) => String(p._id))).toContain(String(b._id));
+    // without the grant the search is closed like the rest of the gym
+    delete TEST_ACCOUNT.features;
+    expect((await request(app).get("/api/gym/people").query({ q: "בועז" })).status).toBe(403);
   });
 
   test("the lens: a hostels coordinator sees the gym's people only with the grant, and may give the gym tag only then", async () => {

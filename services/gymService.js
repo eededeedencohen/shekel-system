@@ -23,6 +23,7 @@ const crypto = require("crypto");
 const mongoose = require("mongoose");
 const GymMembership = require("../models/GymMembership");
 const { Person } = require("../models/Person");
+const { PersonTag } = require("../models/PersonTag");
 const { MODEL_BY_KIND } = require("../models/profiles");
 const tags = require("./tagService");
 const lens = require("./lensService");
@@ -48,6 +49,7 @@ const prettyPhone = (p) => {
   return clean(p, 30);
 };
 const newInviteToken = () => crypto.randomBytes(16).toString("hex");
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** ממתין / נשלח קישור / חתום - never stored. */
 const stageOf = (m) => (m.contract?.signedAt ? "signed" : m.linkSentAt ? "sent" : "waiting");
@@ -107,17 +109,54 @@ async function createGymPerson({ firstName, lastName = "", gender, phone, by }) 
 }
 
 /**
+ * The students of the WHOLE system, for "הוספה לחדר הכושר" (Eden,
+ * 2026-11-08: "שיהיה אפשר לחפש מכל המערכת את הסטודנט ולהוסיף אותו… כולם
+ * יופיעו בהתחלה והחיפוש רק יסנן") - the one place the gym's grant looks
+ * past the persona's lens. Without a query: everyone, by name, never
+ * capped (the window lists them by program and filters as one types).
+ * With a query: every word must sit in the first or last name, the names
+ * that start with it first. A person's ID number lives on the gym
+ * contract alone (never on the Person), so it rides only for those in the
+ * gym. → [{ _id, firstName, lastName, phone, gender, tags, inGym, idNumber }]
+ */
+async function searchStudents(q) {
+  const words = clean(q, 60).split(/\s+/).filter(Boolean);
+  const studentTag = (await tags.tagMap()).get("student");
+  if (!studentTag) return [];
+  const students = await PersonTag.distinct("person", { tag: studentTag._id, until: null });
+  const filter = { _id: { $in: students }, deletedAt: null };
+  if (words.length) filter.$and = words.map((w) => ({ $or: [{ firstName: new RegExp(escapeRe(w), "i") }, { lastName: new RegExp(escapeRe(w), "i") }] }));
+  const people = await Person.find(filter).select(PERSON_FIELDS).lean();
+  const text = words.join(" ");
+  people.sort((a, b) => (text ? Number(personName(b).startsWith(text)) - Number(personName(a).startsWith(text)) : 0) || personName(a).localeCompare(personName(b), "he"));
+  const ids = people.map((p) => p._id);
+  const [held, rows] = await Promise.all([tags.tagsByPerson(ids), GymMembership.find({ person: { $in: ids } }).select("person endedAt contract.idNumber").lean()]);
+  const gymOf = new Map(rows.map((r) => [String(r.person), r]));
+  return people.map((p) => {
+    const id = String(p._id);
+    const row = gymOf.get(id);
+    const inGym = Boolean(row && !row.endedAt);
+    return { _id: id, firstName: p.firstName, lastName: p.lastName || "", phone: p.phone || "", gender: p.gender || "", tags: held.get(id)?.tags || [], inGym, idNumber: inGym ? row.contract?.idNumber || "" : "" };
+  });
+}
+
+/**
  * Adds a person to the gym: an existing one (`person`) or a new one
  * (`firstName`…). An ended membership comes back to life instead of a
  * second row. → { membership, revived }
+ *
+ * An existing person may be ANY student of the system, not only one the
+ * persona's lens shows (Eden, 2026-11-08) - the search above offers them;
+ * once in the gym, the grant holder sees them everywhere.
  */
 async function add(req, { person, firstName, lastName, gender, phone, notes, by }) {
   lens.assertProgramTag(req, "gym"); // the grant (or the super admin)
   let personId;
   if (person) {
-    await lens.assertPerson(req, person);
+    if (!mongoose.isValidObjectId(person)) throw AppError.of("NOT_FOUND", 404, "אדם");
     const p = await Person.findOne({ _id: person, deletedAt: null }).select("_id").lean();
     if (!p) throw AppError.of("NOT_FOUND", 404, "אדם");
+    if (!(await tags.holds(p._id, "student"))) throw AppError.of("GYM_NOT_STUDENT", 400);
     personId = p._id;
   } else {
     personId = (await createGymPerson({ firstName, lastName, gender, phone, by }))._id;
@@ -281,4 +320,4 @@ async function sign(token, { name, idNumber, phone, signature }) {
   return publicView(await byToken(token));
 }
 
-module.exports = { list, load, add, update, setMembership, markSent, link, renewLink, remove, signatureUrl, byToken, publicView, sign, stageOf, view, createGymPerson, isValidPhone, prettyPhone };
+module.exports = { list, load, searchStudents, add, update, setMembership, markSent, link, renewLink, remove, signatureUrl, byToken, publicView, sign, stageOf, view, createGymPerson, isValidPhone, prettyPhone };

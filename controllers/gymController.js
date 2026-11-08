@@ -4,6 +4,7 @@
  *
  * /api/gym (the "gym" grant, utils/auth requireFeature):
  *   GET  /                 every member the lens sees
+ *   GET  /people[?q=]      students of the WHOLE system, to add one (tags, inGym, the contract's idNumber); no q = everyone
  *   POST /                 { person } or { firstName, lastName, gender, phone, notes } → 201 { membership, revived }
  *   GET|PATCH|DELETE /:id  one member; PATCH { notes, contract: { name, idNumber } }; DELETE = leaves the program
  *   POST /:id/membership   { membership, note }
@@ -24,6 +25,11 @@ const { byOf } = require("../utils/actor");
 const ok = (res, data, code = 200) => res.status(code).json({ status: "success", data });
 
 exports.list = catchAsync(async (req, res) => ok(res, { memberships: await gym.list(req) }));
+
+exports.people = catchAsync(async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
+  ok(res, { people: await gym.searchStudents(req.query.q) });
+});
 
 exports.add = catchAsync(async (req, res) => {
   const b = req.body || {};

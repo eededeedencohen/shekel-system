@@ -16,6 +16,7 @@ const GymMembership = require("../models/GymMembership");
 router.param("id", lens.guardByPerson(GymMembership));
 
 router.route("/").get(c.list).post(c.add);
+router.get("/people", c.people); // before /:id - "people" is no member id
 router.route("/:id").get(c.get).patch(c.update).delete(c.remove);
 router.post("/:id/membership", c.setMembership);
 router.post("/:id/sent", c.markSent);
