@@ -914,6 +914,12 @@ async function ministryRows({ month }) {
     if (!cyclesByHostel.has(k)) cyclesByHostel.set(k, []);
     cyclesByHostel.get(k).push(c);
   }
+  // what the file still lacks (Eden, 2026-11-10: "אם חסרים נתונים אז אי אפשר לייצא את הקובץ למשרד הבריאות"): a
+  // house's facts, a month not opened for it, sessions the house did not mark or she did not approve, a course
+  // with no reported lesson - each said in words, and the whole answers `complete`
+  const reports = await HostelReport.find({ month, hostel: { $in: hostels.map((h) => h._id) } });
+  const views = reports.length ? await viewsOf(reports) : [];
+  const viewByHostel = new Map(views.map((v) => [String(v.hostel._id), v]));
   const rows = hostels.map((h) => {
     const courses = (cyclesByHostel.get(String(h._id)) || [])
       .map((c) => {
@@ -923,9 +929,23 @@ async function ministryRows({ month }) {
         return { _id: c._id, name: c.subject?.name || "קורס", teacher: c.teacher ? personName(c.teacher) : null, lessons: mine.length, avg };
       })
       .sort((a, b) => a.name.localeCompare(b.name, "he"));
-    return { hostel: { _id: h._id, name: h.name, kind: h.kind || "hostel", title: hostelTitle(h) }, since: h.since || null, sinceLabel: sinceLabel(h.since), approvals: h.approvals ?? null, courses };
+    const missing = [];
+    if (!h.since) missing.push({ key: "since", text: "תחילת הפעילות לא הוזנה" });
+    if (h.approvals == null) missing.push({ key: "approvals", text: "מספר האישורים לא הוזן" });
+    const v = viewByHostel.get(String(h._id));
+    if (courses.length && !v) missing.push({ key: "report", text: "החודש לא נפתח לבית הזה" });
+    if (v) {
+      const c = v.counts;
+      if (c.unmarked) missing.push({ key: "unmarked", text: c.unmarked === 1 ? "מפגש אחד שעבר לא סומן" : `${c.unmarked} מפגשים שעברו לא סומנו` });
+      if (c.toApprove) missing.push({ key: "toApprove", text: c.toApprove === 1 ? "מפגש אחד מחכה לאישור שלך" : `${c.toApprove} מפגשים מחכים לאישור שלך` });
+      if (c.extras) missing.push({ key: "extras", text: c.extras === 1 ? "דייר/ת חדש/ה לא טופל/ה" : `${c.extras} חדשים לא טופלו` });
+      if (c.left) missing.push({ key: "left", text: c.left === 1 ? "עזיבה אחת לא טופלה" : `${c.left} עזיבות לא טופלו` });
+    }
+    for (const c of courses) if (!c.lessons) missing.push({ key: "course", text: `${c.name}${c.teacher ? ` · ${c.teacher}` : ""}: אין שיעור עם דיווח נוכחות` });
+    return { hostel: { _id: h._id, name: h.name, kind: h.kind || "hostel", title: hostelTitle(h) }, since: h.since || null, sinceLabel: sinceLabel(h.since), approvals: h.approvals ?? null, courses, missing, report: v ? { _id: v._id, status: v.status } : null };
   });
-  return { month, monthLabel: monthLabel(month), rows };
+  const missingCount = rows.reduce((n, r) => n + r.missing.length, 0);
+  return { month, monthLabel: monthLabel(month), rows, complete: missingCount === 0, missingCount };
 }
 
 /** Her file's pastel bands, one per house, around again when the houses run out. */
@@ -937,8 +957,10 @@ const MINISTRY_BANDS = ["FFBDD7EE", "FFE2EFDA", "FFFFF2CC", "FFD9E1F2", "FF9BC2E
  * is coloured that way - Eden, 2026-10-25), a grey bold header, thin
  * borders, everything centred.
  */
-async function ministryXlsx({ month }) {
+/** Her Excel - refused while the month lacks anything (`force` lets the super admin take it anyway). */
+async function ministryXlsx({ month, force = false }) {
   const data = await ministryRows({ month });
+  if (!data.complete && !force) throw AppError.of("HOSTEL_REPORT_INCOMPLETE", 409, data.rows.flatMap((r) => r.missing.map((m) => `${r.hostel.name}: ${m.text}`)).slice(0, 6).join(" · "));
   const ExcelJS = require("exceljs");
   const wb = new ExcelJS.Workbook();
   wb.creator = "שק״ל";

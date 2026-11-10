@@ -369,7 +369,15 @@ describe("the Ministry of Health's month", () => {
     expect(rows[0]).toMatchObject({ approvals: 15, sinceLabel: "מעל 4 שנים" });
     expect(rows[0].courses).toHaveLength(1);
     expect(rows[0].courses[0]).toMatchObject({ name: "כלבנות", teacher: "תומר דורון", lessons: 2, avg: 3 }); // (2 + 3) / 2 = 2.5 → 3
-    const xlsx = await request(app).get(`/api/hostel-reports/ministry.xlsx?month=${month}`);
+    // the month has gaps (Eden, 2026-11-10: a month with gaps is not exported): the new house has no start date, no
+    // report opened and a course without a reported lesson - the file is refused, named gap by gap; the super admin may force it
+    expect(res.body.data.complete).toBe(false);
+    expect(rows[0].missing.map((m) => m.key)).toEqual(["report"]); // its lessons were written straight on the course, no month opened
+    expect(rows[1].missing.map((m) => m.key)).toEqual(["since", "report", "course"]);
+    const refused = await request(app).get(`/api/hostel-reports/ministry.xlsx?month=${month}`);
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe("HOSTEL_REPORT_INCOMPLETE");
+    const xlsx = await request(app).get(`/api/hostel-reports/ministry.xlsx?month=${month}&force=1`);
     expect(xlsx.status).toBe(200);
     expect(xlsx.headers["content-type"]).toMatch(/spreadsheetml/);
     expect(xlsx.headers["content-disposition"]).toMatch(/attachment/);

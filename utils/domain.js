@@ -901,6 +901,7 @@ const ERROR_CODES = {
   ATTENDANCE_REASON_INVALID: "סיבת היעדרות לא מוכרת",
   // סקיצת הנוכחות מההוסטלים (שלב 3 של סבב שמרית)
   HOSTEL_REPORT_MONTH: "חודש הדיווח נכתב כ-YYYY-MM",
+  HOSTEL_REPORT_INCOMPLETE: "בחודש הזה חסרים נתונים - משלימים אותם לפני שמייצאים את הדוח למשרד הבריאות",
   HOSTEL_REPORT_EXISTS: "כבר נפתח דיווח להוסטל הזה לחודש הזה",
   HOSTEL_REPORT_NO_COURSES: "אין קורס פעיל בהוסטלים בחודש הזה",
   HOSTEL_REPORT_LINK_INVALID: "הקישור אינו תקף",

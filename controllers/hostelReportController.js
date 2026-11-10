@@ -74,7 +74,9 @@ exports.ministry = catchAsync(async (req, res) => {
 
 /** GET /ministry.xlsx?month=YYYY-MM - her Excel, as a download. */
 exports.ministryXlsx = catchAsync(async (req, res) => {
-  const { buffer, fileName } = await reports.ministryXlsx({ month: req.query.month });
+  // `force=1` takes the file with its gaps - the super admin alone (Eden, 2026-11-10: a month with gaps is not exported)
+  const force = req.query.force === "1" && req.actor?.kind === "super";
+  const { buffer, fileName } = await reports.ministryXlsx({ month: req.query.month, force });
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`);
   res.send(buffer);
