@@ -160,6 +160,13 @@ async function shape(invoices) {
     request: i.request || null,
     viaLink: !!i.request,
     locked: i.request ? lockOf.get(String(i.request)) || null : null,
+    // what the paper says and how it checked against the rate (2026-11-10)
+    number: i.number || null,
+    amount: i.amount ?? null,
+    declaredBy: i.declaredBy || null,
+    declaredAt: i.declaredAt || null,
+    check: i.check && i.check.verdict ? { expected: i.check.expected ?? null, hours: i.check.hours ?? null, sessions: i.check.sessions ?? null, missingHours: i.check.missingHours ?? 0, rate: i.check.rate ?? null, rateKind: i.check.rateKind || null, verdict: i.check.verdict, diff: i.check.diff ?? null } : null,
+    explanation: i.explanation && (i.explanation.reason || i.explanation.text) ? { reason: i.explanation.reason || null, text: i.explanation.text || null } : null,
     lessons: (lessonsByInvoice.get(String(i._id)) || []).sort((a, b) => new Date(a.date) - new Date(b.date)),
     createdAt: i.createdAt,
   }));

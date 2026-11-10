@@ -77,6 +77,21 @@ exports.reopen = catchAsync(async (req, res) => {
   answer(res, await rounds.reopen({ roundId: round._id, requestId: req.params.rid }));
 });
 
+/** POST /:id/requests/:rid/mode { mode: basic | check } - which kind of link the teacher gets (2026-11-10). */
+exports.setMode = catchAsync(async (req, res) => {
+  const round = await loadVisible(req);
+  answer(res, await rounds.setMode({ roundId: round._id, requestId: req.params.rid, mode: req.body?.mode }));
+});
+
+/** GET /:id/ledger.xlsx - the month as the coordinator's ledger sheet (her "פרילנסרים" file's columns), a download. */
+exports.ledgerXlsx = catchAsync(async (req, res) => {
+  const round = await loadVisible(req);
+  const { buffer, fileName } = await rounds.ledgerXlsx({ roundId: round._id });
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+  res.send(buffer);
+});
+
 exports.setMail = catchAsync(async (req, res) => {
   const round = await loadVisible(req);
   answer(res, await rounds.setMail({ roundId: round._id, sent: req.body?.sent !== false, by: by(req) }));
@@ -112,13 +127,19 @@ exports.publicView = catchAsync(async (req, res) => {
   publicAnswer(res, req.sessionToken ? r : await rounds.noteOpened(r));
 });
 
+/** What the teacher said about the paper (the check link): its number, its sum, a word on a difference. */
+const declared = (b = {}) => ({ number: b.number, amount: b.amount, reason: b.reason, explanation: b.explanation });
+
 exports.publicInvoice = catchAsync(async (req, res) => {
   const { imageData, imageName, thumb, sessions } = req.body || {};
   if (!imageData) throw AppError.of("MISSING_FIELDS", 400, "imageData");
-  publicAnswer(res, await rounds.addInvoice(await resolve(req), { imageData, imageName, thumb, sessionIds: sessions }));
+  publicAnswer(res, await rounds.addInvoice(await resolve(req), { imageData, imageName, thumb, sessionIds: sessions, ...declared(req.body) }));
 });
 
 exports.publicRemoveInvoice = catchAsync(async (req, res) => publicAnswer(res, await rounds.removeInvoice(await resolve(req), req.params.iid)));
+
+/** PATCH /invoices/:token/invoices/:iid { number, amount, reason, explanation } - the teacher corrects what they typed (a typo, a reason), while the month is open. */
+exports.publicUpdateInvoice = catchAsync(async (req, res) => publicAnswer(res, await rounds.updateDeclared(await resolve(req), req.params.iid, declared(req.body))));
 
 exports.publicDone = catchAsync(async (req, res) => publicAnswer(res, await rounds.complete(await resolve(req), { note: req.body?.note })));
 
@@ -135,9 +156,9 @@ exports.publicUploadUrl = catchAsync(async (req, res) => {
   res.status(201).json({ status: "success", data: out });
 });
 
-/** POST /api/public/invoices/:token/uploads/:id/confirm - { sessions } → { view } */
+/** POST /api/public/invoices/:token/uploads/:id/confirm - { sessions, number?, amount?, reason?, explanation? } → { view } */
 exports.publicConfirm = catchAsync(async (req, res) => {
-  const out = await files.confirmUpload({ actor: await tokenActor(req), fileId: req.params.id, meta: { sessions: (req.body || {}).sessions } });
+  const out = await files.confirmUpload({ actor: await tokenActor(req), fileId: req.params.id, meta: { sessions: (req.body || {}).sessions, ...declared(req.body) } });
   res.status(200).json({ status: "success", data: out });
 });
 

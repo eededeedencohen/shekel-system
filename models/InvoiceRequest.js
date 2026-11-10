@@ -14,7 +14,7 @@
  */
 
 const mongoose = require("mongoose");
-const { INVOICE_SESSION_STATES } = require("../utils/domain");
+const { INVOICE_SESSION_STATES, INVOICE_LINK_MODES } = require("../utils/domain");
 
 const sessionSchema = new mongoose.Schema(
   {
@@ -45,6 +45,8 @@ const invoiceRequestSchema = new mongoose.Schema(
     sessions: { type: [sessionSchema], default: [] },
     /** What the teacher wrote on the way out ("לימדתי גם ב-3.10 במקום 1.10"). */
     note: { type: String, trim: true },
+    /** Which kind of link the teacher gets behind the token (INVOICE_LINK_MODES, Eden 2026-11-10): the plain one, or the one that asks the sum and checks it. */
+    mode: { type: String, enum: INVOICE_LINK_MODES, default: "basic" },
   },
   { timestamps: true, collection: "invoiceRequests" }
 );

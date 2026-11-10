@@ -278,6 +278,25 @@ const DIARY_KINDS = ["note", "task"];
 const DIARY_COLORS = ["yellow", "green", "blue", "pink", "orange", "purple"];
 /** The day of the month by which the teachers' invoices must be in (שמרית, 2026-10-19: "ב-29 לחודש החשבוניות צריכות להיות אצלי כבר"). */
 const INVOICE_DUE_DAY = 29;
+/**
+ * The teacher's link comes in two kinds (Eden, 2026-11-10: "2 אפשרויות
+ * לאימות החשבוניות… הרגיל והחדש"): `basic` - the file on the lessons it
+ * covers; `check` - the same, plus the invoice's number and its sum, which
+ * the page checks against the teacher's rate (the gauge). One token serves
+ * both - the coordinator picks the kind on the request.
+ */
+const INVOICE_LINK_MODES = ["basic", "check"];
+const INVOICE_LINK_MODE_LABELS = { basic: "קישור רגיל", check: "קישור עם אימות סכום" };
+/** How far a declared sum may sit from the computed one and still "match" (rounding), in ₪. */
+const INVOICE_MATCH_TOLERANCE = 5;
+/** A declared sum against the computed one: match / low / high; unknown when there is no rate to compute from. */
+const INVOICE_CHECK_VERDICTS = ["match", "low", "high", "unknown"];
+const INVOICE_CHECK_LABELS = { match: "תואם לתעריף", low: "נמוך מהמחושב", high: "גבוה מהמחושב", unknown: "ללא חישוב" };
+/** The teacher's quick reasons for a sum that differs from the computed one. */
+const INVOICE_DIFF_REASONS = ["notHeld", "hours", "expenses", "rate", "other"];
+const INVOICE_DIFF_REASON_LABELS = { notHeld: "שיעור לא התקיים", hours: "השעות שונות מהלוח", expenses: "נסיעות / הוצאות", rate: "התעריף שונה", other: "אחר" };
+/** The most a teacher's invoice may say, ₪ (a typo guard, not a budget). */
+const INVOICE_AMOUNT_MAX = 1000000;
 
 /**
  * Why someone missed a session (שמרית, 2026-10-14 and her answer of
@@ -872,6 +891,12 @@ const ERROR_CODES = {
   INVOICE_SESSION_SUBSTITUTE: "במפגש הזה לימד/ה מורה מחליף/ה - החשבונית שלו/ה מועלית מהתיק של המורה המחליף/ה",
   INVOICE_ADMIN_ACTION: "פעולת ניהול לא מוכרת",
   INVOICE_REQUEST_HAS_INVOICES: "למורה הזה יש חשבוניות בסבב - מוחקים אותן קודם, או מסירים עם force",
+  INVOICE_LINK_MODE: "סוג הקישור הוא רגיל או עם אימות סכום",
+  INVOICE_AMOUNT_INVALID: "סכום החשבונית הוא מספר חיובי בשקלים",
+  INVOICE_AMOUNT_REQUIRED: "בקישור עם אימות מזינים את מספר החשבונית ואת הסכום שבה",
+  INVOICE_NUMBER_INVALID: "מספר החשבונית הוא עד 40 תווים",
+  INVOICE_EXPLAIN_REQUIRED: "הסכום שונה מהמחושב לפי התעריף - כותבים במה",
+  INVOICE_DIFF_REASON: "סיבת ההפרש לא מוכרת",
   DIARY_INVALID: "לרשומה ביומן חובה תאריך וכותרת",
   ATTENDANCE_REASON_INVALID: "סיבת היעדרות לא מוכרת",
   // סקיצת הנוכחות מההוסטלים (שלב 3 של סבב שמרית)
@@ -1080,6 +1105,14 @@ module.exports = {
   DIARY_KINDS,
   DIARY_COLORS,
   INVOICE_DUE_DAY,
+  INVOICE_LINK_MODES,
+  INVOICE_LINK_MODE_LABELS,
+  INVOICE_MATCH_TOLERANCE,
+  INVOICE_CHECK_VERDICTS,
+  INVOICE_CHECK_LABELS,
+  INVOICE_DIFF_REASONS,
+  INVOICE_DIFF_REASON_LABELS,
+  INVOICE_AMOUNT_MAX,
   ABSENCE_REASONS,
   ABSENCE_REASON_KEYS,
   HOSTEL_REPORT_LINK_DAYS,

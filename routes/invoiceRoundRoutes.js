@@ -18,6 +18,9 @@ router.get("/:id/requests/:rid/link", c.requestLink);
 router.post("/:id/requests/:rid/sent", c.markSent);
 router.post("/:id/requests/:rid/renew", c.renew);
 router.post("/:id/requests/:rid/reopen", c.reopen);
+router.post("/:id/requests/:rid/mode", c.setMode);
+// the month as her ledger sheet (2026-11-10)
+router.get("/:id/ledger.xlsx", c.ledgerXlsx);
 // the super admin's corrections (the state machine of 2026-10-22, section 08): resets and deletions, as himself only
 router.post("/:id/admin", requireSuper, c.admin);
 

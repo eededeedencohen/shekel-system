@@ -46,7 +46,10 @@ const AppError = require("../utils/AppError");
 const { withTxn } = require("../utils/withTxn");
 const invoices = require("./invoiceService");
 const { Profile } = require("../models/profiles");
-const { INVOICE_ROUND_PROGRAMS, INVOICE_ROUND_PROGRAM_LABELS, INVOICE_LINK_DAYS, INVOICE_REQUEST_STATUS_LABELS, INVOICE_DUE_DAY } = require("../utils/domain");
+const {
+  INVOICE_ROUND_PROGRAMS, INVOICE_ROUND_PROGRAM_LABELS, INVOICE_LINK_DAYS, INVOICE_REQUEST_STATUS_LABELS, INVOICE_DUE_DAY,
+  INVOICE_LINK_MODES, INVOICE_MATCH_TOLERANCE, INVOICE_CHECK_LABELS, INVOICE_DIFF_REASONS, INVOICE_DIFF_REASON_LABELS, INVOICE_AMOUNT_MAX,
+} = require("../utils/domain");
 
 const DAY_MS = 24 * 3600 * 1000;
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -106,6 +109,111 @@ function plannedSessions(cycle, month) {
     }
   }
   return out.sort((a, b) => a.date - b.date || String(a.start).localeCompare(String(b.start)));
+}
+
+/* ───────────────────────── the rate and the expected sum (Eden, 2026-11-10) ─────────────────────────
+ * "לשלב את החלק הזה של השכר השעתי": a teacher's hourly rate (₪, VAT in -
+ * her sheet's "תעריף לשעה כולל מע"מ") × the hours of the sessions an
+ * invoice covers = what the paper should say. The per-session hostels rate
+ * is the fallback when no hourly rate is set. A declared sum within
+ * INVOICE_MATCH_TOLERANCE of it matches; below is "low", above "high"; no
+ * rate at all = "unknown" (the sum is kept, the coordinator checks). */
+
+/** "15:00" → 900; null for anything else. */
+const minutesOf = (t) => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || "").trim());
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+
+/** The hours of a session from its clock, or null when the slot has no proper times. */
+function hoursOf(session) {
+  const a = minutesOf(session.start);
+  const b = minutesOf(session.end);
+  if (a == null || b == null || b <= a) return null;
+  return Math.round(((b - a) / 60) * 100) / 100;
+}
+
+/** A teacher's two rates: ₪ per hour (the bookkeeping's) and ₪ per session in the hostels. */
+async function ratesOf(teacherIds) {
+  const ids = [...new Set(teacherIds.map(String))];
+  if (!ids.length) return new Map();
+  const profiles = await Profile.find({ person: { $in: ids }, kind: "Teacher" }).select("person hostelRate hourlyRate supplierNumber purchaseOrder monthlyHours").lean();
+  const out = new Map();
+  for (const p of profiles) out.set(String(p.person), { hourly: p.hourlyRate ?? null, session: p.hostelRate ?? null, supplierNumber: p.supplierNumber || null, purchaseOrder: p.purchaseOrder || null, monthlyHours: p.monthlyHours ?? null });
+  return out;
+}
+
+/** The rate that applies: the hourly one when set, else the hostels' per-session one on a hostels round, else none. */
+function rateFor(rates, program) {
+  if (!rates) return null;
+  if (rates.hourly != null) return { kind: "hour", value: rates.hourly };
+  if (rates.session != null && program === "hostels") return { kind: "session", value: rates.session };
+  return null;
+}
+
+/**
+ * What `sessions` should cost at `rate`: { sum, hours, sessions, missingHours, rate, rateKind } - or null without a
+ * rate. By the hour, a session without a clock is counted in `missingHours` and adds nothing.
+ */
+function expectedOf(sessions, rate) {
+  if (!rate) return null;
+  const out = { sum: 0, hours: 0, sessions: sessions.length, missingHours: 0, rate: rate.value, rateKind: rate.kind };
+  for (const s of sessions) {
+    const h = hoursOf(s);
+    if (h == null) out.missingHours++;
+    else out.hours += h;
+  }
+  out.hours = Math.round(out.hours * 100) / 100;
+  out.sum = rate.kind === "hour" ? Math.round(out.hours * rate.value * 100) / 100 : sessions.length * rate.value;
+  return out;
+}
+
+/** The verdict of a declared sum: match / low / high, and the difference; unknown without an expectation. */
+function verdictOf(amount, expectation) {
+  if (amount == null || !expectation) return { verdict: "unknown", diff: null };
+  const diff = Math.round((amount - expectation.sum) * 100) / 100;
+  if (Math.abs(diff) <= INVOICE_MATCH_TOLERANCE) return { verdict: "match", diff };
+  return { verdict: diff < 0 ? "low" : "high", diff };
+}
+
+/** The `check` block an invoice stores: the expectation and the verdict, as of now. */
+function checkBlock(amount, expectation) {
+  const { verdict, diff } = verdictOf(amount, expectation);
+  return {
+    expected: expectation ? expectation.sum : null,
+    hours: expectation ? expectation.hours : null,
+    sessions: expectation ? expectation.sessions : null,
+    missingHours: expectation ? expectation.missingHours : 0,
+    rate: expectation ? expectation.rate : null,
+    rateKind: expectation ? expectation.rateKind : null,
+    verdict,
+    diff,
+  };
+}
+
+/** A declared sum, cleaned: a number in ₪ (0 < n ≤ INVOICE_AMOUNT_MAX), null to clear, or the typed error. */
+function cleanAmount(v) {
+  if (v === null || v === "" || v === undefined) return null;
+  const n = typeof v === "number" ? v : Number(String(v).replace(/[,\s₪]/g, ""));
+  if (!Number.isFinite(n) || n <= 0 || n > INVOICE_AMOUNT_MAX) throw AppError.of("INVOICE_AMOUNT_INVALID", 400);
+  return Math.round(n * 100) / 100;
+}
+
+/** A declared number, cleaned: up to 40 characters, null to clear. */
+function cleanNumber(v) {
+  if (v === null || v === undefined) return null;
+  const t = String(v).trim();
+  if (!t) return null;
+  if (t.length > 40) throw AppError.of("INVOICE_NUMBER_INVALID", 400);
+  return t;
+}
+
+/** The teacher's word on a difference: a known reason and/or a text; null when nothing was said. */
+function cleanExplanation({ reason, explanation } = {}) {
+  const r = reason ? String(reason).trim() : "";
+  if (r && !INVOICE_DIFF_REASONS.includes(r)) throw AppError.of("INVOICE_DIFF_REASON", 400);
+  const text = clean(explanation, 600) || null;
+  return r || text ? { reason: r || null, text } : null;
 }
 
 /* ───────────────────────── opening a month ───────────────────────── */
@@ -290,6 +398,7 @@ function sessionView(s, facts, teacherId) {
     date: s.date,
     start: s.start,
     end: s.end,
+    hours: hoursOf(s),
     lesson,
     reported,
     present: reported ? facts.presentByLesson.get(lesson) || 0 : null,
@@ -323,15 +432,53 @@ function countsOf(sessions) {
   return c;
 }
 
-function requestView(r, facts, teacher, rate = null) {
+/**
+ * The money of a request (2026-11-10): what the billed sessions should
+ * cost by the rate, what the invoices say, and how many of them matched,
+ * differ ("לבדיקה") or came without a sum - the row, the window and the
+ * ledger read it.
+ */
+function moneyOf(sessions, invs, rate) {
+  const own = sessions.filter((s) => !s.substitute);
+  const billed = own.filter((s) => s.invoice);
+  const expectedAll = expectedOf(own, rate);
+  const expectedBilled = expectedOf(billed, rate);
+  const declared = invs.filter((i) => i.amount != null);
+  const invoiced = declared.reduce((k, i) => k + i.amount, 0);
+  const counts = { match: 0, low: 0, high: 0, unknown: 0, undeclared: invs.length - declared.length, unnumbered: invs.filter((i) => !i.number).length };
+  for (const i of declared) counts[i.check?.verdict || "unknown"]++;
+  const live = declared.length ? verdictOf(Math.round(invoiced * 100) / 100, expectedBilled) : { verdict: null, diff: null };
+  return {
+    rate: rate || null,
+    expected: expectedAll ? expectedAll.sum : null,
+    expectedBilled: expectedBilled ? expectedBilled.sum : null,
+    hours: expectedAll ? expectedAll.hours : null,
+    hoursBilled: expectedBilled ? expectedBilled.hours : null,
+    missingHours: expectedAll ? expectedAll.missingHours : 0,
+    invoiced: declared.length ? Math.round(invoiced * 100) / 100 : null,
+    declared: declared.length,
+    verdict: live.verdict,
+    diff: live.diff,
+    counts,
+    // something for the coordinator's eye: a sum that differs, or an invoice without a sum / a number
+    flagged: counts.low + counts.high > 0,
+  };
+}
+
+function requestView(r, facts, teacher, rates = null, program = "hostels") {
   const invs = facts.invoicesByRequest.get(String(r._id)) || [];
   const sessions = r.sessions.map((s) => sessionView(s, facts, r.teacher));
   const status = statusOf(r, invs.length);
+  const rate = rateFor(rates, program);
+  // `rate` (kept for the old readers) = ₪ per session in the hostels; `rates` = both, and the bookkeeping's facts
+  const legacyRate = program === "hostels" ? rates?.session ?? null : null;
+  const who = { rate: legacyRate, rates: { hourly: rates?.hourly ?? null, session: rates?.session ?? null, supplierNumber: rates?.supplierNumber || null, purchaseOrder: rates?.purchaseOrder || null, monthlyHours: rates?.monthlyHours ?? null } };
   return {
     _id: r._id,
     round: r.round,
-    // `rate` = ₪ per session in the hostels (the Teacher profile) - the page checks the invoice's sum against billed × rate
-    teacher: teacher ? { _id: teacher._id, firstName: teacher.firstName, lastName: teacher.lastName, gender: teacher.gender || null, phone: teacher.phone || null, rate } : { _id: r.teacher, rate },
+    teacher: teacher ? { _id: teacher._id, firstName: teacher.firstName, lastName: teacher.lastName, gender: teacher.gender || null, phone: teacher.phone || null, ...who } : { _id: r.teacher, ...who },
+    mode: r.mode || "basic",
+    money: moneyOf(sessions, invs, rate),
     // the token stays on the server (2026-10-26): GET /api/invoice-rounds/:id/requests/:rid/link hands the address
     hasToken: !!r.token,
     expiresAt: r.expiresAt,
@@ -355,21 +502,26 @@ async function roundView(round) {
   const requests = await InvoiceRequest.find({ round: round._id }).lean();
   const facts = await factsOf(requests);
   const teacherIds = requests.map((r) => r.teacher);
-  const [teachers, profiles] = await Promise.all([
-    Person.find({ _id: { $in: teacherIds } }).select("firstName lastName gender phone").lean(),
-    Profile.find({ person: { $in: teacherIds }, kind: "Teacher" }).select("person hostelRate").lean(),
-  ]);
+  const [teachers, rates] = await Promise.all([Person.find({ _id: { $in: teacherIds } }).select("firstName lastName gender phone").lean(), ratesOf(teacherIds)]);
   const teacherById = new Map(teachers.map((t) => [String(t._id), t]));
-  const rateOf = new Map(profiles.map((p) => [String(p.person), p.hostelRate ?? null]));
   const rows = requests
-    .map((r) => requestView(r, facts, teacherById.get(String(r.teacher)), round.program === "hostels" ? rateOf.get(String(r.teacher)) ?? null : null))
+    .map((r) => requestView(r, facts, teacherById.get(String(r.teacher)), rates.get(String(r.teacher)) || null, round.program))
     .sort((a, b) => `${a.teacher.firstName} ${a.teacher.lastName}`.localeCompare(`${b.teacher.firstName} ${b.teacher.lastName}`, "he"));
-  const counts = { teachers: rows.length, new: 0, sent: 0, opened: 0, partial: 0, done: 0, invoices: 0, mismatches: 0 };
+  // flagged = a sum that differs from the rate (the check link, or the coordinator's own sum); undeclared / unnumbered = what her ledger still lacks
+  const counts = { teachers: rows.length, new: 0, sent: 0, opened: 0, partial: 0, done: 0, invoices: 0, mismatches: 0, flagged: 0, undeclared: 0, unnumbered: 0, checkLinks: 0, invoiced: 0, expected: 0 };
   for (const r of rows) {
     counts[r.status]++;
     counts.invoices += r.invoices.length;
     counts.mismatches += r.counts.billedNotReported + r.counts.reportedNotBilled;
+    counts.flagged += r.money.counts.low + r.money.counts.high;
+    counts.undeclared += r.money.counts.undeclared;
+    counts.unnumbered += r.money.counts.unnumbered;
+    if (r.mode === "check") counts.checkLinks++;
+    counts.invoiced += r.money.invoiced || 0;
+    counts.expected += r.money.expectedBilled || 0;
   }
+  counts.invoiced = Math.round(counts.invoiced * 100) / 100;
+  counts.expected = Math.round(counts.expected * 100) / 100;
   return {
     _id: round._id,
     month: round.month,
@@ -422,6 +574,15 @@ async function renew({ roundId, requestId, days }) {
   const r = await loadRequest({ roundId, requestId });
   const n = Number(days) > 0 ? Math.min(Number(days), 90) : INVOICE_LINK_DAYS;
   r.expiresAt = new Date(Date.now() + n * DAY_MS);
+  await r.save();
+  return getRound({ roundId });
+}
+
+/** Which kind of link the teacher gets (2026-11-10): basic, or check - the same token, the page behaves by it. */
+async function setMode({ roundId, requestId, mode }) {
+  if (!INVOICE_LINK_MODES.includes(mode)) throw AppError.of("INVOICE_LINK_MODE", 400);
+  const r = await loadRequest({ roundId, requestId });
+  r.mode = mode;
   await r.save();
   return getRound({ roundId });
 }
@@ -506,14 +667,16 @@ async function noteOpened(r) {
 
 /** What the teacher's page reads: their month, their sessions, their invoices - nothing of anyone else. */
 async function publicView(r) {
-  const [round, teacher] = await Promise.all([InvoiceRound.findById(r.round).lean(), Person.findById(r.teacher).select("firstName lastName gender").lean()]);
+  const [round, teacher, rates] = await Promise.all([InvoiceRound.findById(r.round).lean(), Person.findById(r.teacher).select("firstName lastName gender").lean(), ratesOf([r.teacher])]);
   const facts = await factsOf([r]);
   const sessions = r.sessions.map((s) => sessionView(s, facts, r.teacher));
+  const mode = r.mode || "basic";
+  const rate = mode === "check" ? rateFor(rates.get(String(r.teacher)), round.program) : null;
   const groups = new Map();
   for (const s of sessions) {
     const k = String(s.cycle?._id || "");
     if (!groups.has(k)) groups.set(k, { cycle: s.cycle, name: cycleName(facts.cycleById.get(k)), sessions: [] });
-    groups.get(k).sessions.push({ _id: s._id, date: s.date, start: s.start, end: s.end, reported: s.reported, present: s.present, houseSaid: s.houseSaid, invoice: s.invoice, substitute: s.substitute });
+    groups.get(k).sessions.push({ _id: s._id, date: s.date, start: s.start, end: s.end, hours: s.hours, reported: s.reported, present: s.present, houseSaid: s.houseSaid, invoice: s.invoice, substitute: s.substitute });
   }
   const invs = (facts.invoicesByRequest.get(String(r._id)) || []).map((i) => ({
     _id: i._id,
@@ -522,9 +685,32 @@ async function publicView(r) {
     lessons: i.lessons.map((l) => ({ _id: l._id, date: l.date, name: cycleName(facts.cycleById.get(String(l.cycle))) })),
     // uploaded from the teacher's file by the staff (decision 7): shown, never the teacher's to take back
     fromFile: !i.request,
+    // what the paper says (the check link, or the coordinator's own typing), and how it checked
+    number: i.number,
+    amount: i.amount,
+    declaredBy: i.declaredBy,
+    check: i.check,
+    explanation: i.explanation,
   }));
+  const own = sessions.filter((s) => !s.substitute);
+  const expected = expectedOf(own, rate);
+  const expectedBilled = expectedOf(own.filter((s) => s.invoice), rate);
+  const declared = invs.filter((i) => i.amount != null);
   return {
     teacher: { firstName: teacher?.firstName || "", gender: teacher?.gender || null },
+    // the check link (2026-11-10): the page asks the number and the sum and draws the gauge from the rate and the hours
+    mode,
+    rate,
+    money: rate
+      ? {
+          expected: expected ? expected.sum : null,
+          hours: expected ? expected.hours : null,
+          expectedBilled: expectedBilled ? expectedBilled.sum : null,
+          invoiced: declared.length ? Math.round(declared.reduce((k, i) => k + i.amount, 0) * 100) / 100 : null,
+          tolerance: INVOICE_MATCH_TOLERANCE,
+          reasons: INVOICE_DIFF_REASONS.map((key) => ({ key, label: INVOICE_DIFF_REASON_LABELS[key] })),
+        }
+      : null,
     month: round.month,
     monthLabel: monthLabel(round.month),
     dueAt: dueOf(round.month),
@@ -567,12 +753,35 @@ async function healLessons(sessions) {
   return n;
 }
 
-async function addInvoice(r, { imageData, imageName, thumb, stored = null, sessionIds }) {
+/**
+ * What the teacher typed about the paper, checked against the rate (the
+ * check link): the number and the sum are required there, a sum that
+ * differs needs a word; the plain link keeps them optional. Answers the
+ * fields to store (none on the plain link with nothing typed).
+ */
+async function declaredFields(r, covered, { number, amount, reason, explanation }) {
+  const mode = r.mode || "basic";
+  const num = cleanNumber(number);
+  const sum = cleanAmount(amount);
+  const why = cleanExplanation({ reason, explanation });
+  if (mode === "check" && (!num || sum == null)) throw AppError.of("INVOICE_AMOUNT_REQUIRED", 400);
+  if (!num && sum == null && !why) return {};
+  const round = await InvoiceRound.findById(r.round).select("program").lean();
+  const rates = await ratesOf([r.teacher]);
+  const expectation = sum != null ? expectedOf(covered, rateFor(rates.get(String(r.teacher)), round.program)) : null;
+  const check = sum != null ? checkBlock(sum, expectation) : null;
+  if (mode === "check" && check && (check.verdict === "low" || check.verdict === "high") && !why) throw AppError.of("INVOICE_EXPLAIN_REQUIRED", 400);
+  return { number: num || undefined, amount: sum ?? undefined, declaredBy: "teacher", declaredAt: new Date(), check: check || undefined, explanation: why || undefined };
+}
+
+async function addInvoice(r, { imageData, imageName, thumb, stored = null, sessionIds, number, amount, reason, explanation }) {
   assertOpen(r);
   const wanted = Array.isArray(sessionIds) ? new Set(sessionIds.map(String)) : new Set();
   if (!wanted.size) throw AppError.of("INVOICE_NO_SESSIONS", 400);
   const covered = r.sessions.filter((s) => wanted.has(String(s._id)));
   if (covered.length !== wanted.size) throw AppError.of("INVOICE_SESSION_UNKNOWN", 400);
+  // the paper's facts are checked before anything is written (a refused sum leaves no lesson row behind)
+  const declared = await declaredFields(r, covered, { number, amount, reason, explanation });
   await healLessons(covered);
   await attachLessons(covered);
   // a session someone else taught (the substitute written on its lesson) is theirs to bill, from their file (decision 6)
@@ -594,7 +803,7 @@ async function addInvoice(r, { imageData, imageName, thumb, stored = null, sessi
   // a session sits on one invoice only
   const already = await InvoiceLesson.exists({ lesson: { $in: lessonIds } });
   if (already) throw AppError.of("INVOICE_LESSON_BILLED", 400);
-  await invoices.createInvoice({
+  const made = await invoices.createInvoice({
     teacherId: r.teacher,
     lessonIds,
     imageData,
@@ -605,7 +814,74 @@ async function addInvoice(r, { imageData, imageName, thumb, stored = null, sessi
     note: `${monthLabel(round.month)} · דרך הקישור`,
     requestId: r._id,
   });
+  if (Object.keys(declared).length) await Invoice.updateOne({ _id: made._id }, { $set: declared });
   return r;
+}
+
+/** The teacher corrects what they typed on an invoice of this link (a typo in the sum, a reason), while the month is open. */
+async function updateDeclared(r, invoiceId, { number, amount, reason, explanation }) {
+  assertOpen(r);
+  const inv = isId(invoiceId) && (await Invoice.findOne({ _id: invoiceId }));
+  if (!inv) throw AppError.of("NOT_FOUND", 404, "חשבונית");
+  if (String(inv.request) !== String(r._id)) throw AppError.of("INVOICE_NOT_YOURS", 403);
+  await attachLessons(r.sessions);
+  const rows = await InvoiceLesson.find({ invoice: inv._id }).select("lesson").lean();
+  const lessonIds = new Set(rows.map((x) => String(x.lesson)));
+  const covered = r.sessions.filter((s) => s.lesson && lessonIds.has(String(s.lesson)));
+  const fields = await declaredFields(r, covered, {
+    number: number !== undefined ? number : inv.number,
+    amount: amount !== undefined ? amount : inv.amount,
+    reason: reason !== undefined ? reason : inv.explanation?.reason,
+    explanation: explanation !== undefined ? explanation : inv.explanation?.text,
+  });
+  inv.set({ number: fields.number ?? null, amount: fields.amount ?? null, declaredBy: fields.declaredBy || null, declaredAt: fields.declaredAt || null, check: fields.check || null, explanation: fields.explanation || null });
+  await inv.save();
+  return r;
+}
+
+/**
+ * The coordinator writes the number and the sum on any invoice (her ledger
+ * lives on them - "שמרית משייכת מספר לחשבוניות שהעלו"), locked or not.
+ * The sum is checked against the rate the way the link does it: by the
+ * request's sessions when the invoice came through one, else by the
+ * lessons' cycles' slots on their weekday.
+ */
+async function setInvoiceMeta({ invoiceId, number, amount, by = "staff" }) {
+  const inv = isId(invoiceId) && (await Invoice.findOne({ _id: invoiceId }));
+  if (!inv) throw AppError.of("NOT_FOUND", 404, "חשבונית");
+  if (number !== undefined) inv.number = cleanNumber(number) ?? null;
+  if (amount !== undefined) inv.amount = cleanAmount(amount) ?? null;
+  inv.declaredBy = by;
+  inv.declaredAt = new Date();
+  if (inv.amount == null) inv.check = null;
+  else inv.check = checkBlock(inv.amount, await expectationOfInvoice(inv));
+  await inv.save();
+  return invoices.getInvoice({ invoiceId: inv._id });
+}
+
+/** The expectation behind an invoice: the sessions its lessons are (from a request), else each lesson's slot in its cycle. */
+async function expectationOfInvoice(inv) {
+  const rows = await InvoiceLesson.find({ invoice: inv._id }).select("lesson").lean();
+  const lessonIds = rows.map((x) => x.lesson);
+  if (!lessonIds.length) return null;
+  const lessons = await Lesson.find({ _id: { $in: lessonIds } }).select("_id cycle date").lean();
+  const cycles = await Cycle.find({ _id: { $in: [...new Set(lessons.map((l) => String(l.cycle)))] } }).select("hostel schedule").lean();
+  const cycleById = new Map(cycles.map((c) => [String(c._id), c]));
+  const program = cycles.some((c) => c.hostel) ? "hostels" : "college";
+  const rates = await ratesOf([inv.teacher]);
+  const rate = rateFor(rates.get(String(inv.teacher)), program);
+  if (!rate) return null;
+  // a request's sessions carry the clock as the month was planned
+  const req = inv.request ? await InvoiceRequest.findById(inv.request).select("sessions").lean() : null;
+  const byLesson = new Map((req?.sessions || []).filter((s) => s.lesson).map((s) => [String(s.lesson), s]));
+  const sessions = lessons.map((l) => {
+    const s = byLesson.get(String(l._id));
+    if (s) return s;
+    const dow = new Date(l.date).getUTCDay();
+    const slot = (cycleById.get(String(l.cycle))?.schedule || []).find((x) => x.day === dow && x.start && x.end);
+    return slot ? { start: slot.start, end: slot.end } : {};
+  });
+  return expectedOf(sessions, rate);
 }
 
 /** The teacher takes an invoice back - only one that came through this link, while the month is open. */
@@ -783,6 +1059,102 @@ async function orphanSweep({ dryRun }) {
   return report;
 }
 
+/* ───────────────────────── her ledger (2026-11-10) ─────────────────────────
+ * The month as the rows of her "פרילנסרים" sheet: one row per teacher - the
+ * supplier's number, the name, the hourly rate, the month's hours and
+ * sessions, the invoice numbers (joined with "+" the way she writes them),
+ * the sum, the sum by the rate, the difference, the purchase order, and a
+ * word (a sum that differs, an invoice without a number, none at all). */
+
+const money = (n) => (n == null ? "" : Math.round(n * 100) / 100);
+
+async function ledgerRows({ roundId }) {
+  const round = await roundView(await loadRound({ roundId }));
+  const rows = round.requests.map((r) => {
+    // oldest first - the order she writes them in ("57438+57323")
+    const invs = [...r.invoices].sort((a, b) => new Date(a.uploadedAt) - new Date(b.uploadedAt));
+    const numbers = invs.map((i) => i.number).filter(Boolean);
+    const sums = invs.filter((i) => i.amount != null).map((i) => i.amount);
+    const notes = [];
+    if (!invs.length) notes.push(r.note ? `אין חשבונית · ${r.note}` : "לא התקבלה חשבונית");
+    if (r.money.counts.undeclared) notes.push(r.money.counts.undeclared === 1 ? "חשבונית בלי סכום" : `${r.money.counts.undeclared} חשבוניות בלי סכום`);
+    if (r.money.counts.unnumbered) notes.push(r.money.counts.unnumbered === 1 ? "חשבונית בלי מספר" : `${r.money.counts.unnumbered} חשבוניות בלי מספר`);
+    for (const i of invs) {
+      if (i.check?.verdict === "low" || i.check?.verdict === "high") {
+        const why = i.explanation ? ` (${[i.explanation.reason && INVOICE_DIFF_REASON_LABELS[i.explanation.reason], i.explanation.text].filter(Boolean).join(": ")})` : "";
+        notes.push(`${INVOICE_CHECK_LABELS[i.check.verdict]} ב-${Math.abs(i.check.diff)} ₪${why}`);
+      }
+    }
+    if (r.money.missingHours) notes.push(`${r.money.missingHours} מפגשים בלי שעות בלוח`);
+    return {
+      request: r._id,
+      supplierNumber: r.teacher.rates.supplierNumber || "",
+      name: `${r.teacher.lastName || ""} ${r.teacher.firstName || ""}`.trim(),
+      hourlyRate: r.teacher.rates.hourly ?? "",
+      sessionRate: r.teacher.rates.session ?? "",
+      hours: r.money.hoursBilled ?? "",
+      sessions: r.counts.billed,
+      numbers: numbers.join("+"),
+      amount: sums.length ? money(sums.reduce((k, n) => k + n, 0)) : "",
+      amounts: sums.length > 1 ? sums.map(money).join("+") : "",
+      expected: money(r.money.expectedBilled),
+      diff: r.money.invoiced != null && r.money.expectedBilled != null ? money(r.money.invoiced - r.money.expectedBilled) : "",
+      purchaseOrder: r.teacher.rates.purchaseOrder || "",
+      status: r.statusLabel,
+      notes: notes.join(" · "),
+    };
+  });
+  return { round, rows };
+}
+
+async function ledgerXlsx({ roundId }) {
+  const { round, rows } = await ledgerRows({ roundId });
+  const ExcelJS = require("exceljs");
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "שק״ל";
+  const ws = wb.addWorksheet(`${round.monthLabel}`, { views: [{ rightToLeft: true }] });
+  ws.columns = [
+    { header: "מספר ספק", key: "supplierNumber", width: 14 },
+    { header: "שם הספק", key: "name", width: 24 },
+    { header: 'תעריף לשעה כולל מע"מ', key: "hourlyRate", width: 16 },
+    { header: "תעריף למפגש (הוסטלים)", key: "sessionRate", width: 16 },
+    { header: "שעות בחשבוניות", key: "hours", width: 14 },
+    { header: "מפגשים בחשבוניות", key: "sessions", width: 14 },
+    { header: `מספר דרישת תשלום ${round.monthLabel}`, key: "numbers", width: 22 },
+    { header: "סכום", key: "amount", width: 12 },
+    { header: "פירוט סכומים", key: "amounts", width: 16 },
+    { header: "לפי התעריף", key: "expected", width: 12 },
+    { header: "הפרש", key: "diff", width: 10 },
+    { header: "מספר הזמנת רכש", key: "purchaseOrder", width: 16 },
+    { header: "מצב", key: "status", width: 14 },
+    { header: "הערות", key: "notes", width: 44 },
+  ];
+  const thin = { style: "thin", color: { argb: "FF7F7F7F" } };
+  const border = { top: thin, bottom: thin, left: thin, right: thin };
+  const head = ws.getRow(1);
+  head.font = { bold: true, size: 11 };
+  head.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+  head.height = 34;
+  head.eachCell((cell) => {
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9D9D9" } };
+    cell.border = border;
+  });
+  for (const r of rows) {
+    const added = ws.addRow(r);
+    added.alignment = { vertical: "middle", wrapText: true };
+    added.eachCell({ includeEmpty: true }, (cell) => {
+      cell.border = border;
+    });
+    const flagged = r.diff !== "" && Math.abs(Number(r.diff)) > INVOICE_MATCH_TOLERANCE;
+    if (flagged) added.getCell("diff").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFE699" } };
+    if (!r.numbers) added.getCell("numbers").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8CBAD" } };
+  }
+  const total = ws.addRow({ name: "סה״כ", amount: money(rows.reduce((k, r) => k + (Number(r.amount) || 0), 0)), expected: money(rows.reduce((k, r) => k + (Number(r.expected) || 0), 0)) });
+  total.font = { bold: true };
+  const buffer = await wb.xlsx.writeBuffer();
+  return { buffer: Buffer.from(buffer), fileName: `רישום חשבוניות ${INVOICE_ROUND_PROGRAM_LABELS[round.program]} - ${round.monthLabel}.xlsx`, rows };
+}
+
 const teacherLabel = async (id) => {
   const t = await Person.findById(id).select("firstName lastName").lean();
   return t ? `${t.firstName || ""} ${t.lastName || ""}`.trim() : String(id);
@@ -898,6 +1270,14 @@ module.exports = {
   loadRequest,
   markSent,
   renew,
+  setMode,
+  setInvoiceMeta,
+  updateDeclared,
+  ledgerRows,
+  ledgerXlsx,
+  hoursOf,
+  expectedOf,
+  verdictOf,
   reopen,
   setMail,
   setNote,

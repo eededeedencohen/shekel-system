@@ -485,3 +485,142 @@ describe("/api/diary", () => {
     expect((await request(app).get("/api/diary")).body.data.entries).toHaveLength(1);
   });
 });
+
+/* The hourly rate and the check link (Eden, 2026-11-10: "לשלב את החלק הזה של השכר השעתי… 2 אפשרויות לאימות
+   החשבוניות… הסכום שיש בחשבונית ויהיה איזה מד… שמרית משייכת מספר לחשבוניות שהעלו"). */
+describe("the hourly rate, the check link and the coordinator's ledger (2026-11-10)", () => {
+  it("the teacher's bookkeeping facts flatten onto the person and are saved through the person", async () => {
+    const t = await makeTeacher();
+    const res = await request(app).put(`/api/people/${t._id}`).send({ hourlyRate: 350, supplierNumber: "200001241", purchaseOrder: "PO26B000111", monthlyHours: 35 });
+    expect(res.status).toBe(200);
+    expect(res.body.data.person).toMatchObject({ hourlyRate: 350, supplierNumber: "200001241", purchaseOrder: "PO26B000111", monthlyHours: 35 });
+    const prof = await Profile.findOne({ person: t._id, kind: "Teacher" });
+    expect(prof.hourlyRate).toBe(350);
+  });
+
+  it("behind the check link the sum is required and checked by hours × rate; a difference needs a word; the teacher corrects; the coordinator sees the money and writes the number", async () => {
+    const { teacher } = await hostelMonth(); // Thursdays 15:00-16:00: five sessions of one hour
+    await Profile.updateOne({ person: teacher._id, kind: "Teacher" }, { hourlyRate: 300, supplierNumber: "200001241", purchaseOrder: "PO26B000111" });
+    const opened = (await request(app).post("/api/invoice-rounds").send({ month: "2026-10" })).body.data.round;
+    const req0 = opened.requests[0];
+    expect(req0.mode).toBe("basic");
+    expect(req0.teacher.rates).toMatchObject({ hourly: 300, supplierNumber: "200001241" });
+    expect(req0.money).toMatchObject({ expected: 1500, hours: 5, invoiced: null, flagged: false });
+    expect(req0.sessions[0].hours).toBe(1);
+
+    // the plain link asks nothing of the sum
+    const url = `/api/public/invoices/${await tokenOf(opened._id, req0)}`;
+    const plain = (await request(app).get(url)).body.data.view;
+    expect(plain.mode).toBe("basic");
+    expect(plain.rate).toBeNull();
+    expect(plain.money).toBeNull();
+
+    const bad = await request(app).post(`/api/invoice-rounds/${opened._id}/requests/${req0._id}/mode`).send({ mode: "fancy" });
+    expect(bad.body.code).toBe("INVOICE_LINK_MODE");
+    const modeRes = await request(app).post(`/api/invoice-rounds/${opened._id}/requests/${req0._id}/mode`).send({ mode: "check" });
+    expect(modeRes.body.data.round.requests[0].mode).toBe("check");
+    expect(modeRes.body.data.round.counts.checkLinks).toBe(1);
+
+    const view = (await request(app).get(url)).body.data.view;
+    expect(view.mode).toBe("check");
+    expect(view.rate).toEqual({ kind: "hour", value: 300 });
+    expect(view.money).toMatchObject({ expected: 1500, hours: 5, expectedBilled: 0, invoiced: null, tolerance: 5 });
+    expect(view.money.reasons.map((r) => r.key)).toEqual(["notHeld", "hours", "expenses", "rate", "other"]);
+    const ids = view.courses[0].sessions.map((s) => s._id);
+
+    // the number and the sum are required on the check link
+    const noSum = await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "a.png", sessions: [ids[0], ids[1]] });
+    expect(noSum.status).toBe(400);
+    expect(noSum.body.code).toBe("INVOICE_AMOUNT_REQUIRED");
+    expect(await Invoice.countDocuments()).toBe(0);
+    expect((await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "a.png", sessions: [ids[0]], number: "1095", amount: -4 })).body.code).toBe("INVOICE_AMOUNT_INVALID");
+    expect((await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "a.png", sessions: [ids[0]], number: "x".repeat(41), amount: 300 })).body.code).toBe("INVOICE_NUMBER_INVALID");
+
+    // two sessions × one hour × 300 = 600: a match
+    const ok = await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "a.png", sessions: [ids[0], ids[1]], number: "1095", amount: 600 });
+    expect(ok.status).toBe(200);
+    const first = ok.body.data.view.invoices[0];
+    expect(first).toMatchObject({ number: "1095", amount: 600, declaredBy: "teacher" });
+    expect(first.check).toMatchObject({ expected: 600, hours: 2, sessions: 2, rate: 300, rateKind: "hour", verdict: "match", diff: 0 });
+    expect(ok.body.data.view.money).toMatchObject({ expectedBilled: 600, invoiced: 600 });
+
+    // one session for 100: low by 200 - a word is needed, a reason is a word
+    const silent = await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "b.png", sessions: [ids[2]], number: "1096", amount: 100 });
+    expect(silent.status).toBe(400);
+    expect(silent.body.code).toBe("INVOICE_EXPLAIN_REQUIRED");
+    expect((await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "b.png", sessions: [ids[2]], number: "1096", amount: 100, reason: "because" })).body.code).toBe("INVOICE_DIFF_REASON");
+    const low = await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "b.png", sessions: [ids[2]], number: "1096", amount: 100, reason: "hours", explanation: "לימדתי 20 דקות" });
+    expect(low.status).toBe(200);
+    const second = low.body.data.view.invoices.find((i) => i.number === "1096");
+    expect(second.check).toMatchObject({ verdict: "low", diff: -200 });
+    expect(second.explanation).toEqual({ reason: "hours", text: "לימדתי 20 דקות" });
+
+    // a typo corrected in place: 600 → 660 is high by 60 and needs a word; the number alone may change freely
+    const typo = await request(app).patch(`${url}/invoices/${first._id}`).send({ amount: 660 });
+    expect(typo.status).toBe(400);
+    expect(typo.body.code).toBe("INVOICE_EXPLAIN_REQUIRED");
+    const fixed = await request(app).patch(`${url}/invoices/${first._id}`).send({ amount: 660, reason: "expenses" });
+    expect(fixed.status).toBe(200);
+    const firstNow = fixed.body.data.view.invoices.find((i) => String(i._id) === String(first._id));
+    expect(firstNow).toMatchObject({ amount: 660, number: "1095" });
+    expect(firstNow.check).toMatchObject({ verdict: "high", diff: 60 });
+    const renumbered = await request(app).patch(`${url}/invoices/${first._id}`).send({ number: "1095-a" });
+    expect(renumbered.body.data.view.invoices.find((i) => String(i._id) === String(first._id)).number).toBe("1095-a");
+
+    // the coordinator's side: the money, the flags, the kind of link
+    const staff = (await request(app).get(`/api/invoice-rounds/${opened._id}`)).body.data.round;
+    const r = staff.requests[0];
+    expect(r.mode).toBe("check");
+    expect(r.money).toMatchObject({ expectedBilled: 900, hoursBilled: 3, invoiced: 760, declared: 2, verdict: "low", diff: -140, flagged: true });
+    expect(r.money.counts).toMatchObject({ match: 0, low: 1, high: 1, undeclared: 0, unnumbered: 0 });
+    expect(staff.counts).toMatchObject({ flagged: 2, undeclared: 0, unnumbered: 0, checkLinks: 1, invoiced: 760, expected: 900 });
+    expect(r.invoices.find((i) => i.number === "1096").explanation.reason).toBe("hours");
+
+    // the teacher finishes; the coordinator still writes the number and the sum on the locked invoice (her ledger; the lock itself is invoiceLocks.test.js)
+    await request(app).post(`${url}/done`).send({});
+    const inv2 = await Invoice.findOne({ number: "1096" });
+    const meta = await request(app).patch(`/api/invoices/${inv2._id}`).send({ number: "1096/2026", amount: 300 });
+    expect(meta.status).toBe(200);
+    expect(meta.body.data.invoice).toMatchObject({ number: "1096/2026", amount: 300, declaredBy: "staff" });
+    expect(meta.body.data.invoice.check).toMatchObject({ expected: 300, verdict: "match", diff: 0 });
+    expect(meta.body.data.invoice.explanation).toEqual({ reason: "hours", text: "לימדתי 20 דקות" });
+
+    // her ledger: one row per teacher, the numbers joined the way she writes them
+    const xlsx = await request(app).get(`/api/invoice-rounds/${opened._id}/ledger.xlsx`);
+    expect(xlsx.status).toBe(200);
+    expect(xlsx.headers["content-type"]).toMatch(/spreadsheetml/);
+    const rounds = require("../../../services/invoiceRoundService");
+    const { rows } = await rounds.ledgerRows({ roundId: opened._id });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ supplierNumber: "200001241", name: "טסט אביה", hourlyRate: 300, hours: 3, sessions: 3, numbers: "1095-a+1096/2026", amount: 960, amounts: "660+300", expected: 900, diff: 60, purchaseOrder: "PO26B000111" });
+    expect(rows[0].notes).toMatch(/גבוה מהמחושב ב-60/);
+  });
+
+  it("without a rate the sum is kept and the verdict is unknown; the per-session hostels rate is the fallback; the coordinator's own sum is checked the same way", async () => {
+    const { teacher } = await hostelMonth();
+    const opened = (await request(app).post("/api/invoice-rounds").send({ month: "2026-10" })).body.data.round;
+    const req0 = opened.requests[0];
+    await request(app).post(`/api/invoice-rounds/${opened._id}/requests/${req0._id}/mode`).send({ mode: "check" });
+    const url = `/api/public/invoices/${await tokenOf(opened._id, req0)}`;
+    let view = (await request(app).get(url)).body.data.view;
+    expect(view.rate).toBeNull();
+    const ids = view.courses[0].sessions.map((s) => s._id);
+    const up = await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "a.png", sessions: [ids[0]], number: "7", amount: 123 });
+    expect(up.status).toBe(200);
+    expect(up.body.data.view.invoices[0].check).toMatchObject({ verdict: "unknown", expected: null });
+
+    // the hostels' per-session rate steps in when there is no hourly one
+    await Profile.updateOne({ person: teacher._id, kind: "Teacher" }, { hostelRate: 250 });
+    view = (await request(app).get(url)).body.data.view;
+    expect(view.rate).toEqual({ kind: "session", value: 250 });
+    const two = await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "b.png", sessions: [ids[1], ids[2]], number: "8", amount: 500 });
+    expect(two.body.data.view.invoices.find((i) => i.number === "8").check).toMatchObject({ verdict: "match", expected: 500, rateKind: "session", sessions: 2 });
+
+    // the coordinator writes a sum on the first one: checked against the same rate now
+    const inv = await Invoice.findOne({ number: "7" });
+    const meta = await request(app).patch(`/api/invoices/${inv._id}`).send({ amount: 250 });
+    expect(meta.body.data.invoice.check).toMatchObject({ verdict: "match", expected: 250, rateKind: "session" });
+    const staff = (await request(app).get(`/api/invoice-rounds/${opened._id}`)).body.data.round;
+    expect(staff.requests[0].money).toMatchObject({ invoiced: 750, expectedBilled: 750, verdict: "match" });
+  });
+});

@@ -49,6 +49,7 @@ router.get("/supplier/:token/uploads/:id/url", supplier.publicFileUrl);
 router.get("/invoices/:token", invoiceLink.publicView);
 router.post("/invoices/:token/invoices", invoiceLink.publicInvoice);
 router.delete("/invoices/:token/invoices/:iid", invoiceLink.publicRemoveInvoice);
+router.patch("/invoices/:token/invoices/:iid", invoiceLink.publicUpdateInvoice);
 router.get("/invoices/:token/invoices/:iid/image", invoiceLink.publicImage);
 router.post("/invoices/:token/done", invoiceLink.publicDone);
 // the bucket (2026-10-26)

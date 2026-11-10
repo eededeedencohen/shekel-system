@@ -7,7 +7,8 @@
  *   POST   /                      { teacher*, lessons*[], imageData* (image or PDF), imageName, thumb, by, note }
  *   GET    /:id                   one invoice
  *   GET    /:id/image[?thumb=1]   the file itself (the small JPEG with thumb=1)
- *   PATCH  /:id                   { lessons?[], note? }
+ *   PATCH  /:id                   { lessons?[], note?, number?, amount? } - the number and the sum are the
+ *                                 coordinator's to write at any time (her ledger lives on them, 2026-11-10)
  *   DELETE /:id
  *
  * Every rule lives in services/invoiceService.
@@ -75,8 +76,14 @@ const assertUnlocked = (req, invoice, { lessons = false } = {}) => {
 
 exports.updateInvoice = catchAsync(async (req, res) => {
   const { cycleIds } = await scopeSets(req);
-  assertUnlocked(req, await invoices.getInvoice({ invoiceId: req.params.id }), { lessons: req.body.lessons !== undefined });
-  const invoice = await invoices.updateInvoice({ invoiceId: req.params.id, lessonIds: req.body.lessons, note: req.body.note, cycleIds });
+  const { lessons, note, number, amount } = req.body || {};
+  const touchesBody = lessons !== undefined || note !== undefined;
+  // the number and the sum are bookkeeping facts the coordinator writes after the teacher finished (the lock keeps
+  // the lessons, the note and the file as the teacher left them - not her ledger)
+  if (touchesBody) assertUnlocked(req, await invoices.getInvoice({ invoiceId: req.params.id }), { lessons: lessons !== undefined });
+  let invoice = touchesBody ? await invoices.updateInvoice({ invoiceId: req.params.id, lessonIds: lessons, note, cycleIds }) : null;
+  if (number !== undefined || amount !== undefined) invoice = await rounds.setInvoiceMeta({ invoiceId: req.params.id, number, amount, by: "staff" });
+  if (!invoice) invoice = await invoices.getInvoice({ invoiceId: req.params.id });
   res.status(200).json({ status: "success", data: { invoice } });
 });
 

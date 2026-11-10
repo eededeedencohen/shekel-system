@@ -169,7 +169,7 @@ const FAMILY_RULES = {
     },
     async attach(file, { actor, meta }) {
       if (actor.token) {
-        const r = await rounds.addInvoice(actor.token.request, { stored: file, sessionIds: meta.sessions });
+        const r = await rounds.addInvoice(actor.token.request, { stored: file, sessionIds: meta.sessions, number: meta.number, amount: meta.amount, reason: meta.reason, explanation: meta.explanation });
         return { view: await rounds.publicView(r) };
       }
       const scope = lens.scopeOf(actor.req);

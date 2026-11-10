@@ -24,6 +24,39 @@ const invoiceSchema = new mongoose.Schema(
     note: { type: String, trim: true },
     /** Set when the teacher uploaded it through a month's link (InvoiceRequest); null = the staff uploaded it. */
     request: { type: mongoose.Schema.Types.ObjectId, ref: "InvoiceRequest", default: null },
+    /**
+     * What the paper says (Eden, 2026-11-10): its own number ("מספר
+     * חשבונית" - the coordinator's ledger lives on it) and its sum in ₪
+     * including VAT. Typed by the teacher behind the check link, or by the
+     * coordinator ("שמרית משייכת מספר לחשבוניות שהעלו"); `declaredBy` says
+     * who last did.
+     */
+    number: { type: String, trim: true },
+    amount: { type: Number, min: 0 },
+    declaredBy: { type: String, enum: ["teacher", "staff", null], default: null },
+    declaredAt: { type: Date },
+    /**
+     * The sum the lessons on it should carry, as computed when the sum was
+     * declared (hours × the hourly rate, or sessions × the per-session
+     * rate), and the verdict: match / low / high (INVOICE_CHECK_VERDICTS),
+     * `unknown` when the teacher had no rate. A snapshot - the rate may
+     * change later; the staff view also computes live.
+     */
+    check: {
+      expected: { type: Number },
+      hours: { type: Number },
+      sessions: { type: Number },
+      missingHours: { type: Number },
+      rate: { type: Number },
+      rateKind: { type: String, enum: ["hour", "session", null], default: null },
+      verdict: { type: String, enum: ["match", "low", "high", "unknown", null], default: null },
+      diff: { type: Number },
+    },
+    /** The teacher's word on a sum that differs: a quick reason (INVOICE_DIFF_REASONS) and/or free text. */
+    explanation: {
+      reason: { type: String, trim: true },
+      text: { type: String, trim: true },
+    },
   },
   { timestamps: true, collection: "invoices" }
 );
