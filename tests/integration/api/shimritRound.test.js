@@ -596,18 +596,21 @@ describe("the hourly rate, the check link and the coordinator's ledger (2026-11-
     expect(rows[0].notes).toMatch(/גבוה מהמחושב ב-60/);
   });
 
-  it("without a rate the sum is kept and the verdict is unknown; the per-session hostels rate is the fallback; the coordinator's own sum is checked the same way", async () => {
+  it("without a rate the default 100 ₪ an hour applies and says so; the per-session hostels rate is the fallback; the coordinator's own sum is checked the same way", async () => {
     const { teacher } = await hostelMonth();
     const opened = (await request(app).post("/api/invoice-rounds").send({ month: "2026-10" })).body.data.round;
     const req0 = opened.requests[0];
+    expect(req0.money.rate).toEqual({ kind: "hour", value: 100, default: true });
     await request(app).post(`/api/invoice-rounds/${opened._id}/requests/${req0._id}/mode`).send({ mode: "check" });
     const url = `/api/public/invoices/${await tokenOf(opened._id, req0)}`;
     let view = (await request(app).get(url)).body.data.view;
-    expect(view.rate).toBeNull();
+    expect(view.rate).toEqual({ kind: "hour", value: 100, default: true });
     const ids = view.courses[0].sessions.map((s) => s._id);
-    const up = await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "a.png", sessions: [ids[0]], number: "7", amount: 123 });
+    // one hour at the default: 100 matches, 123 is high and needs a word
+    expect((await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "a.png", sessions: [ids[0]], number: "7", amount: 123 })).body.code).toBe("INVOICE_EXPLAIN_REQUIRED");
+    const up = await request(app).post(`${url}/invoices`).send({ imageData: IMAGE, imageName: "a.png", sessions: [ids[0]], number: "7", amount: 100 });
     expect(up.status).toBe(200);
-    expect(up.body.data.view.invoices[0].check).toMatchObject({ verdict: "unknown", expected: null });
+    expect(up.body.data.view.invoices[0].check).toMatchObject({ verdict: "match", expected: 100, rate: 100, rateKind: "hour" });
 
     // the hostels' per-session rate steps in when there is no hourly one
     await Profile.updateOne({ person: teacher._id, kind: "Teacher" }, { hostelRate: 250 });

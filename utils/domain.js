@@ -297,6 +297,8 @@ const INVOICE_DIFF_REASONS = ["notHeld", "hours", "expenses", "rate", "other"];
 const INVOICE_DIFF_REASON_LABELS = { notHeld: "שיעור לא התקיים", hours: "השעות שונות מהלוח", expenses: "נסיעות / הוצאות", rate: "התעריף שונה", other: "אחר" };
 /** The most a teacher's invoice may say, ₪ (a typo guard, not a budget). */
 const INVOICE_AMOUNT_MAX = 1000000;
+/** A teacher with no rate in the file is checked at this, ₪ per hour (Eden, 2026-11-10: "מורה שאין לו סכום אז שים לו 100"). */
+const DEFAULT_HOURLY_RATE = 100;
 
 /**
  * Why someone missed a session (שמרית, 2026-10-14 and her answer of
@@ -1114,6 +1116,7 @@ module.exports = {
   INVOICE_DIFF_REASONS,
   INVOICE_DIFF_REASON_LABELS,
   INVOICE_AMOUNT_MAX,
+  DEFAULT_HOURLY_RATE,
   ABSENCE_REASONS,
   ABSENCE_REASON_KEYS,
   HOSTEL_REPORT_LINK_DAYS,

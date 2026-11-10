@@ -48,7 +48,7 @@ const invoices = require("./invoiceService");
 const { Profile } = require("../models/profiles");
 const {
   INVOICE_ROUND_PROGRAMS, INVOICE_ROUND_PROGRAM_LABELS, INVOICE_LINK_DAYS, INVOICE_REQUEST_STATUS_LABELS, INVOICE_DUE_DAY,
-  INVOICE_LINK_MODES, INVOICE_MATCH_TOLERANCE, INVOICE_CHECK_LABELS, INVOICE_DIFF_REASONS, INVOICE_DIFF_REASON_LABELS, INVOICE_AMOUNT_MAX,
+  INVOICE_LINK_MODES, INVOICE_MATCH_TOLERANCE, INVOICE_CHECK_LABELS, INVOICE_DIFF_REASONS, INVOICE_DIFF_REASON_LABELS, INVOICE_AMOUNT_MAX, DEFAULT_HOURLY_RATE,
 } = require("../utils/domain");
 
 const DAY_MS = 24 * 3600 * 1000;
@@ -143,12 +143,11 @@ async function ratesOf(teacherIds) {
   return out;
 }
 
-/** The rate that applies: the hourly one when set, else the hostels' per-session one on a hostels round, else none. */
+/** The rate that applies: the hourly one when set, else the hostels' per-session one on a hostels round, else the default 100 ₪ an hour (`default: true`, so every page says so). */
 function rateFor(rates, program) {
-  if (!rates) return null;
-  if (rates.hourly != null) return { kind: "hour", value: rates.hourly };
-  if (rates.session != null && program === "hostels") return { kind: "session", value: rates.session };
-  return null;
+  if (rates?.hourly != null) return { kind: "hour", value: rates.hourly };
+  if (rates?.session != null && program === "hostels") return { kind: "session", value: rates.session };
+  return { kind: "hour", value: DEFAULT_HOURLY_RATE, default: true };
 }
 
 /**
@@ -1086,6 +1085,7 @@ async function ledgerRows({ roundId }) {
       }
     }
     if (r.money.missingHours) notes.push(`${r.money.missingHours} מפגשים בלי שעות בלוח`);
+    if (r.money.rate?.default) notes.push(`אין תעריף בתיק - חושב לפי ברירת המחדל ${DEFAULT_HOURLY_RATE} ₪ לשעה`);
     return {
       request: r._id,
       supplierNumber: r.teacher.rates.supplierNumber || "",
