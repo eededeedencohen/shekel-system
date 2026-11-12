@@ -18,7 +18,7 @@
  */
 
 const mongoose = require("mongoose");
-const { STAFF_KIND_KEYS, STAFF_FEATURE_KEYS } = require("../utils/domain");
+const { STAFF_KIND_KEYS, STAFF_FEATURE_KEYS, DIARY_DESIGNS } = require("../utils/domain");
 
 const staffAccountSchema = new mongoose.Schema(
   {
@@ -40,6 +40,8 @@ const staffAccountSchema = new mongoose.Schema(
     person: { type: mongoose.Schema.Types.ObjectId, ref: "Person", default: null },
     /** Grants beside the kind (2026-10-29): "gym" = חדר כושר. The super admin needs none. */
     features: { type: [{ type: String, enum: STAFF_FEATURE_KEYS }], default: [] },
+    /** The look of this person's diary (DIARY_DESIGNS; theirs to choose in the settings - PATCH /auth/prefs). */
+    diaryDesign: { type: String, enum: DIARY_DESIGNS, default: DIARY_DESIGNS[0] },
     active: { type: Boolean, default: true },
     passwordHash: { type: String, required: true, select: false },
     passwordChangedAt: { type: Date, default: null },

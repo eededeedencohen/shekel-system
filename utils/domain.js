@@ -276,6 +276,13 @@ const INVOICE_REQUEST_STATUS_LABELS = {
 const DIARY_KINDS = ["note", "task"];
 /** The paper colours of a diary note (Eden, 2026-11-08: "כמו פתקים עם צבעים"); the first is the default. */
 const DIARY_COLORS = ["yellow", "green", "blue", "pink", "orange", "purple"];
+/**
+ * The looks a diary can wear (Eden, 2026-11-12: "כמה עיצובים שונים ליומן… שכל משתמש שיש לו יומן יוכל
+ * לבחור לעצמו עיצוב"): the cork board (the first, the default), a clothes line, a chalk board, neon
+ * signs, a ruled notebook. Kept on the staff account (`diaryDesign`), so it follows the person to
+ * every device; the client draws them (pages/DiaryDesigns.css, lib/diary DIARY_DESIGNS).
+ */
+const DIARY_DESIGNS = ["cork", "line", "chalk", "neon", "notebook"];
 /** The day of the month by which the teachers' invoices must be in (שמרית, 2026-10-19: "ב-29 לחודש החשבוניות צריכות להיות אצלי כבר"). */
 const INVOICE_DUE_DAY = 29;
 /**
@@ -932,6 +939,7 @@ const ERROR_CODES = {
   AUTH_FORBIDDEN: "הפעולה הזו שמורה לסופר-מנהל",
   OUT_OF_SCOPE: "הנתונים האלה לא בתחום של המשתמש/ת שצופה כרגע",
   PASSWORD_WEAK: "הסיסמה צריכה לפחות 6 תווים",
+  PREFS_INVALID: "ההעדפה הזאת לא מוכרת",
   PASSWORD_WRONG: "הסיסמה הנוכחית לא נכונה",
   RESET_INVALID: "הקישור לאיפוס הסיסמה לא בתוקף - אפשר לבקש קישור חדש",
   ACCOUNT_INVALID: "חסרים פרטים למשתמש: שם, שם משתמש באנגלית ותפקיד",
@@ -1107,6 +1115,7 @@ module.exports = {
   INVOICE_REQUEST_STATUS_LABELS,
   DIARY_KINDS,
   DIARY_COLORS,
+  DIARY_DESIGNS,
   INVOICE_DUE_DAY,
   INVOICE_LINK_MODES,
   INVOICE_LINK_MODE_LABELS,

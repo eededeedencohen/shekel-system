@@ -44,6 +44,11 @@ exports.changePassword = catchAsync(async (req, res) => {
   ok(res, { account });
 });
 
+/** My own display preferences (the diary's design) - the signed-in account's, never a borrowed lens's. */
+exports.setPrefs = catchAsync(async (req, res) => {
+  ok(res, { account: await auth.setPrefs(req.account._id, req.body || {}) });
+});
+
 exports.forgot = catchAsync(async (req, res) => {
   await auth.requestReset(req.body?.username);
   ok(res, {});

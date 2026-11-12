@@ -20,7 +20,7 @@ const PasswordReset = require("../models/PasswordReset");
 const mongoose = require("mongoose");
 const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
-const { STAFF_KIND_KEYS, STAFF_FEATURE_KEYS, RESET_LINK_HOURS } = require("../utils/domain");
+const { STAFF_KIND_KEYS, STAFF_FEATURE_KEYS, RESET_LINK_HOURS, DIARY_DESIGNS } = require("../utils/domain");
 const { hashPassword, verifyPassword, defaultPasswordFor, isStrongEnough, newToken, hashToken, isTokenShape } = require("../utils/password");
 const { describeUserAgent } = require("../utils/userAgent");
 const presence = require("./presenceService");
@@ -66,6 +66,8 @@ const publicAccount = (a) => ({
   person: a.person ? String(a.person) : null,
   /** Grants beside the kind (2026-10-29): "gym" = חדר כושר. */
   features: Array.isArray(a.features) ? a.features : [],
+  /** The look of this person's diary (an account written before the designs wears the first). */
+  diaryDesign: DIARY_DESIGNS.includes(a.diaryDesign) ? a.diaryDesign : DIARY_DESIGNS[0],
   defaultPassword: !a.passwordChangedAt,
 });
 
@@ -199,6 +201,23 @@ async function changePassword(accountId, { current, next }, keepToken) {
   account.resetRequestedAt = null;
   await account.save();
   await endSessionsOf(account._id, keepToken, "password"); // other browsers sign in again
+  return publicAccount(account);
+}
+
+/**
+ * One's own display preferences, kept on the account so they follow the person to every device. Today:
+ * `diaryDesign`. Always the SIGNED-IN account's - viewing as someone never changes their preferences.
+ */
+async function setPrefs(accountId, body) {
+  const patch = {};
+  if ("diaryDesign" in body) {
+    if (!DIARY_DESIGNS.includes(body.diaryDesign)) throw AppError.of("PREFS_INVALID", 400);
+    patch.diaryDesign = body.diaryDesign;
+  }
+  if (!Object.keys(patch).length) throw AppError.of("PREFS_INVALID", 400);
+  const account = await StaffAccount.findByIdAndUpdate(accountId, patch, { new: true });
+  if (!account) throw AppError.of("AUTH_REQUIRED", 401);
+  forget(); // the sessions' cached copies of the account are stale now
   return publicAccount(account);
 }
 
@@ -349,6 +368,7 @@ module.exports = {
   endSession,
   login,
   changePassword,
+  setPrefs,
   requestReset,
   resetInfo,
   resetPassword,

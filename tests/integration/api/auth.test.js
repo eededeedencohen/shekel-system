@@ -150,4 +150,18 @@ describe("auth", () => {
     expect(await StaffSession.countDocuments()).toBe(0);
     expect((await request(app).get("/api/auth/me").set("Cookie", cookie)).status).toBe(401);
   });
+
+  test("the diary's design is the account's own: the first by default, changed by PATCH /auth/prefs, refused when unknown (2026-11-12)", async () => {
+    const { res, cookie } = await signIn("tamar");
+    expect(res.body.data.account.diaryDesign).toBe("cork");
+    const set = await request(app).patch("/api/auth/prefs").set("Cookie", cookie).send({ diaryDesign: "chalk" });
+    expect(set.status).toBe(200);
+    expect(set.body.data.account.diaryDesign).toBe("chalk");
+    expect((await request(app).get("/api/auth/me").set("Cookie", cookie)).body.data.account.diaryDesign).toBe("chalk");
+    // nobody else's changed
+    expect((await StaffAccount.findOne({ username: "eden" })).diaryDesign).toBe("cork");
+    expect((await request(app).patch("/api/auth/prefs").set("Cookie", cookie).send({ diaryDesign: "glitter" })).status).toBe(400);
+    expect((await request(app).patch("/api/auth/prefs").set("Cookie", cookie).send({})).status).toBe(400);
+    expect((await request(app).patch("/api/auth/prefs").send({ diaryDesign: "neon" })).status).toBe(401);
+  });
 });

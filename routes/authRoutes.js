@@ -18,6 +18,8 @@ router.get("/reset/:token", c.resetInfo);
 router.post("/reset/:token", c.resetPassword);
 router.get("/me", c.me);
 router.post("/password", c.changePassword);
+// my own display preferences (2026-11-12: the diary's design), kept on the account
+router.patch("/prefs", c.setPrefs);
 router.get("/staff", c.staff);
 // the presence heartbeat (2026-10-29): the browser says "still here" once a minute while its tab is visible
 router.post("/ping", c.ping);

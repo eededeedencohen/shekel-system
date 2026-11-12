@@ -69,6 +69,7 @@ const NOUNS = {
 const RULES = [
   // my account, the users page
   ["POST", "/auth/password", "שינוי הסיסמה שלי", "account", "update", { payload: false }],
+  ["PATCH", "/auth/prefs", "העדפות התצוגה שלי", "account", "update"],
   ["POST", "/accounts", "משתמש חדש", "account", "create"],
   ["PATCH", "/accounts/:id", "עריכת משתמש", "account", "update"],
   ["POST", "/accounts/:id/reset", "קישור לאיפוס סיסמה", "account", "other", { payload: false }],
