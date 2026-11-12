@@ -279,10 +279,11 @@ const DIARY_COLORS = ["yellow", "green", "blue", "pink", "orange", "purple"];
 /**
  * The looks a diary can wear (Eden, 2026-11-12: "כמה עיצובים שונים ליומן… שכל משתמש שיש לו יומן יוכל
  * לבחור לעצמו עיצוב"): the cork board (the first, the default), a clothes line, a chalk board, neon
- * signs, a ruled notebook. Kept on the staff account (`diaryDesign`), so it follows the person to
+ * signs, a ruled notebook, the office's brown board (the same evening: "הלוח החום שנועצים בו פתקים
+ * במשרד" - the whole month sits on the cork, not the day's window alone). Kept on the staff account (`diaryDesign`), so it follows the person to
  * every device; the client draws them (pages/DiaryDesigns.css, lib/diary DIARY_DESIGNS).
  */
-const DIARY_DESIGNS = ["cork", "line", "chalk", "neon", "notebook"];
+const DIARY_DESIGNS = ["cork", "office", "line", "chalk", "neon", "notebook"];
 /** The day of the month by which the teachers' invoices must be in (שמרית, 2026-10-19: "ב-29 לחודש החשבוניות צריכות להיות אצלי כבר"). */
 const INVOICE_DUE_DAY = 29;
 /**
