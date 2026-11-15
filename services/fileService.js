@@ -47,6 +47,18 @@ const library = require("./libraryService");
 
 const isId = (v) => mongoose.isValidObjectId(v);
 const clean = (s, max = 120) => (s == null ? undefined : String(s).trim().slice(0, max) || undefined);
+/**
+ * A file's display name: kept whole up to `max` characters; a longer one loses the END OF ITS STEM, never its
+ * extension ("…_סופי.png" stays a .png - Eden, 2026-11-15: a long WhatsApp picture name came back cut mid-word
+ * with no ".png"). The bucket's key never derives from it.
+ */
+const cleanName = (s, max = 200) => {
+  const name = clean(s, 1000);
+  if (!name || name.length <= max) return name;
+  const dot = name.lastIndexOf(".");
+  const ext = dot > 0 && name.length - dot <= 12 ? name.slice(dot) : "";
+  return name.slice(0, max - ext.length).trimEnd() + ext;
+};
 const forbid = () => AppError.of("OUT_OF_SCOPE", 403);
 const kindOk = (family, kind) => (FAMILIES[family] || []).includes(kind);
 
@@ -258,7 +270,7 @@ async function beginUpload({ actor, family, owner = {}, name, mime, size, thumb 
   const storageKey = `${family}/${own.id || "new"}/${randomUUID()}`;
   const wantThumb = !!thumb && rule.thumb;
   const row = await StoredFile.create({
-    name: clean(name) || `${own.slot || family}.${kind.ext}`,
+    name: cleanName(name) || `${own.slot || family}.${kind.ext}`,
     mime: kind.mime,
     size: bytes,
     status: "pending",

@@ -133,6 +133,19 @@ describe("the files bucket - a signed-in persona", () => {
     expect(await StoredFile.findById(b2.body.data.fileId)).toBeNull();
   });
 
+  it("a long name is kept whole up to 200 characters, and a longer one keeps its extension", async () => {
+    const t = await makeTeacher();
+    const begin = (name) => request(app).post("/api/files/upload-url").send({ family: "people", owner: { id: t._id }, name, mime: "image/png", size: PNG.length });
+    const whole = `WhatsApp_Image_2026-11-12_at_21.47.33_(1)_${"חשבונית_".repeat(12)}סופי.png`; // 143 characters
+    const a = await begin(whole);
+    expect((await StoredFile.findById(a.body.data.fileId).lean()).name).toBe(whole);
+    const b = await begin(`${"ארוך_".repeat(60)}סוף.png`); // 307 characters
+    const kept = (await StoredFile.findById(b.body.data.fileId).lean()).name;
+    expect(kept).toHaveLength(200);
+    expect(kept.endsWith(".png")).toBe(true);
+    expect(kept.startsWith("ארוך_ארוך_")).toBe(true);
+  });
+
   it("an invoice: the picture in the bucket, the invoice row and its lessons as before; delete takes the objects too", async () => {
     const t = await makeTeacher();
     const cycle = await makeCycle({ teacher: t._id });
