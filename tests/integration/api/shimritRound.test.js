@@ -20,7 +20,7 @@ const PersonDocument = require("../../../models/PersonDocument");
 const StoredFile = require("../../../models/StoredFile");
 const { Profile } = require("../../../models/profiles");
 const tags = require("../../../services/tagService");
-const { makeTeacher, makeStudent, makeHostel, makeCycle, makeSubject } = require("../../helpers/factories");
+const { makeTeacher, makeStudent, makeHostel, makeCycle, makeSubject, makeRoom } = require("../../helpers/factories");
 
 /** A request's token from its own route (the round's JSON carries none since 2026-10-26). */
 const tokenOf = async (roundId, r) => (await request(app).get(`/api/invoice-rounds/${roundId}/requests/${r._id}/link`)).body.data.link.token;
@@ -464,6 +464,36 @@ describe("the state machine of the invoices (2026-10-22)", () => {
     expect(log[0].targets[0]).toMatchObject({ kind: "round", label: "אוקטובר 2026 · הוסטלים" });
     expect(log[0].targets[1]).toMatchObject({ kind: "invoice", label: "אביה טסט" });
     expect(log[0].did).toMatchObject({ invoices: 1, reopened: 1 });
+  });
+});
+
+describe("GET /api/rooms/occupancy", () => {
+  it("names every booking of a campus room by any program: the cycle, the slot, the program, the teacher, the house and the dates - and no ended or cancelled cycle", async () => {
+    const room = await makeRoom({ name: "סטודיו הבדיקה" });
+    const teacher = await makeTeacher({ firstName: "נועה", lastName: "כהן" });
+    const hostel = await makeHostel({ name: "בית הבדיקה" });
+    const subject = await makeSubject({ name: "קרמיקה" });
+    const far = new Date(Date.now() + 200 * 86400000);
+    const soon = new Date(Date.now() + 30 * 86400000);
+    const college = await makeCycle({ subject: subject._id, teacher: teacher._id, endDate: far, schedule: [{ day: 1, start: "10:00", end: "11:30", room: room._id }] });
+    const house = await makeCycle({ hostel: hostel._id, startDate: soon, endDate: far, schedule: [{ day: 3, start: "14:00", end: "15:00", room: room._id }] });
+    await makeCycle({ endDate: far, schedule: [{ day: 2, start: "09:00", end: "10:00" }] }); // no room: not a booking
+    await makeCycle({ endDate: new Date("2020-01-01"), startDate: new Date("2019-09-01"), schedule: [{ day: 1, start: "12:00", end: "13:00", room: room._id }] }); // ended
+    await makeCycle({ status: "Cancelled", endDate: far, schedule: [{ day: 1, start: "16:00", end: "17:00", room: room._id }] });
+
+    const res = await request(app).get("/api/rooms/occupancy");
+    expect(res.status).toBe(200);
+    const mine = res.body.data.slots.filter((s) => String(s.room) === String(room._id));
+    expect(mine).toHaveLength(2);
+    const a = mine.find((s) => s.program === "college");
+    expect(a).toMatchObject({ cycle: String(college._id), day: 1, start: "10:00", end: "11:30", label: "קרמיקה", teacher: "נועה כהן", hostel: null });
+    expect(String(a.slot)).toBe(String(college.schedule[0]._id));
+    expect(new Date(a.endDate).getTime()).toBe(far.getTime());
+    const b = mine.find((s) => s.program === "hostels");
+    expect(b).toMatchObject({ cycle: String(house._id), day: 3, hostel: "בית הבדיקה", teacher: null });
+    expect(new Date(b.startDate).getTime()).toBe(soon.getTime());
+    // the students never ride on it
+    expect(JSON.stringify(mine)).not.toMatch(/student|enroll/i);
   });
 });
 
