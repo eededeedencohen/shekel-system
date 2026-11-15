@@ -142,6 +142,24 @@ describe("PATCH /api/enrollments/:id", () => {
     expect(res.body.data.enrollment.leftAt).toBeTruthy();
   });
 
+  it("the seat's own end date can be moved alone: the status and the stage stay, a bad date is refused, null takes it off", async () => {
+    const s = await makeStudent();
+    const cycle = await makeCycle();
+    const created = (await request(app).post("/api/enrollments").send({ cycle: cycle._id, student: s._id })).body.data.enrollment;
+    const url = `/api/enrollments/${created._id}`;
+    const stage = (await request(app).get(`/api/people/${s._id}`)).body.data.person.pipeline?.stage;
+    const moved = await request(app).patch(url).send({ leftAt: "2030-02-01T00:00:00.000Z" });
+    expect(moved.status).toBe(200);
+    expect(moved.body.data.enrollment.status).toBe("active");
+    expect(moved.body.data.enrollment.leftAt).toBe("2030-02-01T00:00:00.000Z");
+    expect(moved.body.data.enrollment.joinedAt).toBe(created.joinedAt);
+    expect((await request(app).get(`/api/people/${s._id}`)).body.data.person.pipeline?.stage).toBe(stage);
+    expect((await request(app).patch(url).send({ leftAt: "not-a-date" })).status).toBe(400);
+    const off = await request(app).patch(url).send({ leftAt: null });
+    expect(off.body.data.enrollment.leftAt == null).toBe(true);
+    expect(off.body.data.enrollment.status).toBe("active");
+  });
+
   it("leaving the only course sends a Placed student back as 'דרוש שיבוץ מחדש'", async () => {
     const s = await makeStudent();
     await s.moveToStage("AwaitingPlacement", "בדיקה");

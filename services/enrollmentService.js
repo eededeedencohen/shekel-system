@@ -234,6 +234,16 @@ async function updateStatus({ enrollmentId, status, leftAt, joinedAt, note, move
     if (leftAt) enrollment.leftAt = leftAt;
   } else if (status !== undefined) {
     throw AppError.of("INVALID_STATUS", 400);
+  } else if (leftAt !== undefined) {
+    // the seat's own end date alone (no change of status): until when the student sits in the course. An imported
+    // seat carries one, and the roster stops showing the student after it - so it has to be movable (Eden,
+    // 2026-11-15: "תדאג להאריך גם את מי שבקורסים"). null takes it off: the seat then runs with its course.
+    if (leftAt === null || leftAt === "") enrollment.leftAt = null;
+    else {
+      const end = new Date(leftAt);
+      if (isNaN(end.getTime())) throw AppError.of("INVALID_DATE", 400);
+      enrollment.leftAt = end;
+    }
   }
 
   if (status !== undefined) enrollment.status = status;
