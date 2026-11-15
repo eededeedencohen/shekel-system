@@ -43,6 +43,7 @@ const Cycle = require("../models/Cycle");
 const HostelReport = require("../models/HostelReport");
 const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
+const { linkExpiryFrom } = require("../utils/linkWindow");
 const { withTxn } = require("../utils/withTxn");
 const invoices = require("./invoiceService");
 const { Profile } = require("../models/profiles");
@@ -568,11 +569,13 @@ async function markSent({ roundId, requestId, by }) {
   return getRound({ roundId });
 }
 
-/** The link open again for `days` from now (the same address - a message already sent keeps working). */
-async function renew({ roundId, requestId, days }) {
+/**
+ * Until when the link is open: through the end of the day the coordinator chose (`until`, "YYYY-MM-DD" - Eden,
+ * 2026-11-15), or for `days` from now. The same address - a message already sent keeps working.
+ */
+async function renew({ roundId, requestId, days, until }) {
   const r = await loadRequest({ roundId, requestId });
-  const n = Number(days) > 0 ? Math.min(Number(days), 90) : INVOICE_LINK_DAYS;
-  r.expiresAt = new Date(Date.now() + n * DAY_MS);
+  r.expiresAt = linkExpiryFrom({ until, days }, INVOICE_LINK_DAYS);
   await r.save();
   return getRound({ roundId });
 }

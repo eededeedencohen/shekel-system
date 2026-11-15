@@ -5,6 +5,7 @@
  * link, and the diary.
  */
 
+const { dayKeyIL, endOfDayIL } = require("../../../utils/linkWindow");
 const request = require("supertest");
 const app = require("../../../app");
 const Hostel = require("../../../models/Hostel");
@@ -251,8 +252,35 @@ describe("the monthly invoice round", () => {
     expect(expired.body.code).toBe("INVOICE_LINK_EXPIRED");
     const renewed = await request(app).post(`/api/invoice-rounds/${opened._id}/requests/${opened.requests[0]._id}/renew`).send({ days: 7 });
     expect(renewed.body.data.round.requests[0].linkLive).toBe(true);
+    // the coordinator names the day the link closes (2026-11-15): open through the end of that day in Israel
+    const renewUrl = `/api/invoice-rounds/${opened._id}/requests/${opened.requests[0]._id}/renew`;
+    const day = dayKeyIL(new Date(Date.now() + 10 * 24 * 3600 * 1000));
+    const until = (await request(app).post(renewUrl).send({ until: day })).body.data.round.requests[0];
+    expect(dayKeyIL(until.expiresAt)).toBe(day);
+    expect(new Date(until.expiresAt).toLocaleTimeString("en-GB", { timeZone: "Asia/Jerusalem" })).toBe("23:59:59");
+    // today is the earliest day (the link then closes tonight), and it is still open
+    const tonight = (await request(app).post(renewUrl).send({ until: dayKeyIL() })).body.data.round.requests[0];
+    expect(tonight.linkLive).toBe(true);
+    expect(dayKeyIL(tonight.expiresAt)).toBe(dayKeyIL());
+    for (const bad of [dayKeyIL(new Date(Date.now() - 24 * 3600 * 1000)), dayKeyIL(new Date(Date.now() + 500 * 24 * 3600 * 1000)), "2026-02-31", "מחר"]) {
+      const refused = await request(app).post(renewUrl).send({ until: bad });
+      expect(refused.status).toBe(400);
+      expect(refused.body.code).toBe("LINK_UNTIL_INVALID");
+    }
     expect((await request(app).delete(`/api/invoice-rounds/${opened._id}`)).status).toBe(204);
     expect(await InvoiceRequest.countDocuments()).toBe(0);
+  });
+});
+
+describe("the day a link closes (utils/linkWindow)", () => {
+  it("ends a day at 23:59:59 in Israel, in winter, in summer and on the nights the clock moves", () => {
+    const wall = (d) => new Date(d).toLocaleString("en-GB", { timeZone: "Asia/Jerusalem" });
+    for (const day of ["2026-01-15", "2026-07-15", "2026-03-26", "2026-03-27", "2026-10-24", "2026-10-25", "2027-02-28"]) {
+      const [y, m, d] = day.split("-");
+      expect(wall(endOfDayIL(day))).toBe(`${d}/${m}/${y}, 23:59:59`);
+    }
+    expect(endOfDayIL("2026-02-31")).toBeNull();
+    expect(endOfDayIL("6.12.2026")).toBeNull();
   });
 });
 

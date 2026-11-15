@@ -31,6 +31,7 @@ const Enrollment = require("../models/Enrollment");
 const { Person } = require("../models/Person");
 const { Profile, MODEL_BY_KIND } = require("../models/profiles");
 const AppError = require("../utils/AppError");
+const { linkExpiryFrom } = require("../utils/linkWindow");
 const tags = require("./tagService");
 const { monthLabel, dayKey, plannedSessions } = require("./invoiceRoundService");
 const { ABSENCE_REASONS, ABSENCE_REASON_KEYS, HOSTEL_REPORT_LINK_DAYS, HOSTEL_REPORT_SESSION_STATES, HOSTEL_REPORT_MARKS, HOSTEL_REPORT_STATUS_LABELS, OCCUPYING_STATUSES } = require("../utils/domain");
@@ -346,10 +347,10 @@ async function markSent({ reportId, by }) {
   return getReport({ reportId });
 }
 
-async function renew({ reportId, days }) {
+/** Until when the link is open: through the end of a chosen day (`until`, "YYYY-MM-DD"), or for `days` from now. */
+async function renew({ reportId, days, until }) {
   const r = await loadReport({ reportId });
-  const n = Number(days) > 0 ? Math.min(Number(days), 90) : HOSTEL_REPORT_LINK_DAYS;
-  r.expiresAt = new Date(Date.now() + n * DAY_MS);
+  r.expiresAt = linkExpiryFrom({ until, days }, HOSTEL_REPORT_LINK_DAYS);
   await r.save();
   return getReport({ reportId });
 }

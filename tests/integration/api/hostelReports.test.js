@@ -291,6 +291,11 @@ describe("the hostel's attendance draft", () => {
     expect((await request(app).get(url)).status).toBe(410);
     const renewed = await request(app).post(`/api/hostel-reports/${opened._id}/renew`).send({ days: 7 });
     expect(renewed.body.data.report.linkLive).toBe(true);
+    // a chosen closing day (2026-11-15)
+    const day = new Date(Date.now() + 5 * 24 * 3600 * 1000).toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+    const until = await request(app).post(`/api/hostel-reports/${opened._id}/renew`).send({ until: day });
+    expect(new Date(until.body.data.report.expiresAt).toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" })).toBe(day);
+    expect((await request(app).post(`/api/hostel-reports/${opened._id}/renew`).send({ until: "2020-01-01" })).body.code).toBe("LINK_UNTIL_INVALID");
     expect((await request(app).delete(`/api/hostel-reports/${opened._id}`)).status).toBe(204);
     expect(await HostelReport.countDocuments()).toBe(0);
   });

@@ -902,6 +902,7 @@ const ERROR_CODES = {
   INVOICE_ADMIN_ACTION: "פעולת ניהול לא מוכרת",
   INVOICE_REQUEST_HAS_INVOICES: "למורה הזה יש חשבוניות בסבב - מוחקים אותן קודם, או מסירים עם force",
   INVOICE_LINK_MODE: "סוג הקישור הוא רגיל או עם אימות סכום",
+  LINK_UNTIL_INVALID: "יום הסיום של הקישור הוא מהיום ועד שנה קדימה",
   INVOICE_AMOUNT_INVALID: "סכום החשבונית הוא מספר חיובי בשקלים",
   INVOICE_AMOUNT_REQUIRED: "בקישור עם אימות מזינים את מספר החשבונית ואת הסכום שבה",
   INVOICE_NUMBER_INVALID: "מספר החשבונית הוא עד 40 תווים",

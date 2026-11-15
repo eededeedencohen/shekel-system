@@ -69,7 +69,7 @@ exports.markSent = catchAsync(async (req, res) => {
 
 exports.renew = catchAsync(async (req, res) => {
   const round = await loadVisible(req);
-  answer(res, await rounds.renew({ roundId: round._id, requestId: req.params.rid, days: req.body?.days }));
+  answer(res, await rounds.renew({ roundId: round._id, requestId: req.params.rid, days: req.body?.days, until: req.body?.until }));
 });
 
 exports.reopen = catchAsync(async (req, res) => {

@@ -35,7 +35,7 @@ exports.getLink = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: { link: linkAnswer(req, `/hostel-report/${token}`, token, expiresAt) } });
 });
 exports.markSent = catchAsync(async (req, res) => answer(res, await reports.markSent({ reportId: req.params.id, by: by(req) })));
-exports.renew = catchAsync(async (req, res) => answer(res, await reports.renew({ reportId: req.params.id, days: req.body?.days })));
+exports.renew = catchAsync(async (req, res) => answer(res, await reports.renew({ reportId: req.params.id, days: req.body?.days, until: req.body?.until })));
 exports.reopen = catchAsync(async (req, res) => answer(res, await reports.reopen({ reportId: req.params.id })));
 exports.setNote = catchAsync(async (req, res) => answer(res, await reports.setStaffNote({ reportId: req.params.id, note: req.body?.note })));
 exports.approveSession = catchAsync(async (req, res) => answer(res, await reports.approveSession({ reportId: req.params.id, sessionId: req.params.sid, by: by(req) })));
