@@ -276,7 +276,8 @@ async function openRound({ month, program = "hostels", by }) {
   const requests = [];
   for (const [teacher, sessions] of byTeacher) {
     await attachLessons(sessions);
-    requests.push({ teacher, token: makeToken(), expiresAt, sessions });
+    // the college's months are the teachers' app's: every one of them is a CHECKED month (Eden, 2026-11-17)
+    requests.push({ teacher, token: makeToken(), expiresAt, sessions, ...(program === "college" ? { mode: "check" } : {}) });
   }
   // the round and its requests as one unit (decision 11): a crash halfway leaves no half-opened month behind
   const roundId = await withTxn(async (session) => {
@@ -770,7 +771,10 @@ async function declaredFields(r, covered, { number, amount, reason, explanation 
   if (!num && sum == null && !why) return {};
   const round = await InvoiceRound.findById(r.round).select("program").lean();
   const rates = await ratesOf([r.teacher]);
-  const expectation = sum != null ? expectedOf(covered, rateFor(rates.get(String(r.teacher)), round.program)) : null;
+  const rate = rateFor(rates.get(String(r.teacher)), round.program);
+  // a college teacher with no rate on file is not measured against the made-up default: the sum is written down
+  // and nothing is compared (the hostels keep their own rule - the default says so on every page)
+  const expectation = sum != null && !(round.program === "college" && rate.default) ? expectedOf(covered, rate) : null;
   const check = sum != null ? checkBlock(sum, expectation) : null;
   if (mode === "check" && check && (check.verdict === "low" || check.verdict === "high") && !why) throw AppError.of("INVOICE_EXPLAIN_REQUIRED", 400);
   return { number: num || undefined, amount: sum ?? undefined, declaredBy: "teacher", declaredAt: new Date(), check: check || undefined, explanation: why || undefined };
@@ -996,11 +1000,24 @@ async function ensureTeacherRequest({ teacherId, month, now = new Date() }) {
     if (!sessions.length) throw AppError.of("INVOICE_MONTH_EMPTY", 400);
     await attachLessons(sessions);
     try {
-      r = await InvoiceRequest.create({ round: round._id, teacher: teacherId, token: makeToken(), expiresAt: linkExpiry(), sessions });
+      r = await InvoiceRequest.create({ round: round._id, teacher: teacherId, token: makeToken(), expiresAt: linkExpiry(), sessions, mode: "check" });
     } catch (err) {
       if (err?.code !== 11000) throw err;
       r = await mine();
     }
+  }
+  return checked(r);
+}
+
+/**
+ * In the app EVERY month is a checked one (Eden, 2026-11-17: "לכולם שיהיה את ההגדרה של התיאום של הסכום… לדעתי
+ * בהוסטלים זה די טוב"): the number and the sum are asked, the sum is measured against the hours and the rate, and
+ * a difference asks for its reason - it never stops an invoice. A row opened before this rule is turned here.
+ */
+async function checked(r) {
+  if (r.mode !== "check") {
+    r.mode = "check";
+    await r.save();
   }
   return r;
 }
@@ -1010,7 +1027,7 @@ async function loadTeacherRequest({ teacherId, requestId }) {
   const r = isId(requestId) && (await InvoiceRequest.findOne({ _id: requestId, teacher: teacherId }));
   const round = r && (await InvoiceRound.findById(r.round).select("program month mail").lean());
   if (!r || !round || round.program !== "college") throw AppError.of("NOT_FOUND", 404, "חודש החשבוניות");
-  return { r, round };
+  return { r: await checked(r), round };
 }
 
 /** A month the staff closed with the mail takes nothing more from the app (reading stays). */
@@ -1021,6 +1038,8 @@ const assertMonthOpen = (round) => {
 /** What the app reads of a month: the link's own view, without what belongs to a link. */
 async function appView(r, round) {
   const { expiresAt, linkLive, coordinator, ...view } = await publicView(r);
+  // no rate on file: nothing to measure a sum against (the default 100 ₪ is the hostels' fallback, not a teacher's rate)
+  if (view.rate?.default) Object.assign(view, { rate: null, money: null, noRate: true });
   return { ...view, requestId: String(r._id), closed: !!(round || (await InvoiceRound.findById(r.round).select("mail").lean()))?.mail?.sentAt };
 }
 

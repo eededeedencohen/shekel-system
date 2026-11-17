@@ -276,7 +276,7 @@ describe("the teachers' app", () => {
     const opened = await send("post", "/api/teacher/invoices", { month });
     expect(opened.status).toBe(201);
     const view = opened.body.data.view;
-    expect(view).toMatchObject({ month, program: "college", done: false, closed: false });
+    expect(view).toMatchObject({ month, program: "college", done: false, closed: false, mode: "check", noRate: true });
     expect(JSON.stringify(view)).not.toMatch(/"token"|"expiresAt"|"linkLive"/);
     const round = await InvoiceRound.findOne({ program: "college", month });
     expect((await InvoiceRequest.find({ round: round._id }).distinct("teacher")).map(String).sort()).toEqual([String(w.T._id), String(w.U._id)].sort());
@@ -301,6 +301,11 @@ describe("the teachers' app", () => {
     const begin = await send("post", `/api/teacher/invoices/${rid}/upload-url`, { name: "nov.png", mime: "image/png", size: PNG.length });
     expect(begin.status).toBe(201);
     await storage.uploadTo(begin.body.data.put, PNG);
+    // a checked month asks the number and the sum of every invoice
+    expect((await send("post", `/api/teacher/invoices/${rid}/uploads/${begin.body.data.fileId}/confirm`, { sessions: [sessions[0]] })).body.code).toBe("INVOICE_AMOUNT_REQUIRED");
+    const again = await send("post", `/api/teacher/invoices/${rid}/upload-url`, { name: "nov.png", mime: "image/png", size: PNG.length });
+    await storage.uploadTo(again.body.data.put, PNG);
+    begin.body.data.fileId = again.body.data.fileId;
     // a file id that is not his own upload
     expect((await send("post", `/api/teacher/invoices/${rid}/uploads/6ad6000000000000000000aa/confirm`, { sessions: [sessions[0]] })).status).toBe(404);
     const done = await send("post", `/api/teacher/invoices/${rid}/uploads/${begin.body.data.fileId}/confirm`, { sessions: [sessions[0]], number: "1041", amount: 180 });
@@ -312,6 +317,23 @@ describe("the teachers' app", () => {
     // the number corrected; the list says where the month stands
     expect((await send("patch", `/api/teacher/invoices/${rid}/invoices/${inv._id}`, { number: "1042", amount: 180 })).body.data.view.invoices[0].number).toBe("1042");
     expect((await get("/api/teacher/invoices")).body.data.months.find((m) => m.month === month)).toMatchObject({ requestId: rid, status: "partial", invoices: 1, invoiced: 180 });
+    // the staff's own opening of a college month makes checked rows too
+    expect((await InvoiceRequest.find({ round: round._id }).distinct("mode")).sort()).toEqual(["check"]);
+    // with a rate on file the sum is measured against the hours: a difference asks its reason, and never stops the invoice
+    const { Profile } = require("../../../models/profiles");
+    await Profile.updateOne({ person: w.T._id, kind: "Teacher" }, { hourlyRate: 100 });
+    const rated = (await get(`/api/teacher/invoices/${rid}`)).body.data.view;
+    expect(rated.rate).toMatchObject({ kind: "hour", value: 100 });
+    expect(rated.noRate).toBeUndefined();
+    const up2 = await send("post", `/api/teacher/invoices/${rid}/upload-url`, { name: "b.png", mime: "image/png", size: PNG.length });
+    await storage.uploadTo(up2.body.data.put, PNG);
+    const off = { sessions: [sessions[1]], number: "1043", amount: 200 }; // 45 minutes at 100 ₪ an hour = 75 ₪
+    expect((await send("post", `/api/teacher/invoices/${rid}/uploads/${up2.body.data.fileId}/confirm`, off)).body.code).toBe("INVOICE_EXPLAIN_REQUIRED");
+    const up3 = await send("post", `/api/teacher/invoices/${rid}/upload-url`, { name: "b.png", mime: "image/png", size: PNG.length });
+    await storage.uploadTo(up3.body.data.put, PNG);
+    const said = await send("post", `/api/teacher/invoices/${rid}/uploads/${up3.body.data.fileId}/confirm`, { ...off, reason: "expenses", explanation: "נסיעות" });
+    expect(said.status).toBe(200);
+    expect(said.body.data.view.invoices.find((i) => i.number === "1043").check).toMatchObject({ verdict: "high", expected: 75 });
     // finished: no more changes from the app
     expect((await send("post", `/api/teacher/invoices/${rid}/done`, {})).body.data.view.done).toBe(true);
     expect((await send("delete", `/api/teacher/invoices/${rid}/invoices/${inv._id}`)).body.code).toBe("INVOICE_LINK_DONE");
