@@ -25,7 +25,7 @@ const Cycle = require("../models/Cycle");
 const Enrollment = require("../models/Enrollment");
 const Lesson = require("../models/Lesson");
 const AppError = require("../utils/AppError");
-const { ATTENDANCE_STATUSES } = require("../utils/domain");
+const { ATTENDANCE_STATUSES, ABSENCE_REASON_KEYS } = require("../utils/domain");
 
 /** How far back a teacher sees and may still report (older days are the office's). */
 const WINDOW_BACK_DAYS = 35;
@@ -45,7 +45,7 @@ const lessonView = (l) => ({
   _id: String(l._id),
   cycle: String(l.cycle),
   date: new Date(l.date).toISOString().slice(0, 10),
-  marks: (l.attendance || []).map((r) => ({ student: String(r.student), status: r.status, note: r.note || "" })),
+  marks: (l.attendance || []).map((r) => ({ student: String(r.student), status: r.status, note: r.note || "", reason: r.reason || null })),
 });
 
 async function teacherOf(personId) {
@@ -71,7 +71,7 @@ async function board(personId) {
   const [seats, lessons] = await Promise.all([
     // a held seat (`reserved`) is not an attendee; who left stays for the days he was still there
     Enrollment.find({ cycle: { $in: ids }, status: { $ne: "reserved" } }).select("cycle student status slotId joinedAt registeredAt leftAt").populate({ path: "student", select: "firstName lastName gender avatar deletedAt" }).lean(),
-    Lesson.find({ cycle: { $in: ids }, source: "live", date: { $gte: utcDay(from), $lte: utcDay(today) } }).select("cycle date attendance.student attendance.status attendance.note").lean(),
+    Lesson.find({ cycle: { $in: ids }, source: "live", date: { $gte: utcDay(from), $lte: utcDay(today) } }).select("cycle date attendance.student attendance.status attendance.note attendance.reason").lean(),
   ]);
   return {
     today,
@@ -111,8 +111,10 @@ async function board(personId) {
 }
 
 /**
- * PUT /api/teacher/attendance - { cycle, date: "YYYY-MM-DD", marks: [{ student, status, note? }] }.
+ * PUT /api/teacher/attendance - { cycle, date: "YYYY-MM-DD", marks: [{ student, status, note?, reason? }] }.
  * `status: null` takes a mark back. Only the students named are touched: the day's other marks stay.
+ * `reason` (Eden, 2026-11-17: "כמו בנוכחות של ההוסטלים… יש גם סיבה למה לא הגיע") is one of ABSENCE_REASONS on an
+ * absence; null takes it back; whoever came carries none.
  */
 async function markAttendance(personId, body) {
   await teacherOf(personId);
@@ -151,7 +153,9 @@ async function markAttendance(personId, body) {
     const status = m.status == null || m.status === "" ? null : m.status;
     if (status !== null && !ATTENDANCE_STATUSES.includes(status)) throw AppError.of("ATTENDANCE_INVALID", 400);
     if (m.note !== undefined && (typeof m.note !== "string" || m.note.length > NOTE_MAX)) throw AppError.of("ATTENDANCE_INVALID", 400);
-    clean.set(student, { status, note: m.note === undefined ? undefined : m.note.trim() });
+    const reason = m.reason === undefined ? undefined : m.reason == null || m.reason === "" ? null : m.reason;
+    if (reason != null && !ABSENCE_REASON_KEYS.includes(reason)) throw AppError.of("ATTENDANCE_REASON_INVALID", 400);
+    clean.set(student, { status, note: m.note === undefined ? undefined : m.note.trim(), reason });
   }
 
   // that day's lesson, made when it is not there yet (one live lesson per course per day - the index decides a race)
@@ -170,11 +174,14 @@ async function markAttendance(personId, body) {
       if (at >= 0) lesson.attendance.splice(at, 1);
       continue;
     }
+    // whoever came carries no reason, whatever was there before
+    const reason = m.status === "Present" ? null : m.reason;
     if (at >= 0) {
       lesson.attendance[at].status = m.status;
       if (m.note !== undefined) lesson.attendance[at].note = m.note;
+      if (reason !== undefined) lesson.attendance[at].reason = reason;
     } else {
-      lesson.attendance.push({ student, status: m.status, ...(m.note ? { note: m.note } : {}) });
+      lesson.attendance.push({ student, status: m.status, ...(m.note ? { note: m.note } : {}), ...(reason ? { reason } : {}) });
     }
   }
   await lesson.save();
