@@ -174,8 +174,9 @@ async function markAttendance(personId, body) {
       if (at >= 0) lesson.attendance.splice(at, 1);
       continue;
     }
-    // whoever came carries no reason, whatever was there before
-    const reason = m.status === "Present" ? null : m.reason;
+    // a reason is of an absence that was ANNOUNCED (Eden, 2026-11-17, of "לא הגיע ולא הודיע": "במקרה כזה אין למה"):
+    // whoever came, and whoever did not come and said nothing, carry none - whatever was there before
+    const reason = m.status === "AnnouncedAbsence" ? m.reason : null;
     if (at >= 0) {
       lesson.attendance[at].status = m.status;
       if (m.note !== undefined) lesson.attendance[at].note = m.note;

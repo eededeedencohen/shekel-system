@@ -180,10 +180,13 @@ describe("the teachers' app", () => {
     // an absence may say why (the hostels' reasons); a word that is not one of them is refused; whoever came carries none
     const why = await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", reason: "hospital" }] });
     expect(why.body.data.lesson.marks[0]).toMatchObject({ status: "AnnouncedAbsence", reason: "hospital" });
-    expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "Missing" }] })).body.data.lesson.marks[0]).toMatchObject({ status: "Missing", reason: "hospital" });
-    expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "Missing", reason: "flu" }] })).body.code).toBe("ATTENDANCE_REASON_INVALID");
-    expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "Missing", reason: null }] })).body.data.lesson.marks[0].reason).toBeNull();
-    await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "Missing", reason: "vacation" }] });
+    expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", reason: "flu" }] })).body.code).toBe("ATTENDANCE_REASON_INVALID");
+    expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", reason: null }] })).body.data.lesson.marks[0].reason).toBeNull();
+    // "לא הגיע ולא הודיע" has no why: the reason goes with the mark, and one sent with it is not kept
+    await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", reason: "vacation" }] });
+    expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "Missing" }] })).body.data.lesson.marks[0]).toMatchObject({ status: "Missing", reason: null });
+    expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "Missing", reason: "hospital" }] })).body.data.lesson.marks[0].reason).toBeNull();
+    await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", reason: "vacation" }] });
     expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "Present" }] })).body.data.lesson.marks[0]).toMatchObject({ status: "Present", reason: null });
     await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence" }] });
     expect(await Lesson.countDocuments({ cycle: w.X._id })).toBe(1);
