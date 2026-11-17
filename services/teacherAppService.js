@@ -1,0 +1,201 @@
+/**
+ * @file teacherAppService - what a teacher's own account reads and writes
+ * @module services/teacherAppService
+ *
+ * The teachers' app (Eden, 2026-11-16: "בוא נבנה עכשיו את אפליקציית המורים…
+ * של מכללה לכל"). A teacher's account (StaffAccount kind "teacher", tied to
+ * ONE Person who holds a Teacher profile) reaches this service and nothing
+ * else of the API (utils/auth teacherGate). Everything here is keyed on the
+ * account's own person id - no id of a teacher ever comes from the request.
+ *
+ *   board(personId)                       the teacher, the college courses he teaches, who sits in them (a name
+ *                                         and a face - nothing else of a student), the lessons of the last weeks
+ *   markAttendance(personId, body)        marks on ONE day of ONE of his courses, merged into that day's lesson
+ *   saveAvailability(personId, windows)   his own free windows (the programs' windows stay as the staff set them)
+ *
+ * מכללה לכל only: a course of a house (`hostel`) is reported by the house
+ * and approved by the hostels coordinator (services/hostelReportService),
+ * so it is not shown here and cannot be marked here.
+ */
+
+const mongoose = require("mongoose");
+const { Person } = require("../models/Person");
+const { Profile } = require("../models/profiles");
+const Cycle = require("../models/Cycle");
+const Enrollment = require("../models/Enrollment");
+const Lesson = require("../models/Lesson");
+const AppError = require("../utils/AppError");
+const { ATTENDANCE_STATUSES } = require("../utils/domain");
+
+/** How far back a teacher sees and may still report (older days are the office's). */
+const WINDOW_BACK_DAYS = 35;
+const NOTE_MAX = 300;
+const DAY_MS = 86400000;
+
+/** Today in Israel, "YYYY-MM-DD" (the server's own clock is UTC). */
+const todayStr = (now = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(now);
+const utcDay = (str) => new Date(`${str}T00:00:00.000Z`);
+const addDays = (str, n) => new Date(utcDay(str).getTime() + n * DAY_MS).toISOString().slice(0, 10);
+/** A stored date as the day it means in Israel. */
+const dayOf = (date) => (date ? todayStr(new Date(date)) : null);
+
+const studentView = (p) => ({ _id: String(p._id), firstName: p.firstName || "", lastName: p.lastName || "", gender: p.gender || null, avatar: p.avatar || null });
+const windowView = (w) => ({ day: w.day, start: w.start, end: w.end, program: w.program || null });
+const lessonView = (l) => ({
+  _id: String(l._id),
+  cycle: String(l.cycle),
+  date: new Date(l.date).toISOString().slice(0, 10),
+  marks: (l.attendance || []).map((r) => ({ student: String(r.student), status: r.status, note: r.note || "" })),
+});
+
+async function teacherOf(personId) {
+  if (!mongoose.isValidObjectId(personId)) throw AppError.of("TEACHER_PERSON_REQUIRED", 403);
+  const person = await Person.findOne({ _id: personId, deletedAt: null });
+  if (!person) throw AppError.of("TEACHER_PERSON_REQUIRED", 403);
+  return person;
+}
+
+/** The college courses this teacher teaches now (or ended inside the window). */
+const myCycles = (personId, today) =>
+  Cycle.find({ teacher: personId, hostel: null, status: "Active", endDate: { $gte: utcDay(addDays(today, -WINDOW_BACK_DAYS - 1)) } });
+
+async function board(personId) {
+  const person = await teacherOf(personId);
+  const today = todayStr();
+  const from = addDays(today, -WINDOW_BACK_DAYS);
+  const [cycles, profile] = await Promise.all([
+    myCycles(personId, today).populate({ path: "subject", select: "name" }).populate({ path: "schedule.room", select: "name" }).lean(),
+    Profile.findOne({ person: person._id, kind: "Teacher" }).populate({ path: "subjects", select: "name" }).lean(),
+  ]);
+  const ids = cycles.map((c) => c._id);
+  const [seats, lessons] = await Promise.all([
+    // a held seat (`reserved`) is not an attendee; who left stays for the days he was still there
+    Enrollment.find({ cycle: { $in: ids }, status: { $ne: "reserved" } }).select("cycle student status slotId joinedAt registeredAt leftAt").populate({ path: "student", select: "firstName lastName gender avatar deletedAt" }).lean(),
+    Lesson.find({ cycle: { $in: ids }, source: "live", date: { $gte: utcDay(from), $lte: utcDay(today) } }).select("cycle date attendance.student attendance.status attendance.note").lean(),
+  ]);
+  return {
+    today,
+    windowDays: WINDOW_BACK_DAYS,
+    me: {
+      _id: String(person._id),
+      firstName: person.firstName || "",
+      lastName: person.lastName || "",
+      gender: person.gender || null,
+      avatar: person.avatar || null,
+      phone: person.phone || "",
+      email: person.email && !person.email.endsWith("placeholder.local") ? person.email : "",
+      subjects: (profile?.subjects || []).map((s) => s?.name).filter(Boolean),
+      availability: (person.availability || []).map(windowView),
+    },
+    cycles: cycles.map((c) => ({
+      _id: String(c._id),
+      subject: c.subject?.name || "",
+      format: c.matching?.format || null,
+      startDate: dayOf(c.startDate),
+      endDate: dayOf(c.endDate),
+      place: c.venue?.label || "",
+      schedule: (c.schedule || []).map((s) => ({ _id: String(s._id), day: s.day, start: s.start, end: s.end, room: s.room?.name || "" })),
+    })),
+    seats: seats
+      .filter((e) => e.student && !e.student.deletedAt)
+      .map((e) => ({
+        cycle: String(e.cycle),
+        slotId: e.slotId ? String(e.slotId) : null,
+        status: e.status,
+        from: dayOf(e.joinedAt || e.registeredAt),
+        until: dayOf(e.leftAt),
+        student: studentView(e.student),
+      })),
+    lessons: lessons.map(lessonView),
+  };
+}
+
+/**
+ * PUT /api/teacher/attendance - { cycle, date: "YYYY-MM-DD", marks: [{ student, status, note? }] }.
+ * `status: null` takes a mark back. Only the students named are touched: the day's other marks stay.
+ */
+async function markAttendance(personId, body) {
+  await teacherOf(personId);
+  const { cycle: cycleId, date, marks } = body || {};
+  if (!mongoose.isValidObjectId(cycleId) || !/^\d{4}-\d{2}-\d{2}$/.test(String(date || "")) || !Array.isArray(marks) || !marks.length || marks.length > 80) {
+    throw AppError.of("MISSING_FIELDS", 400, "cycle, date, marks");
+  }
+  const day = utcDay(date);
+  if (Number.isNaN(day.getTime())) throw AppError.of("INVALID_DATE", 400);
+  // his own course, of the college - never trusted from the request
+  const cycle = await Cycle.findOne({ _id: cycleId, teacher: personId, hostel: null, status: "Active" }).lean();
+  if (!cycle) throw AppError.of("LESSON_NOT_YOURS", 403);
+
+  const today = todayStr();
+  const inWindow = date <= today && date >= addDays(today, -WINDOW_BACK_DAYS);
+  // the course's own dates, a day of grace on each side (a date kept at local midnight reads a day off in UTC)
+  const inCourse = (!cycle.startDate || date >= addDays(dayOf(cycle.startDate), -1)) && (!cycle.endDate || date <= addDays(dayOf(cycle.endDate), 1));
+  const meets = (cycle.schedule || []).some((s) => s.day === day.getUTCDay());
+  if (!inWindow || !inCourse || !meets) throw AppError.of("LESSON_DATE_INVALID", 400);
+
+  // who may be marked: whoever held a seat in this course on that day
+  const seats = await Enrollment.find({ cycle: cycle._id, status: { $ne: "reserved" } }).select("student joinedAt registeredAt leftAt").lean();
+  const seated = new Set(
+    seats
+      .filter((e) => {
+        const start = dayOf(e.joinedAt || e.registeredAt);
+        const end = dayOf(e.leftAt);
+        return (!start || date >= start) && (!end || date <= end);
+      })
+      .map((e) => String(e.student))
+  );
+  const clean = new Map();
+  for (const m of marks) {
+    const student = String(m?.student || "");
+    if (!mongoose.isValidObjectId(student) || !seated.has(student)) throw AppError.of("LESSON_STUDENT_INVALID", 400);
+    const status = m.status == null || m.status === "" ? null : m.status;
+    if (status !== null && !ATTENDANCE_STATUSES.includes(status)) throw AppError.of("ATTENDANCE_INVALID", 400);
+    if (m.note !== undefined && (typeof m.note !== "string" || m.note.length > NOTE_MAX)) throw AppError.of("ATTENDANCE_INVALID", 400);
+    clean.set(student, { status, note: m.note === undefined ? undefined : m.note.trim() });
+  }
+
+  // that day's lesson, made when it is not there yet (one live lesson per course per day - the index decides a race)
+  let lesson = await Lesson.findOne({ cycle: cycle._id, date: day, source: "live" });
+  if (!lesson) {
+    try {
+      lesson = await Lesson.create({ cycle: cycle._id, date: day, attendance: [] });
+    } catch (err) {
+      if (err?.code !== 11000) throw err;
+      lesson = await Lesson.findOne({ cycle: cycle._id, date: day, source: "live" });
+    }
+  }
+  for (const [student, m] of clean) {
+    const at = lesson.attendance.findIndex((r) => String(r.student) === student);
+    if (m.status === null) {
+      if (at >= 0) lesson.attendance.splice(at, 1);
+      continue;
+    }
+    if (at >= 0) {
+      lesson.attendance[at].status = m.status;
+      if (m.note !== undefined) lesson.attendance[at].note = m.note;
+    } else {
+      lesson.attendance.push({ student, status: m.status, ...(m.note ? { note: m.note } : {}) });
+    }
+  }
+  await lesson.save();
+  return lessonView(lesson);
+}
+
+/** PATCH /api/teacher/availability - { windows: [{ day, start, end }] }: the teacher's OWN windows, whole. */
+async function saveAvailability(personId, windows) {
+  if (!Array.isArray(windows) || windows.length > 60) throw AppError.of("MISSING_FIELDS", 400, "windows");
+  const person = await teacherOf(personId);
+  // what a program marked for itself is the staff's to move (personController checkAvailability) - kept as it is
+  const kept = (person.availability || []).filter((w) => w.program).map(windowView);
+  const own = windows.map((w) => ({ day: Number(w?.day), start: String(w?.start || ""), end: String(w?.end || ""), program: null }));
+  person.availability = [...kept, ...own];
+  try {
+    await person.save();
+  } catch (err) {
+    if (err?.name === "ValidationError") throw AppError.of("AVAILABILITY_INVALID", 400);
+    throw err;
+  }
+  return (person.availability || []).map(windowView);
+}
+
+module.exports = { board, markAttendance, saveAvailability, todayStr, addDays, WINDOW_BACK_DAYS };

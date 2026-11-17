@@ -22,7 +22,7 @@ const compression = require("compression");
 const AppError = require("./utils/AppError");
 const globalErrorHandler = require("./controllers/errorController");
 const share = require("./utils/sharePreview");
-const { authenticate, requireSuper, requireFamily, requireFeature } = require("./utils/auth");
+const { authenticate, teacherGate, requireSuper, requireFamily, requireFeature } = require("./utils/auth");
 const security = require("./utils/security");
 const { audit } = require("./utils/audit");
 
@@ -68,6 +68,8 @@ app.get("/api/health", health);
 // member, except the public sign-up pages and the sign-in routes
 // themselves (utils/auth OPEN). req.account = who is signed in.
 app.use("/api", authenticate);
+// the teachers' app (2026-11-16): a teacher's account reaches /api/teacher and its own /api/auth, nothing else
+app.use("/api", teacherGate);
 // every successful write by a signed-in account is written down (utils/audit,
 // Eden 2026-10-29: the activity page says per user what they added, changed, deleted)
 app.use("/api", audit);
@@ -76,6 +78,8 @@ app.use("/api/auth/login", security.loginLimiter);
 app.use("/api/public", security.publicLimiter);
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/accounts", require("./routes/accountRoutes"));
+// the teachers' app: a teacher's own courses, students (a name and a face) and attendance - for a teacher's account alone
+app.use("/api/teacher", require("./routes/teacherAppRoutes"));
 
 // Feature routers - the 2026 remodel API. A family's router is open only to
 // the kinds that own it (utils/auth requireFamily, Eden 2026-10-18): the

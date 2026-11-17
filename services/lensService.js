@@ -55,7 +55,9 @@ function lensOf(actor) {
   const cultureOnly = kind === "culture";
   const collegeOnly = kind === "manager";
   const hostelsOnly = kind === "hostels";
-  const all = !cultureOnly && !collegeOnly && !hostelsOnly;
+  // named, not "whoever is left": a kind the lens does not know (a teacher's account, a kind added later) is
+  // nobody's lens - it sees no cycles and no people here (the first cut gave every unknown kind everything)
+  const all = kind === "super" || kind === "social";
   const gym = all || (Array.isArray(actor?.features) && actor.features.includes("gym"));
   return { kind, all, cultureOnly, collegeOnly, hostelsOnly, gym };
 }
@@ -101,6 +103,8 @@ async function personIdsOf(lens) {
     const [tagged, teachers] = await Promise.all([holdersOf(["college", "teacher"]), roleHolders(["Teacher"])]);
     return new Set(strs([...tagged, ...teachers, ...gym]));
   }
+  // no lens of its own (a teacher's account): nobody
+  if (!lens.hostelsOnly) return new Set();
   // the hostels: the tagged, the hostel managers, the teachers, whoever lives in a hostel, whoever sits in a hostel cycle
   const [tagged, staff, residents, hostelCycles] = await Promise.all([
     holdersOf(["hostels", "hostelManager", "teacher"]),

@@ -70,6 +70,15 @@ const RULES = [
   // my account, the users page
   ["POST", "/auth/password", "שינוי הסיסמה שלי", "account", "update", { payload: false }],
   ["PATCH", "/auth/prefs", "העדפות התצוגה שלי", "account", "update"],
+  ["PATCH", "/auth/username", "שינוי שם המשתמש שלי", "account", "update"],
+  // the teachers' app
+  ["PUT", "/teacher/attendance", "דיווח נוכחות מאפליקציית המורים", "attendance", "update"],
+  ["PATCH", "/teacher/availability", "הזמינות שלי (אפליקציית המורים)", "person", "update"],
+  ["POST", "/teacher/invoices", "פתיחת חודש החשבוניות (אפליקציית המורים)", "invoice", "create"],
+  ["POST", "/teacher/invoices/:id/uploads/:id/confirm", "העלאת חשבונית מאפליקציית המורים", "invoice", "create"],
+  ["PATCH", "/teacher/invoices/:id/invoices/:id", "תיקון מספר וסכום של חשבונית (אפליקציית המורים)", "invoice", "update"],
+  ["DELETE", "/teacher/invoices/:id/invoices/:id", "הסרת חשבונית (אפליקציית המורים)", "invoice", "delete"],
+  ["POST", "/teacher/invoices/:id/done", "סיום חודש החשבוניות (אפליקציית המורים)", "invoice", "other"],
   ["POST", "/accounts", "משתמש חדש", "account", "create"],
   ["PATCH", "/accounts/:id", "עריכת משתמש", "account", "update"],
   ["POST", "/accounts/:id/reset", "קישור לאיפוס סיסמה", "account", "other", { payload: false }],

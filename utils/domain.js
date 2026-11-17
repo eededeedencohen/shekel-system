@@ -946,6 +946,19 @@ const ERROR_CODES = {
   RESET_INVALID: "הקישור לאיפוס הסיסמה לא בתוקף - אפשר לבקש קישור חדש",
   ACCOUNT_INVALID: "חסרים פרטים למשתמש: שם, שם משתמש באנגלית ותפקיד",
   USERNAME_TAKEN: "שם המשתמש הזה כבר תפוס",
+  USERNAME_INVALID: "שם משתמש: אותיות באנגלית, ספרות, נקודה או מקף, 2 עד 32 תווים, והראשון אות",
+  // אפליקציית המורים
+  INVOICE_MONTH_EMPTY: "בחודש הזה אין לך שיעורים במכללה לכל",
+  INVOICE_MONTH_CLOSED: "החודש הזה כבר נסגר במשרד. לשינוי פונים לצוות",
+  TEACHER_PERSON_REQUIRED: "חשבון מורה נפתח למורה מרשימת המורים",
+  TEACHER_ACCOUNT_EXISTS: "למורה הזה כבר יש חשבון",
+  TEACHER_KIND_FIXED: "חשבון מורה נשאר חשבון מורה, וחשבון צוות נשאר חשבון צוות",
+  TEACHER_APP_ONLY: "החשבון הזה פותח את אפליקציית המורים בלבד",
+  LESSON_NOT_YOURS: "הקורס הזה לא ברשימת הקורסים של המורה",
+  LESSON_DATE_INVALID: "בתאריך הזה אין לקורס שיעור שאפשר לדווח עליו",
+  LESSON_STUDENT_INVALID: "אחד הסימונים הוא של מי שלא רשום לשיעור הזה",
+  ATTENDANCE_INVALID: "סימון הנוכחות לא תקין",
+  AVAILABILITY_INVALID: "חלון הזמינות לא תקין: יום א׳ עד ה׳, שעת סיום אחרי שעת התחלה",
   LAST_SUPER: "חייב להישאר לפחות סופר-מנהל פעיל אחד",
   FEATURE_FORBIDDEN: "ההרשאה הזו לא ניתנה למשתמש/ת",
   // חדר כושר
@@ -1008,6 +1021,9 @@ const STAFF_KINDS = [
   { key: "social", label: 'עובד/ת סוציאלי/ת' },
   { key: "hostels", label: "רכז/ת הוסטלים" },
   { key: "culture", label: "רכז/ת תרבות לכל" },
+  // the teachers' app (Eden, 2026-11-16): an account tied to ONE teacher; it opens the teachers' app and
+  // nothing of the staff's (utils/auth teacherGate, services/teacherAppService)
+  { key: "teacher", label: "מורה" },
 ];
 const STAFF_KIND_KEYS = STAFF_KINDS.map((k) => k.key);
 /** How long a password-reset link stays open. */

@@ -25,7 +25,7 @@ const { details, snapshot } = require("./auditDetails");
 const { clientIp } = require("./clientIp");
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-const SKIP = [/^\/auth\/(login|logout|forgot|ping|bye)$/, /^\/auth\/reset(\/|$)/, /^\/public(\/|$)/, /^\/files\/(upload-url|urls)$/, /^\/db(\/|$)/];
+const SKIP = [/^\/auth\/(login|logout|forgot|ping|bye)$/, /^\/auth\/reset(\/|$)/, /^\/public(\/|$)/, /^\/files\/(upload-url|urls)$/, /^\/teacher\/invoices\/[^/]+\/upload-url$/, /^\/db(\/|$)/];
 
 /** The request path under /api - from originalUrl, which no router rewrites. */
 const pathOf = (req) => String(req.originalUrl || req.url || "").split("?")[0].replace(/^\/api(?=\/|$)/, "") || "/";

@@ -919,6 +919,111 @@ async function invoiceOfRequest(r, invoiceId) {
   return inv;
 }
 
+/* ───────────────────────── the teachers' app (Eden, 2026-11-16) ─────────────────────────
+ * "מורים של מכללה לכל לא צריכים קישור להעלות חשבוניות - יהיה להם באפליקציה". A college teacher's month is the
+ * same InvoiceRequest the link opened, reached by WHO HE IS (the account's person) instead of by a token: the
+ * same view, the same moves (addInvoice, updateDeclared, removeInvoice, complete). What differs:
+ *   - nobody sends anything: a month is opened by the first teacher who asks for it (the whole college round,
+ *     so the staff's tracker holds every teacher of that month), or by the staff as before;
+ *   - no link window: the row still carries a token and an expiry (the model asks for them, the staff view
+ *     reads them) but the app never looks at them - a month takes invoices until the staff close it with the
+ *     mail (`round.mail.sentAt`), and a finished teacher is finished until the staff reopen him.
+ */
+
+const APP_OPENER = "אפליקציית המורים";
+const israelMonth = (now = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(now).slice(0, 7);
+/** The months a teacher may open from the app: this month and the one before it (older months were settled before the app). */
+function appMonths(now = new Date()) {
+  const [y, m] = israelMonth(now).split("-").map(Number);
+  return [0, 1].map((back) => {
+    const d = new Date(Date.UTC(y, m - 1 - back, 1));
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  });
+}
+
+/** A teacher's own months at the college: the ones that are open (with where they stand), and the ones he may open. */
+async function teacherMonths({ teacherId, now = new Date() }) {
+  const rounds = await InvoiceRound.find({ program: "college" }).select("month mail").lean();
+  const roundById = new Map(rounds.map((r) => [String(r._id), r]));
+  const reqs = rounds.length ? await InvoiceRequest.find({ teacher: teacherId, round: { $in: rounds.map((r) => r._id) } }) : [];
+  const facts = reqs.length ? await factsOf(reqs) : null;
+  const months = reqs.map((r) => {
+    const round = roundById.get(String(r.round));
+    const invs = facts.invoicesByRequest.get(String(r._id)) || [];
+    const declared = invs.filter((i) => i.amount != null);
+    return {
+      requestId: String(r._id),
+      month: round.month,
+      monthLabel: monthLabel(round.month),
+      dueAt: dueOf(round.month),
+      status: statusOf(r, invs.length),
+      done: !!r.completedAt,
+      closed: !!round.mail?.sentAt,
+      invoices: invs.length,
+      invoiced: declared.length ? Math.round(declared.reduce((k, i) => k + i.amount, 0) * 100) / 100 : null,
+      counts: countsOf(r.sessions.map((s) => sessionView(s, facts, r.teacher))),
+    };
+  });
+  const have = new Set(months.map((x) => x.month));
+  for (const month of appMonths(now)) {
+    if (have.has(month)) continue;
+    const sessions = sessionsByTeacher(await cyclesOfMonth({ program: "college", month }), month).get(String(teacherId)) || [];
+    if (sessions.length) months.push({ requestId: null, month, monthLabel: monthLabel(month), dueAt: dueOf(month), status: "new", done: false, closed: false, invoices: 0, invoiced: null, counts: { sessions: sessions.length, billed: 0, unbilled: sessions.length } });
+  }
+  return months.sort((a, b) => (a.month < b.month ? 1 : -1));
+}
+
+/** The teacher's request for a month - opened now when it is not there yet (the college's round of that month with it). */
+async function ensureTeacherRequest({ teacherId, month, now = new Date() }) {
+  if (!MONTH_RE.test(String(month || "")) || !appMonths(now).includes(month)) throw AppError.of("INVOICE_ROUND_MONTH", 400);
+  const find = () => InvoiceRound.findOne({ program: "college", month });
+  let round = await find();
+  if (!round) {
+    try {
+      await openRound({ month, program: "college", by: APP_OPENER });
+    } catch (err) {
+      // two teachers at once: the other one opened it
+      if (err?.code !== "INVOICE_ROUND_EXISTS" && err?.code !== 11000) throw err;
+    }
+    round = await find();
+    if (!round) throw AppError.of("INVOICE_ROUND_NO_TEACHERS", 400);
+  }
+  const mine = () => InvoiceRequest.findOne({ round: round._id, teacher: teacherId });
+  let r = await mine();
+  if (!r) {
+    // a teacher (or a course) that came after the month was opened: his row alone
+    const sessions = sessionsByTeacher(await cyclesOfMonth({ program: "college", month }), month).get(String(teacherId)) || [];
+    if (!sessions.length) throw AppError.of("INVOICE_MONTH_EMPTY", 400);
+    await attachLessons(sessions);
+    try {
+      r = await InvoiceRequest.create({ round: round._id, teacher: teacherId, token: makeToken(), expiresAt: linkExpiry(), sessions });
+    } catch (err) {
+      if (err?.code !== 11000) throw err;
+      r = await mine();
+    }
+  }
+  return r;
+}
+
+/** A request by who the teacher is: his own, of the college - anything else reads as not there. → { r, round } */
+async function loadTeacherRequest({ teacherId, requestId }) {
+  const r = isId(requestId) && (await InvoiceRequest.findOne({ _id: requestId, teacher: teacherId }));
+  const round = r && (await InvoiceRound.findById(r.round).select("program month mail").lean());
+  if (!r || !round || round.program !== "college") throw AppError.of("NOT_FOUND", 404, "חודש החשבוניות");
+  return { r, round };
+}
+
+/** A month the staff closed with the mail takes nothing more from the app (reading stays). */
+const assertMonthOpen = (round) => {
+  if (round?.mail?.sentAt) throw AppError.of("INVOICE_MONTH_CLOSED", 400);
+};
+
+/** What the app reads of a month: the link's own view, without what belongs to a link. */
+async function appView(r, round) {
+  const { expiresAt, linkLive, coordinator, ...view } = await publicView(r);
+  return { ...view, requestId: String(r._id), closed: !!(round || (await InvoiceRound.findById(r.round).select("mail").lean()))?.mail?.sentAt };
+}
+
 /* ───────────────────────── the super admin's corrections (the state machine, section 08) ─────────────────────────
  * Every action rewrites facts and the status follows from them as always. Five rules each one keeps:
  *   1. an invoice goes as a unit (its rows, its file) - invoiceService.deleteInvoice;
@@ -1294,6 +1399,12 @@ module.exports = {
   invoiceOfRequest,
   complete,
   requestLink,
+  teacherMonths,
+  ensureTeacherRequest,
+  loadTeacherRequest,
+  assertMonthOpen,
+  appView,
+  appMonths,
   adminAction,
   orphanSweep,
 };

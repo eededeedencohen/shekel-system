@@ -89,6 +89,20 @@ async function authenticate(req, res, next) {
   }
 }
 
+/**
+ * The teachers' app (Eden, 2026-11-16). A teacher's account reaches its own
+ * router (/api/teacher) and its own account (/api/auth), and NOTHING else:
+ * every other path answers 403 whatever that path's own gate says - the
+ * routers that are open to every staff kind (people, files, intakes, the
+ * record, the diary, the tags) never see a teacher. Checked on the ACTING
+ * account, so the super admin viewing as a teacher is held to the same lines.
+ */
+const TEACHER_PATHS = [/^\/health$/, /^\/public(\/|$)/, /^\/auth(\/|$)/, /^\/teacher(\/|$)/];
+function teacherGate(req, res, next) {
+  if (req.actor && req.actor.kind === "teacher" && !TEACHER_PATHS.some((re) => re.test(req.path))) return next(AppError.of("TEACHER_APP_ONLY", 403));
+  return next();
+}
+
 /** Only the super admin (the users page, the database explorer) - as the ACTING one: viewing as someone else closes these. */
 function requireSuper(req, res, next) {
   if (req.actor && req.actor.kind === "super") return next();
@@ -148,4 +162,4 @@ function requireFeature(name) {
 }
 
 // TEST_ACCOUNT is exported for the tests alone: a suite may give the bypass actor a `person` link or another kind
-module.exports = { COOKIE, tokenOf, setSessionCookie, clearSessionCookie, authenticate, requireSuper, requireFamily, requireKinds, requireFeature, hasFeature, FAMILIES, TEST_ACCOUNT };
+module.exports = { COOKIE, tokenOf, setSessionCookie, clearSessionCookie, authenticate, teacherGate, requireSuper, requireFamily, requireKinds, requireFeature, hasFeature, FAMILIES, TEST_ACCOUNT };

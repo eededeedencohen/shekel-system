@@ -8,6 +8,7 @@
  */
 
 const catchAsync = require("../utils/catchAsync");
+const AppError = require("../utils/AppError");
 const auth = require("../services/authService");
 const { setSessionCookie, clearSessionCookie, tokenOf } = require("../utils/auth");
 const { clientIp } = require("../utils/clientIp");
@@ -64,8 +65,17 @@ exports.resetPassword = catchAsync(async (req, res) => {
   ok(res, { account });
 });
 
-exports.staff = catchAsync(async (req, res) => {
-  ok(res, { staff: await auth.staffDirectory() });
+exports.staff = catchAsync(async (req, res, next) => {
+  // the directory is the staff's: a teacher's own account has no staff pickers (the teachers' app)
+  if (req.account.kind === "teacher") return next(AppError.of("TEACHER_APP_ONLY", 403));
+  // the teachers' accounts join only for the super admin's "צפה בתור"
+  ok(res, { staff: await auth.staffDirectory({ teachers: req.account.kind === "super" && req.query.teachers === "1" }) });
+});
+
+/** PATCH /api/auth/username - one's OWN user name; never while viewing as someone (the account is the signed-in one's). */
+exports.changeUsername = catchAsync(async (req, res, next) => {
+  if (String(req.actor?._id) !== String(req.account._id)) return next(AppError.of("OUT_OF_SCOPE", 403));
+  ok(res, { account: await auth.changeUsername(req.account._id, req.body?.username) });
 });
 
 /* ───────── /api/accounts (super admin) ───────── */

@@ -18,6 +18,8 @@ router.get("/reset/:token", c.resetInfo);
 router.post("/reset/:token", c.resetPassword);
 router.get("/me", c.me);
 router.post("/password", c.changePassword);
+// my own user name (2026-11-16, the teachers' app: a teacher may change the name he signs in with)
+router.patch("/username", c.changeUsername);
 // my own display preferences (2026-11-12: the diary's design), kept on the account
 router.patch("/prefs", c.setPrefs);
 router.get("/staff", c.staff);

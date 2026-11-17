@@ -19,6 +19,7 @@ const StaffLogin = require("../models/StaffLogin");
 const PasswordReset = require("../models/PasswordReset");
 const mongoose = require("mongoose");
 const { Person } = require("../models/Person");
+const { Profile } = require("../models/profiles");
 const AppError = require("../utils/AppError");
 const { STAFF_KIND_KEYS, STAFF_FEATURE_KEYS, RESET_LINK_HOURS, DIARY_DESIGNS } = require("../utils/domain");
 const { hashPassword, verifyPassword, defaultPasswordFor, isStrongEnough, newToken, hashToken, isTokenShape } = require("../utils/password");
@@ -221,6 +222,23 @@ async function setPrefs(accountId, body) {
   return publicAccount(account);
 }
 
+/**
+ * One's own user name (Eden, 2026-11-16, of the teachers: "עם אפשרות שעדן או הם יוכלו לשנות"). The password
+ * stays; the sessions stay (they hold the account's id, not its name).
+ */
+async function changeUsername(accountId, username) {
+  const u = String(username || "").trim().toLowerCase();
+  if (!USERNAME_RE.test(u)) throw AppError.of("USERNAME_INVALID", 400);
+  const account = await StaffAccount.findById(accountId);
+  if (!account) throw AppError.of("AUTH_REQUIRED", 401);
+  if (account.username !== u) {
+    account.username = u;
+    await account.save().catch(taken);
+    forget(); // the sessions' cached copies of the account are stale now
+  }
+  return publicAccount(account);
+}
+
 /** "שכחתי סיסמה": flags the account for the super admin. Says nothing about whether it exists. */
 async function requestReset(username) {
   const u = String(username || "").trim().toLowerCase();
@@ -279,21 +297,33 @@ async function listAccounts() {
   return rows.map(adminView);
 }
 
-/** The names the app offers in its staff pickers (any signed-in user). */
-async function staffDirectory() {
-  const rows = await StaffAccount.find({ active: true }).sort({ createdAt: 1 }).select("name title kind features").lean();
-  return rows.map((a) => ({ _id: String(a._id), name: a.name, title: a.title || "", kind: a.kind, features: Array.isArray(a.features) ? a.features : [] }));
+/**
+ * The names the app offers in its staff pickers (any signed-in staff member). The teachers' accounts are not
+ * staff: they join only for the super admin's "צפה בתור" (`teachers: true`), each with its teacher's person id.
+ */
+async function staffDirectory({ teachers = false } = {}) {
+  const rows = await StaffAccount.find({ active: true, ...(teachers ? {} : { kind: { $ne: "teacher" } }) }).sort({ createdAt: 1 }).select("name title kind features person").lean();
+  return rows.map((a) => ({
+    _id: String(a._id),
+    name: a.name,
+    title: a.title || "",
+    kind: a.kind,
+    features: Array.isArray(a.features) ? a.features : [],
+    ...(a.kind === "teacher" ? { person: a.person ? String(a.person) : null } : {}),
+  }));
 }
 
 const FIELDS = ["username", "name", "title", "kind", "phone", "email", "active", "person", "features"];
 const pick = (body) => Object.fromEntries(FIELDS.filter((k) => body[k] !== undefined).map((k) => [k, typeof body[k] === "string" ? body[k].trim() : body[k]]));
+
+const USERNAME_RE = /^[a-z][a-z0-9._-]{1,31}$/;
 
 function validate(fields, creating) {
   if (fields.username !== undefined) fields.username = String(fields.username).toLowerCase();
   if (fields.active !== undefined) fields.active = Boolean(fields.active);
   const need = creating ? ["username", "name", "kind"] : [];
   if (need.some((k) => !fields[k])) throw AppError.of("ACCOUNT_INVALID", 400);
-  if (fields.username !== undefined && !/^[a-z][a-z0-9._-]{1,31}$/.test(fields.username)) throw AppError.of("ACCOUNT_INVALID", 400, "שם המשתמש - אותיות באנגלית");
+  if (fields.username !== undefined && !USERNAME_RE.test(fields.username)) throw AppError.of("ACCOUNT_INVALID", 400, "שם המשתמש - אותיות באנגלית");
   if (fields.name !== undefined && !fields.name) throw AppError.of("ACCOUNT_INVALID", 400);
   if (fields.kind !== undefined && !STAFF_KIND_KEYS.includes(fields.kind)) throw AppError.of("ACCOUNT_INVALID", 400);
   if (fields.features !== undefined) {
@@ -316,17 +346,36 @@ const taken = (err) => {
   throw err;
 };
 
-/** A new account starts with its default password. */
+/**
+ * A teacher's account (the teachers' app, 2026-11-16): tied to ONE person who holds a Teacher profile, one
+ * account per teacher, no grants - and a kind never crosses the line (a staff account does not become a
+ * teacher's, a teacher's does not become staff: the two open different apps over different data).
+ */
+async function teacherRules(fields, account = null) {
+  if (account && fields.kind !== undefined && (account.kind === "teacher") !== (fields.kind === "teacher")) throw AppError.of("TEACHER_KIND_FIXED", 400);
+  if ((fields.kind ?? account?.kind) !== "teacher") return fields;
+  const person = fields.person !== undefined ? fields.person : account?.person;
+  if (!person || !(await Profile.exists({ person, kind: "Teacher" }))) throw AppError.of("TEACHER_PERSON_REQUIRED", 400);
+  if (await StaffAccount.exists({ kind: "teacher", person, ...(account ? { _id: { $ne: account._id } } : {}) })) throw AppError.of("TEACHER_ACCOUNT_EXISTS", 409);
+  return { ...fields, features: [] };
+}
+
+/**
+ * A new account starts with its default password - but not a teacher's: his user name is his first name, so
+ * the default would be anyone's guess. A teacher's account opens with a password nobody knows, and the first
+ * way in is the reset link the super admin sends.
+ */
 async function createAccount(body) {
-  const fields = await resolvePerson(validate(pick(body), true));
-  const account = await StaffAccount.create({ ...fields, passwordHash: await hashPassword(defaultPasswordFor(fields.username)) }).catch(taken);
+  const fields = await teacherRules(await resolvePerson(validate(pick(body), true)));
+  const first = fields.kind === "teacher" ? newToken() : defaultPasswordFor(fields.username);
+  const account = await StaffAccount.create({ ...fields, passwordHash: await hashPassword(first) }).catch(taken);
   return adminView(account.toObject());
 }
 
 async function updateAccount(id, body) {
-  const fields = await resolvePerson(validate(pick(body), false));
   const account = await StaffAccount.findById(id);
   if (!account) throw new AppError("המשתמש לא נמצא", 404);
+  const fields = await teacherRules(await resolvePerson(validate(pick(body), false)), account);
   const wasSuper = account.active && account.kind === "super";
   const staysSuper = (fields.active ?? account.active) && (fields.kind ?? account.kind) === "super";
   if (wasSuper && !staysSuper) {
@@ -368,6 +417,7 @@ module.exports = {
   endSession,
   login,
   changePassword,
+  changeUsername,
   setPrefs,
   requestReset,
   resetInfo,

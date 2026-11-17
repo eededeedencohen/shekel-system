@@ -43,8 +43,9 @@ exports.list = catchAsync(async (req, res) => {
 });
 
 exports.open = catchAsync(async (req, res) => {
-  const program = req.body?.program || "hostels";
   const programs = programsOf(req);
+  // no program named: a persona of one side opens its own side; the super admin's default stays the hostels'
+  const program = req.body?.program || (programs && programs.length === 1 ? programs[0] : "hostels");
   if (programs && !programs.includes(program)) throw AppError.of("OUT_OF_SCOPE", 403);
   answer(res, await rounds.openRound({ month: req.body?.month, program, by: by(req) }), 201);
 });
