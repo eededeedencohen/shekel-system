@@ -910,6 +910,8 @@ const ERROR_CODES = {
   INVOICE_DIFF_REASON: "סיבת ההפרש לא מוכרת",
   DIARY_INVALID: "לרשומה ביומן חובה תאריך וכותרת",
   ATTENDANCE_REASON_INVALID: "סיבת היעדרות לא מוכרת",
+  ATTENDANCE_REASON_REQUIRED: "להיעדרות בהודעה מראש בוחרים סיבה",
+  ATTENDANCE_REASON_DETAIL_REQUIRED: "בסיבה אחרת כותבים מה הסיבה",
   // סקיצת הנוכחות מההוסטלים (שלב 3 של סבב שמרית)
   HOSTEL_REPORT_MONTH: "חודש הדיווח נכתב כ-YYYY-MM",
   HOSTEL_REPORT_INCOMPLETE: "בחודש הזה חסרים נתונים - משלימים אותם לפני שמייצאים את הדוח למשרד הבריאות",

@@ -174,21 +174,31 @@ describe("the teachers' app", () => {
     const two = await put({ cycle: X, date: w.date, marks: [{ student: String(w.s2._id), status: "Missing", note: "לא ענה לטלפון" }] });
     expect(two.body.data.lesson.marks.map((m) => m.status).sort()).toEqual(["Missing", "Present"]);
     // changed, then taken back
-    await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence" }] });
+    // an announced absence MUST say why (the hostels' reasons): without one nothing is kept, the mark stays as it was
+    expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence" }] })).body.code).toBe("ATTENDANCE_REASON_REQUIRED");
+    expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", reason: null }] })).body.code).toBe("ATTENDANCE_REASON_REQUIRED");
+    expect((await Lesson.findOne({ cycle: w.X._id })).attendance.find((r) => String(r.student) === String(w.s1._id)).status).toBe("Present");
+    await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", reason: "er" }] });
     const back = await put({ cycle: X, date: w.date, marks: [{ student: String(w.s2._id), status: null }] });
-    expect(back.body.data.lesson.marks).toEqual([{ student: String(w.s1._id), status: "AnnouncedAbsence", note: "", reason: null }]);
-    // an absence may say why (the hostels' reasons); a word that is not one of them is refused; whoever came carries none
+    expect(back.body.data.lesson.marks).toEqual([{ student: String(w.s1._id), status: "AnnouncedAbsence", note: "", reason: "er" }]);
+    // a word that is not one of the reasons is refused; another reason replaces the first
     const why = await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", reason: "hospital" }] });
     expect(why.body.data.lesson.marks[0]).toMatchObject({ status: "AnnouncedAbsence", reason: "hospital" });
     expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", reason: "flu" }] })).body.code).toBe("ATTENDANCE_REASON_INVALID");
-    expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", reason: null }] })).body.data.lesson.marks[0].reason).toBeNull();
+    // the mark sent again bare (a note alone) keeps the reason it has; the reason cannot be taken off it
+    expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", note: "עד יום ראשון" }] })).body.data.lesson.marks[0]).toMatchObject({ reason: "hospital", note: "עד יום ראשון" });
+    expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", reason: null }] })).body.code).toBe("ATTENDANCE_REASON_REQUIRED");
+    // "אחר" is kept only with its words
+    expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", reason: "other", note: "  " }] })).body.code).toBe("ATTENDANCE_REASON_DETAIL_REQUIRED");
+    expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", reason: "other", note: "טקס משפחתי" }] })).body.data.lesson.marks[0]).toMatchObject({ reason: "other", note: "טקס משפחתי" });
+    expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", note: "" }] })).body.code).toBe("ATTENDANCE_REASON_DETAIL_REQUIRED");
     // "לא הגיע ולא הודיע" has no why: the reason goes with the mark, and one sent with it is not kept
     await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", reason: "vacation" }] });
-    expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "Missing" }] })).body.data.lesson.marks[0]).toMatchObject({ status: "Missing", reason: null });
+    expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "Missing" }] })).body.data.lesson.marks[0]).toMatchObject({ status: "Missing", reason: null, note: "" });
     expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "Missing", reason: "hospital" }] })).body.data.lesson.marks[0].reason).toBeNull();
     await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", reason: "vacation" }] });
     expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "Present" }] })).body.data.lesson.marks[0]).toMatchObject({ status: "Present", reason: null });
-    await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence" }] });
+    await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "AnnouncedAbsence", reason: "refused" }] });
     expect(await Lesson.countDocuments({ cycle: w.X._id })).toBe(1);
 
     // not his course, not the house's course

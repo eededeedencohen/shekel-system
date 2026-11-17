@@ -114,7 +114,10 @@ async function board(personId) {
  * PUT /api/teacher/attendance - { cycle, date: "YYYY-MM-DD", marks: [{ student, status, note?, reason? }] }.
  * `status: null` takes a mark back. Only the students named are touched: the day's other marks stay.
  * `reason` (Eden, 2026-11-17: "כמו בנוכחות של ההוסטלים… יש גם סיבה למה לא הגיע") is one of ABSENCE_REASONS on an
- * absence; null takes it back; whoever came carries none.
+ * absence that was announced; whoever came, and whoever said nothing, carry none.
+ * The reason is a MUST there (Eden, 2026-11-17: "אנחנו מחייבים סיבה… ואם הוא סימן אחר אז יהיה חובה לרשום את
+ * הפירוט"): an announced absence is not kept without one, and "אחר" not without its words - they are the mark's
+ * `note`, as in the houses' reports. A row that already has its reason keeps it when the mark is sent again bare.
  */
 async function markAttendance(personId, body) {
   await teacherOf(personId);
@@ -158,8 +161,16 @@ async function markAttendance(personId, body) {
     clean.set(student, { status, note: m.note === undefined ? undefined : m.note.trim(), reason });
   }
 
-  // that day's lesson, made when it is not there yet (one live lesson per course per day - the index decides a race)
   let lesson = await Lesson.findOne({ cycle: cycle._id, date: day, source: "live" });
+  // an announced absence says why - checked before anything is written (or a lesson row made for nothing)
+  for (const [student, m] of clean) {
+    if (m.status !== "AnnouncedAbsence") continue;
+    const was = (lesson?.attendance || []).find((r) => String(r.student) === student) || null;
+    const reason = m.reason !== undefined ? m.reason : was?.status === "AnnouncedAbsence" ? was.reason || null : null;
+    if (!reason) throw AppError.of("ATTENDANCE_REASON_REQUIRED", 400);
+    if (reason === "other" && !(m.note !== undefined ? m.note : was?.note || "")) throw AppError.of("ATTENDANCE_REASON_DETAIL_REQUIRED", 400);
+  }
+  // that day's lesson, made when it is not there yet (one live lesson per course per day - the index decides a race)
   if (!lesson) {
     try {
       lesson = await Lesson.create({ cycle: cycle._id, date: day, attendance: [] });
@@ -178,8 +189,11 @@ async function markAttendance(personId, body) {
     // whoever came, and whoever did not come and said nothing, carry none - whatever was there before
     const reason = m.status === "AnnouncedAbsence" ? m.reason : null;
     if (at >= 0) {
+      // the words of an announced absence are its reason's: a mark that stops being one drops them with the reason
+      const leftAbsence = lesson.attendance[at].status === "AnnouncedAbsence" && m.status !== "AnnouncedAbsence";
       lesson.attendance[at].status = m.status;
       if (m.note !== undefined) lesson.attendance[at].note = m.note;
+      else if (leftAbsence) lesson.attendance[at].note = "";
       if (reason !== undefined) lesson.attendance[at].reason = reason;
     } else {
       lesson.attendance.push({ student, status: m.status, ...(m.note ? { note: m.note } : {}), ...(reason ? { reason } : {}) });
