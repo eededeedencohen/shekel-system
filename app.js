@@ -99,6 +99,8 @@ app.use("/api/hostels", requireFamily("hostels"), require("./routes/hostelRoutes
 // the houses' attendance drafts (phase 3 of שמרית's round): a temporary link
 // per hostel per month; the house's side is under /api/public/hostel-reports.
 app.use("/api/hostel-reports", requireFamily("hostels"), require("./routes/hostelReportRoutes"));
+// the hostels teachers' week census (Eden, 2026-11-18) - a temporary page; the teacher's side is /api/public/week-plans.
+app.use("/api/week-plans", requireFamily("hostels"), require("./routes/weekPlanRoutes"));
 // תרבות לכל - events, registrations (seats + waitlist + attendance), vouchers
 app.use("/api/events", requireFamily("culture"), require("./routes/eventRoutes"));
 app.use("/api/event-registrations", requireFamily("culture"), require("./routes/registrationRoutes"));

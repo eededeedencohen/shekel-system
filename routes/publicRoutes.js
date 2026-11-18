@@ -68,6 +68,14 @@ router.post("/hostel-reports/:token/left", hostelReport.publicAddLeft);
 router.delete("/hostel-reports/:token/left/:lid", hostelReport.publicRemoveLeft);
 router.post("/hostel-reports/:token/done", hostelReport.publicDone);
 
+// the hostels teachers' week census: the teacher's own week behind the personal link
+const weekPlan = require("./weekPlanRoutes").publicHandlers;
+router.get("/week-plans/:token", weekPlan.view);
+router.post("/week-plans/:token/entries", weekPlan.addEntry);
+router.put("/week-plans/:token/entries/:eid", weekPlan.saveEntry);
+router.delete("/week-plans/:token/entries/:eid", weekPlan.removeEntry);
+router.post("/week-plans/:token/done", weekPlan.done);
+
 // חדר כושר פרופיט (2026-10-29): the member's own signing page behind the personal link
 router.get("/gym/:token", gym.publicView);
 router.post("/gym/:token/sign", gym.publicSign);
