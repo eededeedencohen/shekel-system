@@ -47,6 +47,7 @@ const { linkExpiryFrom } = require("../utils/linkWindow");
 const { withTxn } = require("../utils/withTxn");
 const invoices = require("./invoiceService");
 const { Profile } = require("../models/profiles");
+const Enrollment = require("../models/Enrollment");
 const {
   INVOICE_ROUND_PROGRAMS, INVOICE_ROUND_PROGRAM_LABELS, INVOICE_LINK_DAYS, INVOICE_REQUEST_STATUS_LABELS, INVOICE_DUE_DAY,
   INVOICE_LINK_MODES, INVOICE_MATCH_TOLERANCE, INVOICE_CHECK_LABELS, INVOICE_DIFF_REASONS, INVOICE_DIFF_REASON_LABELS, INVOICE_AMOUNT_MAX, DEFAULT_HOURLY_RATE,
@@ -138,14 +139,19 @@ function hoursOf(session) {
 async function ratesOf(teacherIds) {
   const ids = [...new Set(teacherIds.map(String))];
   if (!ids.length) return new Map();
-  const profiles = await Profile.find({ person: { $in: ids }, kind: "Teacher" }).select("person hostelRate hourlyRate supplierNumber purchaseOrder monthlyHours").lean();
+  const profiles = await Profile.find({ person: { $in: ids }, kind: "Teacher" }).select("person hostelRate hourlyRate rateMode ratePrivate rateGroup rateTiers supplierNumber purchaseOrder monthlyHours").lean();
   const out = new Map();
-  for (const p of profiles) out.set(String(p.person), { hourly: p.hourlyRate ?? null, session: p.hostelRate ?? null, supplierNumber: p.supplierNumber || null, purchaseOrder: p.purchaseOrder || null, monthlyHours: p.monthlyHours ?? null });
+  for (const p of profiles) out.set(String(p.person), { hourly: p.hourlyRate ?? null, session: p.hostelRate ?? null, mode: p.rateMode || "fixed", private: p.ratePrivate ?? null, group: p.rateGroup ?? null, tiers: (p.rateTiers || []).map((t) => ({ from: t.from, value: t.value })), supplierNumber: p.supplierNumber || null, purchaseOrder: p.purchaseOrder || null, monthlyHours: p.monthlyHours ?? null });
   return out;
 }
 
 /** The rate that applies: the hourly one when set, else the hostels' per-session one on a hostels round, else the default 100 ₪ an hour (`default: true`, so every page says so). */
 function rateFor(rates, program) {
+  // an hour that is not one price (2026-11-18): by private / group, or by the number of students in the lesson -
+  // `value` is null there and every session answers its own (rateOfSession). A mode whose prices were not filled
+  // falls back to the one rate below.
+  if (rates?.mode === "format" && rates.private != null && rates.group != null) return { kind: "hour", mode: "format", private: rates.private, group: rates.group, value: null };
+  if (rates?.mode === "count" && rates.tiers?.length) return { kind: "hour", mode: "count", tiers: rates.tiers, value: null };
   if (rates?.hourly != null) return { kind: "hour", value: rates.hourly };
   if (rates?.session != null && program === "hostels") return { kind: "session", value: rates.session };
   return { kind: "hour", value: DEFAULT_HOURLY_RATE, default: true };
@@ -157,15 +163,106 @@ function rateFor(rates, program) {
  */
 function expectedOf(sessions, rate) {
   if (!rate) return null;
-  const out = { sum: 0, hours: 0, sessions: sessions.length, missingHours: 0, rate: rate.value, rateKind: rate.kind };
+  const out = { sum: 0, hours: 0, sessions: sessions.length, missingHours: 0, rate: rate.value ?? null, rateKind: rate.kind };
+  const varies = rate.mode === "format" || rate.mode === "count";
+  const parts = new Map();
   for (const s of sessions) {
     const h = hoursOf(s);
     if (h == null) out.missingHours++;
     else out.hours += h;
+    if (!varies || h == null) continue;
+    // an hour of more than one price: the hours are added up apart for every price
+    const key = partKeyOf(rate, s);
+    if (!parts.has(key)) parts.set(key, { key, hours: 0, sessions: 0, rate: rateOfSession(rate, s) });
+    const p = parts.get(key);
+    p.hours += h;
+    p.sessions++;
   }
-  out.hours = Math.round(out.hours * 100) / 100;
-  out.sum = rate.kind === "hour" ? Math.round(out.hours * rate.value * 100) / 100 : sessions.length * rate.value;
+  out.hours = round2(out.hours);
+  if (varies) {
+    out.parts = [...parts.values()].map((p) => ({ ...p, hours: round2(p.hours), sum: round2(p.hours * (p.rate || 0)) })).sort((a, b) => String(a.key).localeCompare(String(b.key), "en", { numeric: true }));
+    out.sum = round2(out.parts.reduce((n, p) => n + p.sum, 0));
+  } else out.sum = rate.kind === "hour" ? round2(out.hours * rate.value) : sessions.length * rate.value;
   return out;
+}
+
+const round2 = (n) => Math.round(n * 100) / 100;
+
+/** ₪ per hour of THIS session under the rate: the one price, or the session's own by its format / its students. */
+function rateOfSession(rate, s) {
+  if (!rate) return null;
+  if (rate.mode === "format") return s.format === "Private" ? rate.private : rate.group;
+  if (rate.mode === "count") {
+    const n = Math.max(1, s.students || 1);
+    let v = rate.tiers[0].value;
+    for (const t of rate.tiers) if (n >= t.from) v = t.value;
+    return v;
+  }
+  return rate.value;
+}
+/** Which price a session falls under: "private" / "group", or the tier it starts at ("n3"). */
+function partKeyOf(rate, s) {
+  if (rate.mode === "format") return s.format === "Private" ? "private" : "group";
+  const n = Math.max(1, s.students || 1);
+  let from = rate.tiers[0].from;
+  for (const t of rate.tiers) if (n >= t.from) from = t.from;
+  return `n${from}`;
+}
+/** What a session is paid: its hours by its own price (the hostels' per-session rate pays the session). */
+function payOfSession(rate, s) {
+  if (!rate) return null;
+  if (rate.kind === "session") return rate.value;
+  const h = hoursOf(s);
+  const v = rateOfSession(rate, s);
+  return h == null || v == null ? null : round2(h * v);
+}
+
+/**
+ * How many students sit in a session: the cycle's seats on that date - a seat of that hour or of the whole cycle,
+ * joined by then and not left before. Asked only for a rate by the number of students.
+ */
+async function rosterCounter(cycleIds) {
+  const ids = [...new Set(cycleIds.map(String))];
+  if (!ids.length) return () => null;
+  const [cycles, seats] = await Promise.all([
+    Cycle.find({ _id: { $in: ids } }).select("schedule").lean(),
+    Enrollment.find({ cycle: { $in: ids }, status: { $in: ["active", "completed", "left"] } }).select("cycle slotId joinedAt leftAt status").lean(),
+  ]);
+  const scheduleOf = new Map(cycles.map((c) => [String(c._id), c.schedule || []]));
+  const seatsOf = new Map();
+  for (const e of seats) {
+    const k = String(e.cycle);
+    if (!seatsOf.has(k)) seatsOf.set(k, []);
+    seatsOf.get(k).push(e);
+  }
+  return (s) => {
+    const k = String(s.cycle?._id || s.cycle);
+    const day = new Date(s.date);
+    const start = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()));
+    const end = new Date(start.getTime() + 86400000 - 1);
+    const slot = (scheduleOf.get(k) || []).find((x) => x.day === day.getUTCDay() && x.start === s.start);
+    let n = 0;
+    for (const e of seatsOf.get(k) || []) {
+      if (e.slotId && !(slot && String(e.slotId) === String(slot._id))) continue;
+      if (e.joinedAt && e.joinedAt > end) continue;
+      if (e.status !== "active" && !(e.leftAt && e.leftAt >= start)) continue;
+      n++;
+    }
+    return n;
+  };
+}
+
+/**
+ * Sessions as the arithmetic needs them when the rate is not one price: each with its `format` (the cycle's) and,
+ * for a rate by the number of students, its `students`. A one-price rate needs neither and gets the sessions back.
+ */
+async function ratedSessions(sessions, rate) {
+  if (!rate || (rate.mode !== "format" && rate.mode !== "count")) return sessions;
+  const cycleIds = [...new Set(sessions.map((s) => s.cycle && String(s.cycle._id || s.cycle)).filter(Boolean))];
+  const cycles = await Cycle.find({ _id: { $in: cycleIds } }).select("matching.format").lean();
+  const formatOf = new Map(cycles.map((c) => [String(c._id), c.matching?.format || "Group"]));
+  const count = rate.mode === "count" ? await rosterCounter(cycleIds) : null;
+  return sessions.map((s) => ({ cycle: s.cycle, date: s.date, start: s.start, end: s.end, format: s.cycle ? formatOf.get(String(s.cycle._id || s.cycle)) || "Group" : "Group", students: count && s.cycle && s.date ? count(s) : null }));
 }
 
 /** The verdict of a declared sum: match / low / high, and the difference; unknown without an expectation. */
@@ -336,7 +433,7 @@ async function factsOf(requests) {
   const lessonIds = [...new Set(requests.flatMap((r) => r.sessions.map((s) => s.lesson && String(s.lesson)).filter(Boolean)))];
   const months = [...new Set(requests.map((r) => dayKey(r.sessions[0]?.date || new Date()).slice(0, 7)))];
   const [cycles, lessons, invs, billed, drafts] = await Promise.all([
-    Cycle.find({ _id: { $in: cycleIds } }).select("subject hostel schedule").populate("subject", "name").populate("hostel", "name kind").lean(),
+    Cycle.find({ _id: { $in: cycleIds } }).select("subject hostel schedule matching.format").populate("subject", "name").populate("hostel", "name kind").lean(),
     Lesson.find({ _id: { $in: lessonIds } }).select("_id attendance teacher").lean(),
     Invoice.find({ request: { $in: requests.map((r) => r._id) } }).sort({ uploadedAt: -1 }).lean(),
     InvoiceLesson.find({ lesson: { $in: lessonIds } }).select("lesson invoice").lean(),
@@ -372,7 +469,10 @@ async function factsOf(requests) {
   const subById = new Map(subs.map((p) => [String(p._id), `${p.firstName || ""} ${p.lastName || ""}`.trim()]));
   const houseSaid = new Map();
   for (const d of drafts) for (const s of d.sessions || []) if (s.state) houseSaid.set(`${s.cycle}|${new Date(s.date).toISOString()}`, s.state);
+  // how many sit in a lesson is counted only when a teacher here is paid by it (a rate by the number of students)
+  const byCount = requests.length ? await Profile.exists({ person: { $in: requests.map((r) => r.teacher) }, kind: "Teacher", rateMode: "count" }) : null;
   return {
+    studentsOf: byCount ? await rosterCounter(cycleIds) : null,
     cycleById: new Map(cycles.map((c) => [String(c._id), c])),
     reported: new Set(lessons.filter((l) => (l.attendance || []).length > 0).map((l) => String(l._id))),
     presentByLesson: new Map(lessons.map((l) => [String(l._id), (l.attendance || []).filter((a) => a.status === "Present").length])),
@@ -400,6 +500,9 @@ function sessionView(s, facts, teacherId) {
     start: s.start,
     end: s.end,
     hours: hoursOf(s),
+    // what a rate that is not one price is read by: a private lesson or a group, and how many sit in it
+    format: facts.cycleById.get(String(s.cycle))?.matching?.format || "Group",
+    students: facts.studentsOf ? facts.studentsOf(s) : null,
     lesson,
     reported,
     present: reported ? facts.presentByLesson.get(lesson) || 0 : null,
@@ -453,6 +556,8 @@ function moneyOf(sessions, invs, rate) {
     rate: rate || null,
     expected: expectedAll ? expectedAll.sum : null,
     expectedBilled: expectedBilled ? expectedBilled.sum : null,
+    // an hour of more than one price: the billed hours under each price
+    parts: expectedBilled?.parts || null,
     hours: expectedAll ? expectedAll.hours : null,
     hoursBilled: expectedBilled ? expectedBilled.hours : null,
     missingHours: expectedAll ? expectedAll.missingHours : 0,
@@ -468,12 +573,12 @@ function moneyOf(sessions, invs, rate) {
 
 function requestView(r, facts, teacher, rates = null, program = "hostels") {
   const invs = facts.invoicesByRequest.get(String(r._id)) || [];
-  const sessions = r.sessions.map((s) => sessionView(s, facts, r.teacher));
-  const status = statusOf(r, invs.length);
   const rate = rateFor(rates, program);
+  const sessions = r.sessions.map((s) => sessionView(s, facts, r.teacher)).map((s) => ({ ...s, pay: payOfSession(rate, s) }));
+  const status = statusOf(r, invs.length);
   // `rate` (kept for the old readers) = ₪ per session in the hostels; `rates` = both, and the bookkeeping's facts
   const legacyRate = program === "hostels" ? rates?.session ?? null : null;
-  const who = { rate: legacyRate, rates: { hourly: rates?.hourly ?? null, session: rates?.session ?? null, supplierNumber: rates?.supplierNumber || null, purchaseOrder: rates?.purchaseOrder || null, monthlyHours: rates?.monthlyHours ?? null } };
+  const who = { rate: legacyRate, rates: { hourly: rates?.hourly ?? null, session: rates?.session ?? null, mode: rates?.mode || "fixed", private: rates?.private ?? null, group: rates?.group ?? null, tiers: rates?.tiers || [], supplierNumber: rates?.supplierNumber || null, purchaseOrder: rates?.purchaseOrder || null, monthlyHours: rates?.monthlyHours ?? null } };
   return {
     _id: r._id,
     round: r.round,
@@ -679,7 +784,7 @@ async function publicView(r) {
   for (const s of sessions) {
     const k = String(s.cycle?._id || "");
     if (!groups.has(k)) groups.set(k, { cycle: s.cycle, name: cycleName(facts.cycleById.get(k)), sessions: [] });
-    groups.get(k).sessions.push({ _id: s._id, date: s.date, start: s.start, end: s.end, hours: s.hours, reported: s.reported, present: s.present, houseSaid: s.houseSaid, invoice: s.invoice, substitute: s.substitute });
+    groups.get(k).sessions.push({ _id: s._id, date: s.date, start: s.start, end: s.end, hours: s.hours, format: s.format, students: s.students, reported: s.reported, present: s.present, houseSaid: s.houseSaid, invoice: s.invoice, substitute: s.substitute });
   }
   const invs = (facts.invoicesByRequest.get(String(r._id)) || []).map((i) => ({
     _id: i._id,
@@ -774,7 +879,7 @@ async function declaredFields(r, covered, { number, amount, reason, explanation 
   const rate = rateFor(rates.get(String(r.teacher)), round.program);
   // a college teacher with no rate on file is not measured against the made-up default: the sum is written down
   // and nothing is compared (the hostels keep their own rule - the default says so on every page)
-  const expectation = sum != null && !(round.program === "college" && rate.default) ? expectedOf(covered, rate) : null;
+  const expectation = sum != null && !(round.program === "college" && rate.default) ? expectedOf(await ratedSessions(covered, rate), rate) : null;
   const check = sum != null ? checkBlock(sum, expectation) : null;
   if (mode === "check" && check && (check.verdict === "low" || check.verdict === "high") && !why) throw AppError.of("INVOICE_EXPLAIN_REQUIRED", 400);
   return { number: num || undefined, amount: sum ?? undefined, declaredBy: "teacher", declaredAt: new Date(), check: check || undefined, explanation: why || undefined };
@@ -882,12 +987,12 @@ async function expectationOfInvoice(inv) {
   const byLesson = new Map((req?.sessions || []).filter((s) => s.lesson).map((s) => [String(s.lesson), s]));
   const sessions = lessons.map((l) => {
     const s = byLesson.get(String(l._id));
-    if (s) return s;
+    if (s) return { cycle: l.cycle, date: l.date, start: s.start, end: s.end };
     const dow = new Date(l.date).getUTCDay();
     const slot = (cycleById.get(String(l.cycle))?.schedule || []).find((x) => x.day === dow && x.start && x.end);
-    return slot ? { start: slot.start, end: slot.end } : {};
+    return slot ? { cycle: l.cycle, date: l.date, start: slot.start, end: slot.end } : { cycle: l.cycle, date: l.date };
   });
-  return expectedOf(sessions, rate);
+  return expectedOf(await ratedSessions(sessions, rate), rate);
 }
 
 /** The teacher takes an invoice back - only one that came through this link, while the month is open. */
@@ -1217,7 +1322,7 @@ async function ledgerRows({ roundId }) {
       request: r._id,
       supplierNumber: r.teacher.rates.supplierNumber || "",
       name: `${r.teacher.lastName || ""} ${r.teacher.firstName || ""}`.trim(),
-      hourlyRate: r.teacher.rates.hourly ?? "",
+      hourlyRate: r.money.rate?.mode === "format" ? `פרטני ${r.money.rate.private} · קבוצתי ${r.money.rate.group}` : r.money.rate?.mode === "count" ? r.money.rate.tiers.map((t) => `מ-${t.from} סטודנטים ${t.value}`).join(" · ") : r.teacher.rates.hourly ?? "",
       sessionRate: r.teacher.rates.session ?? "",
       hours: r.money.hoursBilled ?? "",
       sessions: r.counts.billed,

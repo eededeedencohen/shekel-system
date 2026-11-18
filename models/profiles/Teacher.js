@@ -21,6 +21,25 @@ const schema = new mongoose.Schema({
    * per-session hostels rate is the fallback.
    */
   hourlyRate: { type: Number, min: 0 },
+  /**
+   * How the hour is paid (Eden, 2026-11-18): `fixed` - one rate, `hourlyRate`;
+   * `format` - one rate for a private lesson and another for a group
+   * (`ratePrivate` / `rateGroup`, a cycle's matching.format says which);
+   * `count` - by how many students sit in the lesson (`rateTiers`: from that
+   * many students and up, this much an hour - the first tier starts at 1).
+   * All of them ₪ per hour including VAT, like `hourlyRate`.
+   */
+  rateMode: { type: String, enum: ["fixed", "format", "count"], default: "fixed" },
+  ratePrivate: { type: Number, min: 0 },
+  rateGroup: { type: Number, min: 0 },
+  rateTiers: {
+    type: [{ _id: false, from: { type: Number, min: 1, required: true }, value: { type: Number, min: 0, required: true } }],
+    default: undefined,
+    validate: {
+      validator: (list) => !list || !list.length || (list[0].from === 1 && list.every((t, i) => Number.isInteger(t.from) && (i === 0 || t.from > list[i - 1].from)) && list.length <= 12),
+      message: "מדרגות התעריף: הראשונה מסטודנט אחד, וכל מדרגה ממספר גדול מקודמתה",
+    },
+  },
   supplierNumber: { type: String, trim: true },
   purchaseOrder: { type: String, trim: true },
   monthlyHours: { type: Number, min: 0 },

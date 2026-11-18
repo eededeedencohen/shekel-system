@@ -220,7 +220,10 @@ function flattenPerson(person, profiles) {
     if (t.subjects !== undefined) p.subjects = t.subjects;
     if (t.hostelRate != null) p.hostelRate = t.hostelRate;
     // the bookkeeping's facts (2026-11-10) - flattened like the rate, null when not set so a page can tell "cleared" from "unknown"
-    for (const k of ["hourlyRate", "supplierNumber", "purchaseOrder", "monthlyHours"]) p[k] = t[k] ?? null;
+    for (const k of ["hourlyRate", "supplierNumber", "purchaseOrder", "monthlyHours", "ratePrivate", "rateGroup"]) p[k] = t[k] ?? null;
+    // how the hour is paid (2026-11-18): one rate, by private / group, or by the number of students
+    p.rateMode = t.rateMode || "fixed";
+    p.rateTiers = (t.rateTiers || []).map((x) => ({ from: x.from, value: x.value }));
   } else if (active.length) {
     p.role = active.some((x) => x.kind === "Admin") ? "Admin" : active[0].kind;
   }
