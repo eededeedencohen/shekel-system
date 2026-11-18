@@ -23,10 +23,14 @@ const rounds = require("../services/invoiceRoundService");
 const storedFiles = require("../services/storedFiles");
 const lens = require("../services/lensService");
 
-const isSuper = (req) => req.actor?.kind === "super";
+const { hasFeature } = require("../utils/auth");
+
+// the super admin, and whoever holds the "invoices" grant (2026-11-18): every program's invoices, never locked out
+const isSuper = (req) => hasFeature(req.actor, "invoices");
 
 /** The lens's sets for the invoice reads: the people (teachers) and the cycles whose lessons are the persona's. */
 const scopeSets = async (req) => {
+  if (isSuper(req)) return { people: null, cycleIds: null };
   const scope = lens.scopeOf(req);
   return { people: await scope.people(), cycleIds: await scope.cycleSet() };
 };

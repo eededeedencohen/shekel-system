@@ -9,6 +9,7 @@ const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/AppError");
 const rounds = require("../services/invoiceRoundService");
 const { lensOf } = require("../services/lensService");
+const { hasFeature } = require("../utils/auth");
 const files = require("../services/fileService");
 const storedFiles = require("../services/storedFiles");
 
@@ -16,8 +17,12 @@ const { linkAnswer } = require("../utils/publicUrl");
 
 const by = (req) => req.actor?.name || req.account?.name || "";
 
-/** Which programs' rounds the acting persona may see: hers alone, or every one. */
+/**
+ * Which programs' rounds the acting persona may see: hers alone, or every one. The "invoices" grant (2026-11-18,
+ * given to the hostels coordinator: "הרשאות לחשבוניות כמו שיש לי") is every one, like the super admin.
+ */
 function programsOf(req) {
+  if (hasFeature(req.actor, "invoices")) return null;
   const lens = lensOf(req.actor);
   if (lens.all) return null;
   if (lens.hostelsOnly) return ["hostels"];
@@ -109,7 +114,7 @@ exports.remove = catchAsync(async (req, res) => {
   res.status(204).json({ status: "success", data: null });
 });
 
-/** The super admin's corrections (requireSuper on the route): `{ action, … }` → `{ round, did }`. */
+/** The super admin's corrections - and whoever holds the "invoices" grant (the gate is on the route): `{ action, … }` → `{ round, did }`. */
 exports.admin = catchAsync(async (req, res) => {
   const round = await loadVisible(req);
   const { round: view, did } = await rounds.adminAction(round, req.body || {}, req.actor);

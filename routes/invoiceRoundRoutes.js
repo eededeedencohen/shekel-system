@@ -8,7 +8,11 @@
 const express = require("express");
 const router = express.Router();
 const c = require("../controllers/invoiceRoundController");
-const { requireSuper } = require("../utils/auth");
+const { hasFeature } = require("../utils/auth");
+const AppError = require("../utils/AppError");
+
+/** The corrections belong to the super admin and to whoever was given the "invoices" grant - as the ACTING one. */
+const requireInvoiceAdmin = (req, res, next) => (hasFeature(req.actor, "invoices") ? next() : next(AppError.of("AUTH_FORBIDDEN", 403)));
 
 router.route("/").get(c.list).post(c.open);
 router.route("/:id").get(c.getOne).delete(c.remove);
@@ -21,7 +25,8 @@ router.post("/:id/requests/:rid/reopen", c.reopen);
 router.post("/:id/requests/:rid/mode", c.setMode);
 // the month as her ledger sheet (2026-11-10)
 router.get("/:id/ledger.xlsx", c.ledgerXlsx);
-// the super admin's corrections (the state machine of 2026-10-22, section 08): resets and deletions, as himself only
-router.post("/:id/admin", requireSuper, c.admin);
+// the corrections (the state machine of 2026-10-22, section 08): resets and deletions - the super admin, and the
+// holder of the "invoices" grant
+router.post("/:id/admin", requireInvoiceAdmin, c.admin);
 
 module.exports = router;

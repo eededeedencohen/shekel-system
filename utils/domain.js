@@ -1013,7 +1013,11 @@ const GYM_STAGES = [
  * הרשאה לעובד נוסף לחדרי כושר"): a feature is switched on per account on
  * the users page; the super admin holds them all.
  */
-const STAFF_FEATURES = [{ key: "gym", label: "ניהול חדר כושר", desc: "העמוד של חדר הכושר, חברי חדר הכושר ברשימת הסטודנטים, שליחת ההסכם לחתימה" }];
+const STAFF_FEATURES = [
+  { key: "gym", label: "ניהול חדר כושר", desc: "העמוד של חדר הכושר, חברי חדר הכושר ברשימת הסטודנטים, שליחת ההסכם לחתימה" },
+  // Eden, 2026-11-18: "תן לשמרית… הרשאות לחשבוניות כמו שיש לי" - every program's rounds and the admin corrections
+  { key: "invoices", label: "כל החשבוניות", desc: "חשבוניות המורים של כל התוכניות, הוסטלים ומכללה לכל: מעקב, פתיחת סבב חודשי לכל תוכנית ותיקוני המנהל, כמו לסופר-מנהל" },
+];
 const STAFF_FEATURE_KEYS = STAFF_FEATURES.map((f) => f.key);
 
 /**
