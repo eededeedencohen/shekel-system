@@ -38,6 +38,17 @@ const utcDay = (str) => new Date(`${str}T00:00:00.000Z`);
 const addDays = (str, n) => new Date(utcDay(str).getTime() + n * DAY_MS).toISOString().slice(0, 10);
 /** A stored date as the day it means in Israel. */
 const dayOf = (date) => (date ? todayStr(new Date(date)) : null);
+/**
+ * The first day a report is still taken for: the window, and never later than the first of LAST month - the app
+ * offers this month's invoice and the last one's, and a lesson goes on an invoice only once it was reported
+ * (Eden, 2026-11-18), so every lesson of those two months has to stay reportable.
+ */
+const reportFrom = (today) => {
+  const window = addDays(today, -WINDOW_BACK_DAYS);
+  const [y, m] = today.split("-").map(Number);
+  const lastMonth = `${m === 1 ? y - 1 : y}-${String(m === 1 ? 12 : m - 1).padStart(2, "0")}-01`;
+  return lastMonth < window ? lastMonth : window;
+};
 
 const studentView = (p) => ({ _id: String(p._id), firstName: p.firstName || "", lastName: p.lastName || "", gender: p.gender || null, avatar: p.avatar || null });
 const windowView = (w) => ({ day: w.day, start: w.start, end: w.end, program: w.program || null });
@@ -57,12 +68,12 @@ async function teacherOf(personId) {
 
 /** The college courses this teacher teaches now (or ended inside the window). */
 const myCycles = (personId, today) =>
-  Cycle.find({ teacher: personId, hostel: null, status: "Active", endDate: { $gte: utcDay(addDays(today, -WINDOW_BACK_DAYS - 1)) } });
+  Cycle.find({ teacher: personId, hostel: null, status: "Active", endDate: { $gte: utcDay(addDays(reportFrom(today), -1)) } });
 
 async function board(personId) {
   const person = await teacherOf(personId);
   const today = todayStr();
-  const from = addDays(today, -WINDOW_BACK_DAYS);
+  const from = reportFrom(today);
   const [cycles, profile] = await Promise.all([
     myCycles(personId, today).populate({ path: "subject", select: "name" }).populate({ path: "schedule.room", select: "name" }).lean(),
     Profile.findOne({ person: person._id, kind: "Teacher" }).populate({ path: "subjects", select: "name" }).lean(),
@@ -75,7 +86,9 @@ async function board(personId) {
   ]);
   return {
     today,
+    // the lists and the red numbers look this far back; a report itself is taken from `reportFrom`
     windowDays: WINDOW_BACK_DAYS,
+    reportFrom: from,
     me: {
       _id: String(person._id),
       firstName: person.firstName || "",
@@ -132,7 +145,7 @@ async function markAttendance(personId, body) {
   if (!cycle) throw AppError.of("LESSON_NOT_YOURS", 403);
 
   const today = todayStr();
-  const inWindow = date <= today && date >= addDays(today, -WINDOW_BACK_DAYS);
+  const inWindow = date <= today && date >= reportFrom(today);
   // the course's own dates, a day of grace on each side (a date kept at local midnight reads a day off in UTC)
   const inCourse = (!cycle.startDate || date >= addDays(dayOf(cycle.startDate), -1)) && (!cycle.endDate || date <= addDays(dayOf(cycle.endDate), 1));
   const meets = (cycle.schedule || []).some((s) => s.day === day.getUTCDay());
@@ -203,6 +216,46 @@ async function markAttendance(personId, body) {
   return lessonView(lesson);
 }
 
+/**
+ * The sessions of a month that may not go on an invoice yet (Eden, 2026-11-18: "השיעורים שהוא לא דיווח נוכחות
+ * עליהם לא ייתאפשר שהם יסומנו"). `sessions`: [{ _id, cycle, date }]. Answers Map(session id → "ahead" | "report"):
+ *   - "ahead": the lesson has not taken place yet;
+ *   - "report": it took place, the teacher can report it here, and has not.
+ * A lesson with a mark on it is free. So is one that cannot be reported in the app at all - a course that is no
+ * longer his active college course, a day nobody was seated in it - or it would be shut out of every invoice.
+ */
+async function sessionsWaiting(personId, sessions) {
+  const out = new Map();
+  if (!sessions.length) return out;
+  const today = todayStr();
+  const from = reportFrom(today);
+  const cycleIds = [...new Set(sessions.map((s) => String(s.cycle)))];
+  const [lessons, cycles] = await Promise.all([
+    Lesson.find({ source: "live", cycle: { $in: cycleIds }, date: { $in: sessions.map((s) => s.date) }, "attendance.0": { $exists: true } }).select("cycle date").lean(),
+    Cycle.find({ _id: { $in: cycleIds }, teacher: personId, hostel: null, status: "Active" }).select("_id").lean(),
+  ]);
+  const reported = new Set(lessons.map((l) => `${l.cycle}|${new Date(l.date).toISOString()}`));
+  const mine = new Set(cycles.map((c) => String(c._id)));
+  const seats = await Enrollment.find({ cycle: { $in: [...mine] }, status: { $ne: "reserved" } }).select("cycle joinedAt registeredAt leftAt").lean();
+  for (const s of sessions) {
+    if (reported.has(`${s.cycle}|${new Date(s.date).toISOString()}`)) continue;
+    const date = dayOf(s.date);
+    if (date > today) {
+      out.set(String(s._id), "ahead");
+      continue;
+    }
+    if (date < from || !mine.has(String(s.cycle))) continue;
+    const seated = seats.some((e) => {
+      if (String(e.cycle) !== String(s.cycle)) return false;
+      const start = dayOf(e.joinedAt || e.registeredAt);
+      const end = dayOf(e.leftAt);
+      return (!start || date >= start) && (!end || date <= end);
+    });
+    if (seated) out.set(String(s._id), "report");
+  }
+  return out;
+}
+
 /** PATCH /api/teacher/availability - { windows: [{ day, start, end }] }: the teacher's OWN windows, whole. */
 async function saveAvailability(personId, windows) {
   if (!Array.isArray(windows) || windows.length > 60) throw AppError.of("MISSING_FIELDS", 400, "windows");
@@ -220,4 +273,4 @@ async function saveAvailability(personId, windows) {
   return (person.availability || []).map(windowView);
 }
 
-module.exports = { board, markAttendance, saveAvailability, todayStr, addDays, WINDOW_BACK_DAYS };
+module.exports = { board, markAttendance, saveAvailability, sessionsWaiting, reportFrom, todayStr, addDays, WINDOW_BACK_DAYS };

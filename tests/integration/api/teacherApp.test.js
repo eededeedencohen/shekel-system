@@ -209,7 +209,7 @@ describe("the teachers' app", () => {
     // the future, a day the course does not meet, a day before the window
     expect((await put({ cycle: X, date: addDays(w.date, 7), marks: [{ student: String(w.s1._id), status: "Present" }] })).body.code).toBe("LESSON_DATE_INVALID");
     expect((await put({ cycle: X, date: addDays(w.date, -1), marks: [{ student: String(w.s1._id), status: "Present" }] })).body.code).toBe("LESSON_DATE_INVALID");
-    expect((await put({ cycle: X, date: addDays(w.date, -42), marks: [{ student: String(w.s1._id), status: "Present" }] })).body.code).toBe("LESSON_DATE_INVALID");
+    expect((await put({ cycle: X, date: addDays(w.date, -70), marks: [{ student: String(w.s1._id), status: "Present" }] })).body.code).toBe("LESSON_DATE_INVALID");
     // a status that is not one of the three
     expect((await put({ cycle: X, date: w.date, marks: [{ student: String(w.s1._id), status: "Late" }] })).body.code).toBe("ATTENDANCE_INVALID");
     expect(await Lesson.countDocuments()).toBe(1);
@@ -308,6 +308,21 @@ describe("the teachers' app", () => {
 
     // the picture goes straight to the bucket, then is confirmed with the lessons it is for
     const sessions = view.courses[0].sessions.map((x) => x._id);
+    // a lesson goes on an invoice only once it took place and was reported: the view says which lessons wait
+    // ("ahead" - not yet taught, "report" - taught, not reported), and a confirm that names one is refused
+    const raw = view.courses[0].sessions;
+    expect(raw.every((x) => [null, "ahead", "report"].includes(x.waits))).toBe(true);
+    const today = todayStr();
+    expect(raw.filter((x) => todayStr(new Date(x.date)) > today).every((x) => x.waits === "ahead")).toBe(true);
+    const waiting = raw.find((x) => x.waits);
+    if (waiting) {
+      const early = await send("post", `/api/teacher/invoices/${rid}/upload-url`, { name: "early.png", mime: "image/png", size: PNG.length });
+      await storage.uploadTo(early.body.data.put, PNG);
+      expect((await send("post", `/api/teacher/invoices/${rid}/uploads/${early.body.data.fileId}/confirm`, { sessions: [waiting._id], number: "1", amount: 180 })).body.code).toBe("INVOICE_LESSON_NOT_REPORTED");
+    }
+    // reported (a mark on that day's lesson): free to be ticked
+    for (const x of raw.slice(0, 2)) await Lesson.create({ cycle: w.X._id, date: new Date(x.date), attendance: [{ student: w.s1._id, status: "Present" }] });
+    expect((await get(`/api/teacher/invoices/${rid}`)).body.data.view.courses[0].sessions.slice(0, 2).map((x) => x.waits)).toEqual([null, null]);
     const begin = await send("post", `/api/teacher/invoices/${rid}/upload-url`, { name: "nov.png", mime: "image/png", size: PNG.length });
     expect(begin.status).toBe(201);
     await storage.uploadTo(begin.body.data.put, PNG);

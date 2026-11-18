@@ -911,6 +911,7 @@ const ERROR_CODES = {
   DIARY_INVALID: "לרשומה ביומן חובה תאריך וכותרת",
   ATTENDANCE_REASON_INVALID: "סיבת היעדרות לא מוכרת",
   ATTENDANCE_REASON_REQUIRED: "להיעדרות בהודעה מראש בוחרים סיבה",
+  INVOICE_LESSON_NOT_REPORTED: "בחשבונית נכנסים רק שיעורים שהתקיימו ודווחה בהם נוכחות",
   ATTENDANCE_REASON_DETAIL_REQUIRED: "בסיבה אחרת כותבים מה הסיבה",
   // סקיצת הנוכחות מההוסטלים (שלב 3 של סבב שמרית)
   HOSTEL_REPORT_MONTH: "חודש הדיווח נכתב כ-YYYY-MM",

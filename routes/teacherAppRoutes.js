@@ -60,7 +60,13 @@ const mine = async (req, { write = false } = {}) => {
   if (write) rounds.assertMonthOpen(hit.round);
   return hit;
 };
-const view = async (res, r, round, status = 200) => ok(res, { view: await rounds.appView(r, round) }, status);
+/** The month as the app reads it; every lesson says whether it still waits ("ahead" / "report") before it may be ticked. */
+const view = async (res, r, round, status = 200) => {
+  const v = await rounds.appView(r, round);
+  const waits = await service.sessionsWaiting(r.teacher, r.sessions);
+  for (const c of v.courses) for (const s of c.sessions) s.waits = waits.get(String(s._id)) || null;
+  return ok(res, { view: v }, status);
+};
 const declared = (b = {}) => ({ number: b.number, amount: b.amount, reason: b.reason, explanation: b.explanation });
 const actorOf = (r) => ({ token: { kind: "invoiceRequest", request: r } });
 
@@ -106,6 +112,10 @@ router.post(
     // only a file this teacher began (the link's own check looks at the kind of the token alone)
     const row = /^[0-9a-f]{24}$/i.test(req.params.fileId) && (await StoredFile.findOne({ _id: req.params.fileId, family: "invoices", "owner.kind": "person", "owner.id": r.teacher }).select("_id").lean());
     if (!row) throw AppError.of("NOT_FOUND", 404, "קובץ");
+    // only lessons that took place and were reported go on an invoice
+    const waits = await service.sessionsWaiting(r.teacher, r.sessions);
+    const picked = Array.isArray((req.body || {}).sessions) ? req.body.sessions.map(String) : [];
+    if (picked.some((id) => waits.has(id))) throw AppError.of("INVOICE_LESSON_NOT_REPORTED", 400);
     await files.confirmUpload({ actor: actorOf(r), fileId: req.params.fileId, meta: { sessions: (req.body || {}).sessions, ...declared(req.body) } });
     const again = await rounds.loadTeacherRequest({ teacherId: me(req), requestId: req.params.rid });
     await view(res, again.r, round);
