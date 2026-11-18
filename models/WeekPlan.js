@@ -44,6 +44,12 @@ const weekPlanSchema = new mongoose.Schema(
     token: { type: String, required: true, unique: true },
     expiresAt: { type: Date, required: true },
     openedBy: { type: String, trim: true, maxlength: 80 },
+    /**
+     * The language the teacher's form opens in (Eden, 2026-11-18: the
+     * teachers of הוסטל השלום read it in Arabic and can switch to Hebrew).
+     * The staff's page is Hebrew either way.
+     */
+    lang: { type: String, enum: ["he", "ar"], default: "he" },
     /** the link's story */
     sentAt: Date,
     sentBy: { type: String, trim: true, maxlength: 80 },

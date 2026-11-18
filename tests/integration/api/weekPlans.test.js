@@ -120,4 +120,17 @@ describe("the hostels teachers' week census", () => {
     expect((await request(app).delete(`/api/week-plans/${plan._id}`)).status).toBe(204);
     expect(await WeekPlan.countDocuments()).toBe(0);
   });
+
+  it("a form opens in Hebrew unless Arabic is named, the staff can turn it, and the teacher's page is told", async () => {
+    const w = await world();
+    const [he] = (await request(app).post("/api/week-plans").send({ teachers: [String(w.tomer._id)] })).body.data.plans;
+    const [ar] = (await request(app).post("/api/week-plans").send({ teachers: [String(w.noa._id)], lang: "ar" })).body.data.plans;
+    expect([he.lang, ar.lang]).toEqual(["he", "ar"]);
+    const token = (await request(app).get(`/api/week-plans/${he._id}/link`)).body.data.link.token;
+    expect((await request(app).get(`/api/public/week-plans/${token}`)).body.data.view.lang).toBe("he");
+    expect((await request(app).post(`/api/week-plans/${he._id}/lang`).send({ lang: "ar" })).body.data.plan.lang).toBe("ar");
+    expect((await request(app).get(`/api/public/week-plans/${token}`)).body.data.view.lang).toBe("ar");
+    expect((await request(app).post(`/api/week-plans/${he._id}/lang`).send({ lang: "fr" })).status).toBe(400);
+    expect((await request(app).get("/api/week-plans")).body.data.plans.map((p) => p.lang).sort()).toEqual(["ar", "ar"]);
+  });
 });

@@ -22,11 +22,11 @@ router.get(
     res.status(200).json({ status: "success", data: await plans.list() });
   })
 );
-/** POST { teachers: [personId], until? } - a form for each of them (whoever has one keeps it). */
+/** POST { teachers: [personId], until?, lang? } - a form for each of them (whoever has one keeps it). */
 router.post(
   "/",
   catchAsync(async (req, res) => {
-    const made = await plans.open({ teachers: req.body?.teachers, until: req.body?.until, days: req.body?.days, by: by(req) });
+    const made = await plans.open({ teachers: req.body?.teachers, until: req.body?.until, days: req.body?.days, by: by(req), lang: req.body?.lang });
     res.status(201).json({ status: "success", data: { plans: made } });
   })
 );
@@ -40,6 +40,7 @@ router.get(
 );
 router.post("/:id/sent", catchAsync(async (req, res) => one(res, await plans.markSent({ id: req.params.id, by: by(req) }))));
 router.post("/:id/renew", catchAsync(async (req, res) => one(res, await plans.renew({ id: req.params.id, until: req.body?.until, days: req.body?.days }))));
+router.post("/:id/lang", catchAsync(async (req, res) => one(res, await plans.setLang({ id: req.params.id, lang: req.body?.lang }))));
 router.post("/:id/reopen", catchAsync(async (req, res) => one(res, await plans.reopen({ id: req.params.id }))));
 router.post("/:id/entries", catchAsync(async (req, res) => one(res, await plans.saveEntry({ id: req.params.id, data: req.body, by: by(req) }), 201)));
 router.put("/:id/entries/:eid", catchAsync(async (req, res) => one(res, await plans.saveEntry({ id: req.params.id, entryId: req.params.eid, data: req.body, by: by(req) }))));

@@ -27,6 +27,8 @@ const isId = (v) => mongoose.isValidObjectId(v);
 const makeToken = () => crypto.randomBytes(18).toString("base64url");
 const clean = (v, max) => String(v == null ? "" : v).trim().slice(0, max);
 const live = (p) => new Date(p.expiresAt).getTime() > Date.now();
+const LANGS = ["he", "ar"];
+const langOf = (v) => (LANGS.includes(v) ? v : "he");
 
 const TEACHER_FIELDS = "firstName lastName gender phone";
 const POP = [
@@ -57,6 +59,7 @@ const planView = (p) => ({
   expiresAt: p.expiresAt,
   live: live(p),
   openedBy: p.openedBy || "",
+  lang: langOf(p.lang),
   sentAt: p.sentAt || null,
   sentBy: p.sentBy || "",
   openedAt: p.openedAt || null,
@@ -123,7 +126,7 @@ async function list() {
 }
 
 /** Open a form for these teachers (whoever has one already keeps it). `until`: the day the links close. */
-async function open({ teachers, until, days, by }) {
+async function open({ teachers, until, days, by, lang }) {
   const ids = [...new Set((Array.isArray(teachers) ? teachers : []).map(String))].filter(isId);
   if (!ids.length) throw AppError.of("MISSING_FIELDS", 400, "teachers");
   const expiresAt = linkExpiryFrom({ until, days }, WEEK_PLAN_LINK_DAYS);
@@ -133,7 +136,7 @@ async function open({ teachers, until, days, by }) {
   for (const person of people) {
     if (have.has(String(person._id))) continue;
     try {
-      made.push(await WeekPlan.create({ teacher: person._id, token: makeToken(), expiresAt, openedBy: clean(by, 80) }));
+      made.push(await WeekPlan.create({ teacher: person._id, token: makeToken(), expiresAt, openedBy: clean(by, 80), lang: langOf(lang) }));
     } catch (err) {
       if (err?.code !== 11000) throw err; // a form of that teacher is there already
     }
@@ -158,6 +161,15 @@ async function markSent({ id, by }) {
 async function renew({ id, until, days }) {
   const p = await requirePlan(id);
   p.expiresAt = linkExpiryFrom({ until, days }, WEEK_PLAN_LINK_DAYS);
+  await p.save();
+  return shaped(p);
+}
+
+/** The language the teacher's form opens in (the teacher can switch on the page). */
+async function setLang({ id, lang }) {
+  if (!LANGS.includes(lang)) throw AppError.of("MISSING_FIELDS", 400, "lang");
+  const p = await requirePlan(id);
+  p.lang = lang;
   await p.save();
   return shaped(p);
 }
@@ -213,6 +225,7 @@ async function publicShape(p) {
   const own = (profile?.subjects || []).map((s) => s.name).filter(Boolean);
   return {
     teacher: { firstName: p.teacher?.firstName || "", gender: p.teacher?.gender || null },
+    lang: langOf(p.lang),
     expiresAt: p.expiresAt,
     live: live(p),
     submittedAt: p.submittedAt || null,
@@ -270,4 +283,4 @@ async function publicDone({ token, note }) {
   return publicShape(p);
 }
 
-module.exports = { list, open, link, markSent, renew, reopen, saveEntry, removeEntry, remove, publicView, publicSaveEntry, publicRemoveEntry, publicDone, WEEK_PLAN_LINK_DAYS };
+module.exports = { list, open, link, markSent, renew, reopen, setLang, saveEntry, removeEntry, remove, publicView, publicSaveEntry, publicRemoveEntry, publicDone, WEEK_PLAN_LINK_DAYS };
