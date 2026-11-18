@@ -90,8 +90,9 @@ function securityHeaders({ indexHtml } = {}) {
         "form-action": ["'self'"],
         "script-src": ["'self'", ...hashes],
         "worker-src": ["'self'", "blob:"],
-        "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
+        // the faces are the app's own files since 2026-11-18 (client/src/fonts.css) - no font server is allowed any more
+        "style-src": ["'self'", "'unsafe-inline'"],
+        "font-src": ["'self'", "data:"],
         "img-src": ["'self'", "data:", "blob:", ...bucket],
         "media-src": ["'self'", "data:", "blob:"],
         // data: and blob: too - the client turns a thumbnail's data URL into a Blob with fetch, and the PDF builders read blob: URLs

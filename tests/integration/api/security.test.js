@@ -20,7 +20,10 @@ describe("the response headers", () => {
     expect(csp).toMatch(/object-src 'none'/);
     expect(csp).toMatch(/connect-src 'self' data: blob: https:\/\/\*\.amazonaws\.com/);
     expect(csp).toMatch(/img-src 'self' data: blob: https:\/\/\*\.amazonaws\.com/);
-    expect(csp).toMatch(/style-src 'self' 'unsafe-inline' https:\/\/fonts\.googleapis\.com/);
+    // the faces are the app's own files (2026-11-18): no font server is named any more
+    expect(csp).toMatch(/style-src 'self' 'unsafe-inline'(;|$)/);
+    expect(csp).toMatch(/font-src 'self' data:(;|$)/);
+    expect(csp).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com/);
     expect(csp).toMatch(/worker-src 'self' blob:/);
     expect(csp).toMatch(/frame-ancestors 'self'/);
     expect(res.headers["x-content-type-options"]).toBe("nosniff");
