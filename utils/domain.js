@@ -365,6 +365,11 @@ const ACTIVITY_KINDS = [
   { key: "waiver", label: "ויתור סודיות", short: "ויתור סודיות" },
 ];
 const ACTIVITY_KIND_KEYS = ACTIVITY_KINDS.map((k) => k.key);
+/**
+ * The kinds of entry a written template (models/DocTemplate, Eden 2026-11-19) can be made for: the ones a
+ * person writes by hand from "+ תיעוד" (client lib/activities MANUAL_KINDS). A template with no kind serves any.
+ */
+const DOC_TEMPLATE_KINDS = ["followUp", "evaluation", "update", "hospitalization", "closure"];
 
 /**
  * ויתור סודיות (Eden, 2026-10-11, after the old system's form): the
@@ -822,6 +827,9 @@ const ERROR_CODES = {
   ACTIVITY_KIND_UNKNOWN: "סוג פעילות לא מוכר",
   ACTIVITY_FIELD_REQUIRED: "חסר שדה חובה בפעילות",
   TEMPLATE_INVALID: "התבנית לא תקינה",
+  TEMPLATE_NOT_YOURS: "התבנית הזו של מישהו אחר. אפשר להעתיק אותה לתבניות שלך ולשנות שם",
+  DOC_INVALID: "המסמך לא תקין",
+  DOC_TOO_LONG: "המסמך ארוך מדי",
   INCIDENT_INVALID: "בדיווח אירוע חריג חסרים פרטים: מתי, מי דיווח, סיווג ותיאור",
   LEAVE_REASON_INVALID: "סיבת העזיבה לא מוכרת",
   DOCUMENT_INVALID: "הקובץ לא נתמך - מותר PDF, תמונה או Word עד 8MB",
@@ -1164,6 +1172,7 @@ module.exports = {
   HOSTEL_REPORT_STATUS_LABELS,
   ACTIVITY_KINDS,
   ACTIVITY_KIND_KEYS,
+  DOC_TEMPLATE_KINDS,
   ACTIVITY_FIELD_TYPES,
   DEFAULT_ACTIVITY_TEMPLATES,
   WAIVER_PARTIES,

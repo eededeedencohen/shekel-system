@@ -25,6 +25,7 @@ const ActivityTemplate = require("../models/ActivityTemplate");
 const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
 const { personCond } = require("./lensService");
+const { cleanDoc, textOf, isEmptyDoc } = require("../utils/richDoc");
 const {
   ACTIVITY_KINDS,
   ACTIVITY_KIND_KEYS,
@@ -35,6 +36,16 @@ const {
 
 const clean = (s, max = 4000) => (s == null ? undefined : String(s).trim().slice(0, max) || undefined);
 const kindLabel = (k) => ACTIVITY_KINDS.find((x) => x.key === k)?.label || k;
+
+/**
+ * A designed text as it is kept: the checked tree and its plain lines (`body`). Nothing sent → null (the entry
+ * is plain words); a document with nothing written in it → no tree and no words.
+ */
+function richOf(doc) {
+  if (doc === undefined || doc === null) return null;
+  const clean = cleanDoc(doc);
+  return isEmptyDoc(clean) ? { doc: undefined, text: "" } : { doc: clean, text: textOf(clean).slice(0, 20000) };
+}
 
 /* ───────────────────────── templates ───────────────────────── */
 
@@ -143,19 +154,21 @@ async function requirePerson(personId) {
  * `skipRequired` lets a step that writes its own fields (the intake, the
  * first call, the leave report) skip the template's rules.
  */
-async function addActivity({ person, kind, at, by, title, body, fields, program, related, skipRequired = false }) {
+async function addActivity({ person, kind, at, by, title, body, doc, fields, program, related, skipRequired = false }) {
   if (!ACTIVITY_KIND_KEYS.includes(kind)) throw AppError.of("ACTIVITY_KIND_UNKNOWN", 400, kind);
   await requirePerson(person);
   const when = at ? new Date(at) : new Date();
   if (isNaN(when.getTime())) throw AppError.of("INVALID_DATE", 400);
   const template = await templateOf(kind);
+  const rich = richOf(doc);
   const row = await Activity.create({
     person,
     kind,
     at: when,
     by,
     title: clean(title, 120) || template.title,
-    body: clean(body, 8000) || "",
+    body: rich ? rich.text : clean(body, 8000) || "",
+    ...(rich?.doc && { doc: rich.doc }),
     fields: validateFields(template, fields, { skipRequired }),
     program: STUDENT_KINDS.includes(program) ? program : undefined,
     related: related || undefined,
@@ -164,7 +177,7 @@ async function addActivity({ person, kind, at, by, title, body, fields, program,
 }
 
 /** Edit the text, the date or the fields of a row (who edited is stamped). */
-async function updateActivity({ id, at, title, body, fields, by }) {
+async function updateActivity({ id, at, title, body, doc, fields, by }) {
   const row = await Activity.findOne({ _id: id });
   if (!row) throw AppError.of("NOT_FOUND", 404, "פעילות");
   if (at !== undefined) {
@@ -173,7 +186,21 @@ async function updateActivity({ id, at, title, body, fields, by }) {
     row.at = when;
   }
   if (title !== undefined) row.title = clean(title, 120) || row.title;
-  if (body !== undefined) row.body = clean(body, 8000) || "";
+  if (doc !== undefined) {
+    // the designed text: its plain lines are the body
+    const rich = richOf(doc);
+    row.doc = rich?.doc;
+    row.markModified("doc");
+    if (rich) row.body = rich.text;
+    else if (body !== undefined) row.body = clean(body, 8000) || "";
+  } else if (body !== undefined) {
+    row.body = clean(body, 8000) || "";
+    // plain words written over a designed text: the design is of the old words, it goes
+    if (row.doc) {
+      row.doc = undefined;
+      row.markModified("doc");
+    }
+  }
   if (fields !== undefined) {
     const template = await templateOf(row.kind);
     row.fields = validateFields(template, fields, { skipRequired: true });

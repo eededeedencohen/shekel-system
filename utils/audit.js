@@ -30,6 +30,14 @@ const SKIP = [/^\/auth\/(login|logout|forgot|ping|bye)$/, /^\/auth\/reset(\/|$)/
 /** The request path under /api - from originalUrl, which no router rewrites. */
 const pathOf = (req) => String(req.originalUrl || req.url || "").split("?")[0].replace(/^\/api(?=\/|$)/, "") || "/";
 
+/**
+ * A document that saves itself while it is written (a template - the "mini docs", 2026-11-19) sends a write every
+ * few seconds; one row tells the whole sitting: a later save by the same person of the same document, within
+ * SITTING_MS of the row, renews that row (its hour, its words) and writes no new one.
+ */
+const SITTING_ROUTES = new Set(["/doc-templates/:id"]);
+const SITTING_MS = 20 * 60 * 1000;
+
 const pending = new Set(); // the writes still in flight (the tests wait for them)
 
 function track(promise) {
@@ -50,6 +58,14 @@ async function record({ req, path, status, answer, ms, before, ip }) {
   }
   if (!desc.target.label && words.label) desc.target.label = words.label.slice(0, 120);
   const actor = req.actor || req.account;
+  if (req.method === "PATCH" && SITTING_ROUTES.has(desc.route) && desc.target.id) {
+    const last = await AuditEvent.findOne({ account: req.account._id, actor: actor._id, method: "PATCH", route: desc.route, "target.id": desc.target.id, at: { $gte: new Date(Date.now() - SITTING_MS) } }).sort({ at: -1 });
+    if (last) {
+      Object.assign(last, { at: new Date(), status, target: desc.target, payload: desc.payload, summary: words.summary, facts: words.facts, changes: words.changes, ip, ms });
+      await last.save();
+      return;
+    }
+  }
   await AuditEvent.create({
     at: new Date(),
     account: req.account._id,

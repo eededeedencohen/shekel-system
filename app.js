@@ -115,6 +115,8 @@ app.use("/api/suppliers", require("./routes/supplierRoutes"));
 // לשונית פעילויות + אירועים חריגים (the social worker's round, 2026-10-07):
 // a person's record with editable templates, and incident reports.
 app.use("/api/activities", require("./routes/activityRoutes"));
+// the staff's written templates - "מיני docs" (Eden, 2026-11-19): everyone reads, the one who made it changes
+app.use("/api/doc-templates", require("./routes/docTemplateRoutes"));
 app.use("/api/incidents", require("./routes/incidentRoutes"));
 // הספרייה - books (scanned in, details from booknet / Google Books) and
 // their loans: one copy per book, return days skip Fri/Shabbat.

@@ -3,8 +3,8 @@
  * @module controllers/activityController
  *
  *   GET    /?person=&kind=         the rows, newest first
- *   POST   /                       { person*, kind*, at, by, title, body, fields, program }
- *   PATCH  /:id                    { at, title, body, fields, by }
+ *   POST   /                       { person*, kind*, at, by, title, body | doc, fields, program }
+ *   PATCH  /:id                    { at, title, body | doc, fields, by }   (`doc` = the designed text, utils/richDoc)
  *   DELETE /:id
  *   GET    /templates              every kind's template (stored or default)
  *   GET    /templates/:kind
@@ -36,6 +36,7 @@ exports.createActivity = catchAsync(async (req, res) => {
     by: byOf(req),
     title: b.title,
     body: b.body,
+    doc: b.doc,
     fields: b.fields,
     program: b.program,
   });
@@ -44,7 +45,7 @@ exports.createActivity = catchAsync(async (req, res) => {
 
 exports.updateActivity = catchAsync(async (req, res) => {
   const b = req.body || {};
-  const activity = await activities.updateActivity({ id: req.params.id, at: b.at, title: b.title, body: b.body, fields: b.fields, by: byOf(req) });
+  const activity = await activities.updateActivity({ id: req.params.id, at: b.at, title: b.title, body: b.body, doc: b.doc, fields: b.fields, by: byOf(req) });
   res.status(200).json({ status: "success", data: { activity } });
 });
 

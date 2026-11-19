@@ -29,6 +29,12 @@ const activitySchema = new mongoose.Schema(
     by: { type: String, trim: true },
     title: { type: String, trim: true },
     body: { type: String, trim: true },
+    /**
+     * The same text WITH its design, when it was written in the designed editor (2026-11-19): a tree of known
+     * blocks and marks (utils/richDoc), never HTML. `body` always holds its plain lines, so every older reader
+     * (previews, the timeline, a search) goes on working.
+     */
+    doc: { type: mongoose.Schema.Types.Mixed },
     /** The template's small fields - { attendance: "סדירה", motivation: "גבוהה", … }. */
     fields: { type: mongoose.Schema.Types.Mixed, default: {} },
     program: { type: String, enum: STUDENT_KINDS },

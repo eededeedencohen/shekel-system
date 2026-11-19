@@ -47,6 +47,7 @@ const NOUNS = {
   intakes: ["תיק קליטה", "intake"],
   suppliers: ["תיק ספק", "supplier"],
   activities: ["תיעוד", "activity"],
+  "doc-templates": ["תבנית", "docTemplate"],
   incidents: ["אירוע חריג", "incident"],
   library: ["ספר", "book"],
   invoices: ["חשבונית", "invoice"],
@@ -191,6 +192,10 @@ const RULES = [
   ["DELETE", "/activities/:id", "מחיקת תיעוד", "activity", "delete"],
   ["PUT", "/activities/templates/*", "עריכת תבנית תיעוד", "activity", "update"],
   ["DELETE", "/activities/templates/*", "איפוס תבנית תיעוד", "activity", "other"],
+  // the staff's written templates
+  ["POST", "/doc-templates", "תבנית חדשה", "docTemplate", "create"],
+  ["PATCH", "/doc-templates/:id", "עריכת תבנית", "docTemplate", "update"],
+  ["DELETE", "/doc-templates/:id", "מחיקת תבנית", "docTemplate", "delete"],
   ["POST", "/incidents", "דיווח אירוע חריג", "incident", "create"],
   ["PATCH", "/incidents/:id", "עריכת אירוע חריג", "incident", "update"],
   // הספרייה

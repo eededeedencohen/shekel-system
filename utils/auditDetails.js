@@ -45,6 +45,8 @@ const Lesson = require("../models/Lesson");
 const StoredFile = require("../models/StoredFile");
 const { Tag } = require("../models/Tag");
 const GymMembership = require("../models/GymMembership");
+const DocTemplate = require("../models/DocTemplate");
+const { textOf } = require("./richDoc");
 const D = require("./domain");
 
 const ID_RE = /^[0-9a-f]{24}$/i;
@@ -95,6 +97,7 @@ const KINDS = {
   InvoiceRound: { model: InvoiceRound, select: "month program", name: (r) => `${monthHe(r.month)} · ${D.INVOICE_ROUND_PROGRAM_LABELS[r.program] || r.program}` },
   HostelReport: { model: HostelReport, select: "hostel month", populate: [["hostel", "name"]], name: (r) => `${r.hostel?.name || "בית"} · ${monthHe(r.month)}` },
   DiaryEntry: { model: DiaryEntry, select: "title kind date", name: (d) => d.title },
+  DocTemplate: { model: DocTemplate, select: "name kind ownerName doc", name: (t) => t.name },
   Lesson: { model: Lesson, select: "cycle date", populate: [["cycle", "subject hostel"]], name: (l) => fmtDate(l.date) },
   StoredFile: { model: StoredFile, select: "name family", name: (f) => f.name },
   GymMembership: { model: GymMembership, select: "person membership contract.signedAt", populate: [["person", "firstName lastName"]], name: (m) => personName(m.person) },
@@ -122,6 +125,7 @@ const TARGET_BY_ROUTE = [
   [/^\/invoices\/:id/, "Invoice"],
   [/^\/invoice-rounds\/:id/, "InvoiceRound"],
   [/^\/diary\/:id/, "DiaryEntry"],
+  [/^\/doc-templates\/:id/, "DocTemplate"],
   [/^\/tags\/people\/:id/, "Person"],
   [/^\/accounts\/:id/, "StaffAccount"],
   [/^\/files\/:id/, "StoredFile"],
@@ -362,6 +366,8 @@ const FIELD_HEB = {
   text: "טקסט",
   done: "בוצע",
   body: "תוכן",
+  doc: "הטקסט",
+  copiedFrom: "הועתקה מ",
   step: "שלב",
   target: "יעד",
   primary: "סיווג ראשי",
@@ -495,6 +501,11 @@ function valueText(key, v, names, depth = 0) {
   }
   if (typeof v === "object") {
     if (v._id && names[asId(v)]) return names[asId(v)];
+    // a designed text (utils/richDoc): its words, not its tree
+    if (key === "doc" && v.type === "doc") {
+      const words = textOf(v).replace(/\s+/g, " ").trim();
+      return !words ? "ריק" : words.length > 140 ? words.slice(0, 140) + "…" : words;
+    }
     if (depth >= 2) return "{…}";
     return Object.entries(v)
       .filter(([k, x]) => x !== undefined && !SECRET.test(k))
