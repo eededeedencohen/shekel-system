@@ -22,6 +22,8 @@ router.post("/password", c.changePassword);
 router.patch("/username", c.changeUsername);
 // my own display preferences (2026-11-12: the diary's design), kept on the account
 router.patch("/prefs", c.setPrefs);
+// the app's look for everyone (2026-11-19: the opening animation, the headers' design) - the super admin's to change
+router.put("/look", c.setLook);
 router.get("/staff", c.staff);
 // the presence heartbeat (2026-10-29): the browser says "still here" once a minute while its tab is visible
 router.post("/ping", c.ping);

@@ -13,6 +13,7 @@ const auth = require("../services/authService");
 const { setSessionCookie, clearSessionCookie, tokenOf } = require("../utils/auth");
 const { clientIp } = require("../utils/clientIp");
 const presence = require("../services/presenceService");
+const appLook = require("../services/appLookService");
 
 const ok = (res, data, code = 200) => res.status(code).json({ status: "success", data });
 
@@ -20,7 +21,8 @@ exports.login = catchAsync(async (req, res) => {
   // the lockout keys on req.ip (one hop, like the rate limiter); the sign-in row records the person's own address
   const { account, token } = await auth.login({ ...req.body, ip: req.ip, userAgent: req.get("user-agent"), clientIp: clientIp(req) });
   setSessionCookie(req, res, token);
-  ok(res, { account });
+  // the app's look comes with the sign-in (see `me`)
+  ok(res, { account, look: await appLook.get() });
 });
 
 exports.logout = catchAsync(async (req, res) => {
@@ -29,7 +31,20 @@ exports.logout = catchAsync(async (req, res) => {
   ok(res, {});
 });
 
-exports.me = (req, res) => ok(res, { account: auth.publicAccount(req.account) });
+/**
+ * Who am I - and with it the app's look (services/appLookService: the opening animation and the headers' design the
+ * super admin chose for everyone), so the opening knows what to play before anything else is asked.
+ */
+exports.me = catchAsync(async (req, res) => ok(res, { account: auth.publicAccount(req.account), look: await appLook.get() }));
+
+/**
+ * The super admin changes the app's look - for everyone. His own account's (`req.account`), also while he is
+ * viewing as someone: the setting is his, not the viewed person's.
+ */
+exports.setLook = catchAsync(async (req, res) => {
+  if (!req.account || req.account.kind !== "super") throw AppError.of("AUTH_FORBIDDEN", 403);
+  ok(res, { look: await appLook.set(req.body || {}, req.account.name || req.account.username || "") });
+});
 
 /** The heartbeat: authenticate already touched the session (services/presenceService); nothing to add. */
 exports.ping = (req, res) => res.status(204).end();
