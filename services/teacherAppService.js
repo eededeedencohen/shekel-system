@@ -9,7 +9,9 @@
  * account's own person id - no id of a teacher ever comes from the request.
  *
  *   board(personId)                       the teacher, the college courses he teaches, who sits in them (a name
- *                                         and a face - nothing else of a student), the lessons of the last weeks
+ *                                         and a face - nothing else of a student), the lessons of the last weeks;
+ *                                         and `me.teaching` - the HOURS he teaches in every program (a house's
+ *                                         course is hours and a subject there, nothing more)
  *   markAttendance(personId, body)        marks on ONE day of ONE of his courses, merged into that day's lesson
  *   saveAvailability(personId, windows)   his own free windows (the programs' windows stay as the staff set them)
  *
@@ -70,6 +72,40 @@ async function teacherOf(personId) {
 const myCycles = (personId, today) =>
   Cycle.find({ teacher: personId, hostel: null, status: "Active", endDate: { $gte: utcDay(addDays(reportFrom(today), -1)) } });
 
+/**
+ * The hours this teacher teaches every week, in EVERY program - a house's course too (the app shows such a course
+ * nowhere else, but its hours are just as taken). The board of the free hours keeps them shut (Eden, 2026-11-22:
+ * "שיופיעו להם בזמינות כבר השעות שהם מלמדים אבל נעול - כלומר שאי אפשר לערוך"). The same lessons the staff's board
+ * shows there (client TeacherAvailability `busy`): a course that has not ended, and a college course past its end
+ * date that was still reported after it - it is taught in practice. Of a course: its hours, its subject, whose it
+ * is - nothing of who sits in it.
+ */
+async function teachingOf(personId, today, collegeCycles, lessons) {
+  const running = await Cycle.find({ teacher: personId, status: "Active", endDate: { $gte: utcDay(addDays(today, -1)) } })
+    .select("subject schedule hostel endDate")
+    .populate({ path: "subject", select: "name" })
+    .populate({ path: "hostel", select: "name" })
+    .lean();
+  const lastReport = new Map();
+  for (const l of lessons) {
+    const day = new Date(l.date).toISOString().slice(0, 10);
+    const key = String(l.cycle);
+    if (!lastReport.has(key) || lastReport.get(key) < day) lastReport.set(key, day);
+  }
+  const taught = [
+    ...running.filter((c) => dayOf(c.endDate) >= today),
+    ...collegeCycles.filter((c) => dayOf(c.endDate) < today && (lastReport.get(String(c._id)) || "") > dayOf(c.endDate)),
+  ];
+  const out = [];
+  for (const c of taught) {
+    for (const s of c.schedule || []) {
+      if (!Number.isInteger(s.day) || !s.start || !s.end || !(s.start < s.end)) continue;
+      out.push({ day: s.day, start: s.start, end: s.end, subject: c.subject?.name || "", program: c.hostel ? "hostels" : "college", place: c.hostel?.name || "" });
+    }
+  }
+  return out.sort((a, b) => a.day - b.day || a.start.localeCompare(b.start) || a.program.localeCompare(b.program));
+}
+
 async function board(personId) {
   const person = await teacherOf(personId);
   const today = todayStr();
@@ -84,6 +120,7 @@ async function board(personId) {
     Enrollment.find({ cycle: { $in: ids }, status: { $ne: "reserved" } }).select("cycle student status slotId joinedAt registeredAt leftAt").populate({ path: "student", select: "firstName lastName gender avatar deletedAt" }).lean(),
     Lesson.find({ cycle: { $in: ids }, source: "live", date: { $gte: utcDay(from), $lte: utcDay(today) } }).select("cycle date attendance.student attendance.status attendance.note attendance.reason").lean(),
   ]);
+  const teaching = await teachingOf(personId, today, cycles, lessons);
   return {
     today,
     // the lists and the red numbers look this far back; a report itself is taken from `reportFrom`
@@ -99,6 +136,8 @@ async function board(personId) {
       email: person.email && !person.email.endsWith("placeholder.local") ? person.email : "",
       subjects: (profile?.subjects || []).map((s) => s?.name).filter(Boolean),
       availability: (person.availability || []).map(windowView),
+      // the hours he teaches, every program: shut on the board of his free hours
+      teaching,
     },
     cycles: cycles.map((c) => ({
       _id: String(c._id),

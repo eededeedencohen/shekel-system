@@ -162,6 +162,22 @@ describe("the teachers' app", () => {
     expect(JSON.stringify(b)).not.toContain("052-9999999");
   });
 
+  test("the hours he teaches: every program's, a course that ended only while it is still reported", async () => {
+    const w = await world();
+    const t = await teacherIn(w);
+    const ended = { teacher: w.T._id, startDate: new Date(`${addDays(w.date, -90)}T00:00:00.000Z`), endDate: new Date(`${addDays(w.date, -10)}T00:00:00.000Z`) };
+    // V ended ten days ago and was reported since: taught in practice. W ended and was not: gone
+    const V = await makeCycle({ ...ended, schedule: [{ day: w.day, start: "12:00", end: "13:00" }] });
+    await makeCycle({ ...ended, schedule: [{ day: w.day, start: "15:00", end: "16:00" }] });
+    await Lesson.create({ cycle: V._id, date: new Date(`${addDays(w.date, -7)}T00:00:00.000Z`), attendance: [] });
+    const b = (await request(app).get("/api/teacher/board").set("Cookie", t.cookie)).body.data;
+    // X, the house's Z (hours and a subject - it is no course of the app) and V; not another teacher's Y, not W
+    expect(b.me.teaching.map((x) => `${x.day} ${x.start}-${x.end} ${x.program}`)).toEqual([`${w.day} 10:00-10:45 college`, `${w.day} 10:00-10:45 hostels`, `${w.day} 12:00-13:00 college`]);
+    for (const x of b.me.teaching) expect(Object.keys(x).sort()).toEqual(["day", "end", "place", "program", "start", "subject"]);
+    expect(b.me.teaching[1].place).toBeTruthy();
+    expect(b.cycles.map((c) => c._id)).not.toContain(String(w.Z._id));
+  });
+
   test("attendance: his course, a day it meets, not the future, only who sits in it; other marks stay", async () => {
     const w = await world();
     const t = await teacherIn(w);
