@@ -42,6 +42,11 @@ const staffAccountSchema = new mongoose.Schema(
     features: { type: [{ type: String, enum: STAFF_FEATURE_KEYS }], default: [] },
     /** The look of this person's diary (DIARY_DESIGNS; theirs to choose in the settings - PATCH /auth/prefs). */
     diaryDesign: { type: String, enum: DIARY_DESIGNS, default: DIARY_DESIGNS[0] },
+    /**
+     * The staff member's own avatar (Eden, 2026-11-22: "תן גם לעובדים לעצב את האווטאר שלהם") - the app's own kind
+     * (client lib/avatarArt.js): a small flat config its owner dresses (PATCH /auth/prefs, cleaned there).
+     */
+    avatar: { type: mongoose.Schema.Types.Mixed, default: null },
     active: { type: Boolean, default: true },
     passwordHash: { type: String, required: true, select: false },
     passwordChangedAt: { type: Date, default: null },

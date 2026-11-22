@@ -151,6 +151,29 @@ describe("auth", () => {
     expect((await request(app).get("/api/auth/me").set("Cookie", cookie)).status).toBe(401);
   });
 
+  test("a staff member dresses their own avatar: kept on the account by PATCH /auth/prefs, seen by the others in the staff list, cleaned and refused when it is not the app's plain kind (2026-11-22)", async () => {
+    const { res, cookie } = await signIn("tamar");
+    expect(res.body.data.account.avatar).toBeNull();
+    const mine = { style: "shekel", head: "oval", skin: "ecb98f", hair: "fade", hat: "knit", hatColor: "3f6fc0", beard: null, lashes: true };
+    const set = await request(app).patch("/api/auth/prefs").set("Cookie", cookie).send({ avatar: mine });
+    expect(set.status).toBe(200);
+    expect(set.body.data.account.avatar).toEqual(mine);
+    expect((await request(app).get("/api/auth/me").set("Cookie", cookie)).body.data.account.avatar).toEqual(mine);
+    // the others see it beside the name; nobody else's changed
+    const eden = await signIn("eden");
+    const staff = (await request(app).get("/api/auth/staff").set("Cookie", eden.cookie)).body.data.staff;
+    expect(staff.find((s) => s.name === res.body.data.account.name).avatar).toEqual(mine);
+    expect((await StaffAccount.findOne({ username: "eden" })).avatar).toBeNull();
+    // only the app's own plain kind: no other style, no drawing or markup inside, no heap of values
+    for (const bad of [{ style: "lorelei" }, { style: "shekel", hair: "<svg onload=x>" }, { style: "shekel", "bad key": "x" }, { style: "shekel", hair: { a: 1 } }, "shekel", [], { style: "shekel", ...Object.fromEntries(Array.from({ length: 45 }, (_, i) => ["k" + "abcdefghij"[i % 10] + "abcdefghij"[Math.floor(i / 10)], "x"])) }]) {
+      expect((await request(app).patch("/api/auth/prefs").set("Cookie", cookie).send({ avatar: bad })).status).toBe(400);
+    }
+    expect((await StaffAccount.findOne({ username: "tamar" })).avatar).toEqual(mine);
+    // taken off again
+    expect((await request(app).patch("/api/auth/prefs").set("Cookie", cookie).send({ avatar: null })).body.data.account.avatar).toBeNull();
+    expect((await request(app).patch("/api/auth/prefs").send({ avatar: mine })).status).toBe(401);
+  });
+
   test("the diary's design is the account's own: the first by default, changed by PATCH /auth/prefs, refused when unknown (2026-11-12)", async () => {
     const { res, cookie } = await signIn("tamar");
     expect(res.body.data.account.diaryDesign).toBe("cork");

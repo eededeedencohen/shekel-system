@@ -69,6 +69,8 @@ const publicAccount = (a) => ({
   features: Array.isArray(a.features) ? a.features : [],
   /** The look of this person's diary (an account written before the designs wears the first). */
   diaryDesign: DIARY_DESIGNS.includes(a.diaryDesign) ? a.diaryDesign : DIARY_DESIGNS[0],
+  /** The staff member's own avatar (the app's own kind), or none. */
+  avatar: a.avatar || null,
   defaultPassword: !a.passwordChangedAt,
 });
 
@@ -206,11 +208,32 @@ async function changePassword(accountId, { current, next }, keepToken) {
 }
 
 /**
- * One's own display preferences, kept on the account so they follow the person to every device. Today:
- * `diaryDesign`. Always the SIGNED-IN account's - viewing as someone never changes their preferences.
+ * An avatar as an account may keep it: the app's own kind, and nothing but a few plain values - a name of letters
+ * to a short word of letters and digits (a choice, a colour), a yes / no, or nothing. What the page draws is looked
+ * up in its own tables, so a config can carry no drawing of its own; this keeps it small and plain all the same.
+ */
+function cleanAvatar(value) {
+  if (value === null) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value) || value.style !== "shekel") throw AppError.of("PREFS_INVALID", 400);
+  const keys = Object.keys(value);
+  if (keys.length > 40) throw AppError.of("PREFS_INVALID", 400);
+  const out = {};
+  for (const key of keys) {
+    const v = value[key];
+    const plain = v === null || typeof v === "boolean" || (typeof v === "string" && /^[a-zA-Z0-9]{1,24}$/.test(v));
+    if (!/^[a-zA-Z]{1,20}$/.test(key) || !plain) throw AppError.of("PREFS_INVALID", 400);
+    out[key] = v;
+  }
+  return out;
+}
+
+/**
+ * One's own display preferences, kept on the account so they follow the person to every device: `diaryDesign`,
+ * and `avatar` (2026-11-22). Always the SIGNED-IN account's - viewing as someone never changes their preferences.
  */
 async function setPrefs(accountId, body) {
   const patch = {};
+  if ("avatar" in body) patch.avatar = cleanAvatar(body.avatar);
   if ("diaryDesign" in body) {
     if (!DIARY_DESIGNS.includes(body.diaryDesign)) throw AppError.of("PREFS_INVALID", 400);
     patch.diaryDesign = body.diaryDesign;
@@ -302,13 +325,14 @@ async function listAccounts() {
  * staff: they join only for the super admin's "צפה בתור" (`teachers: true`), each with its teacher's person id.
  */
 async function staffDirectory({ teachers = false } = {}) {
-  const rows = await StaffAccount.find({ active: true, ...(teachers ? {} : { kind: { $ne: "teacher" } }) }).sort({ createdAt: 1 }).select("name title kind features person").lean();
+  const rows = await StaffAccount.find({ active: true, ...(teachers ? {} : { kind: { $ne: "teacher" } }) }).sort({ createdAt: 1 }).select("name title kind features person avatar").lean();
   return rows.map((a) => ({
     _id: String(a._id),
     name: a.name,
     title: a.title || "",
     kind: a.kind,
     features: Array.isArray(a.features) ? a.features : [],
+    avatar: a.avatar || null,
     ...(a.kind === "teacher" ? { person: a.person ? String(a.person) : null } : {}),
   }));
 }
