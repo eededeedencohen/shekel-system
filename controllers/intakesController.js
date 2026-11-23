@@ -231,6 +231,7 @@ exports.createLink = catchAsync(async (req, res) => {
   const link = await intake.createUploadLink({
     intake: doc,
     minutes: req.body.minutes,
+    until: req.body.until,
     docs: req.body.docs,
     by: byOf(req),
     note: req.body.note,

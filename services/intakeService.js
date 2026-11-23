@@ -60,6 +60,7 @@ const Waiver = require("../models/Waiver");
 const Enrollment = require("../models/Enrollment");
 const Subject = require("../models/Subject");
 const AppError = require("../utils/AppError");
+const { LINK_MAX_DAYS } = require("../utils/linkWindow");
 const {
   STUDENT_KINDS,
   PROGRAM_LABELS,
@@ -431,6 +432,11 @@ async function submitLanding({ body = {} }) {
 /* ───────────────────────── links ───────────────────────── */
 
 const linkLabel = (minutes) => UPLOAD_LINK_MINUTES.find((m) => m.key === minutes)?.label || `${minutes} דקות`;
+/** "25.11.2026 בשעה 18:00" - a moment by Israel's clock, for the record's log. */
+const fmtMoment = (d) => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).formatToParts(d).map((x) => [x.type, x.value]));
+  return `${Number(p.day)}.${Number(p.month)}.${p.year} בשעה ${p.hour}:${p.minute}`;
+};
 
 /**
  * A temporary upload link (the social worker: 10 minutes / half an hour /
@@ -439,21 +445,35 @@ const linkLabel = (minutes) => UPLOAD_LINK_MINUTES.find((m) => m.key === minutes
  * the link when the answer comes. `docs` narrows the page to particular
  * documents.
  */
-async function createUploadLink({ intake, minutes, docs, by, note }) {
-  const m = Number(minutes);
-  if (!UPLOAD_LINK_MINUTES.some((x) => x.key === m)) throw AppError.of("LINK_MINUTES_INVALID", 400);
+async function createUploadLink({ intake, minutes, until, docs, by, note }) {
+  // until a moment the coordinator named (Eden, 2026-11-23: "שלא יהיה זמנים מוחלטים אלא אפשרות לבחור עד תאריך
+  // מסוים, אפילו ושעה באותו תאריך") - or for one of the fixed spans, as before
+  let expiresAt;
+  let m;
+  let span;
+  if (until != null && until !== "") {
+    expiresAt = new Date(until);
+    const t0 = Date.now();
+    if (isNaN(expiresAt.getTime()) || expiresAt.getTime() <= t0 + 60000 || expiresAt.getTime() > t0 + LINK_MAX_DAYS * 86400000) throw AppError.of("LINK_UNTIL_PAST", 400);
+    span = `פתוח עד ${fmtMoment(expiresAt)}`;
+  } else {
+    m = Number(minutes);
+    if (!UPLOAD_LINK_MINUTES.some((x) => x.key === m)) throw AppError.of("LINK_MINUTES_INVALID", 400);
+    expiresAt = new Date(Date.now() + m * 60000);
+    span = `ל${/^\d/.test(linkLabel(m)) ? "-" : ""}${linkLabel(m)}`; // "ל-24 שעות", "לשעה"
+  }
   const t = crypto.randomBytes(18).toString("base64url");
   const keys = [...new Set((Array.isArray(docs) ? docs : []).filter((k) => DOC_BY_KEY[k]))];
   const link = await UploadLink.create({
     intake: intake._id,
     token: t,
-    minutes: m,
-    expiresAt: new Date(Date.now() + m * 60000),
+    ...(m && { minutes: m }),
+    expiresAt,
     docs: keys,
     createdBy: by,
     note: clean(note, 200),
   });
-  intake.log.push({ action: "link", by, note: `נוצר קישור להעלאה ל${linkLabel(m)}${keys.length ? ` · ${labelsOf(keys).join(", ")}` : ""}` });
+  intake.log.push({ action: "link", by, note: `נוצר קישור להעלאה ${span}${keys.length ? ` · ${labelsOf(keys).join(", ")}` : ""}` });
   await intake.save();
   return link;
 }
@@ -701,6 +721,9 @@ async function setDocumentStatus({ intake, key, status, by, note, validUntil, si
   const label = def.label;
   const now = new Date();
   if (status === "received") {
+    // a document is received only when its file stands in the record (Eden, 2026-11-23: "אי אפשר ללחוץ התקבל אם
+    // אין קובץ שם שהתקבל"). A row that was marked before the rule keeps its mark, and its date can still be renewed.
+    if (!d.file?.name && d.status !== "received") throw AppError.of("DOCUMENT_FILE_REQUIRED", 400);
     let extra = "";
     if (def.validity === "dated") {
       const until = parseDate(validUntil);
@@ -876,7 +899,11 @@ async function markDone({ intake, at, by, waiverSigned, summary, fields }) {
   intake.done = { at: when, by, ...(waiverSigned && { waiverSignedAt: when }), summary: text };
   if (waiverSigned) {
     const waiver = docOf(intake, "waiver");
-    if (!docOk(waiver, DOC_BY_KEY.waiver)) {
+    // signed on paper at the meeting: the meeting says so; the document itself is received only once the signed
+    // form is in the record (a form already uploaded and waiting is confirmed here, with the meeting's date)
+    if (!docOk(waiver, DOC_BY_KEY.waiver) && !waiver.file?.name) {
+      intake.log.push({ action: "note", at: when, by, note: `${DOC_BY_KEY.waiver.label} נחתם על נייר בפגישה · הטופס החתום עוד לא בתיק` });
+    } else if (!docOk(waiver, DOC_BY_KEY.waiver)) {
       waiver.status = "received";
       waiver.receivedAt = when;
       waiver.receivedBy = by;

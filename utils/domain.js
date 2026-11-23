@@ -820,6 +820,8 @@ const ERROR_CODES = {
   INTAKE_ALREADY_DONE: "האינטייק כבר בוצע",
   INTAKE_COMPLETE: "הקליטה כבר הושלמה",
   DOCUMENT_DATE_REQUIRED: "למסמך הזה חובה לשייך את תאריך התוקף הנקוב בו",
+  DOCUMENT_FILE_REQUIRED: "מסמך מסומן כ\"התקבל\" רק כשהקובץ שלו בתיק. מעלים את הקובץ, ואז מאשרים אותו",
+  LINK_UNTIL_PAST: "הרגע שבו הקישור נסגר צריך להיות בעתיד, ולכל היותר שנה קדימה",
   SHKEDIA_DATE_REQUIRED: "לקליטה בשקדיה חובה תאריך",
   LINK_MINUTES_INVALID: "משך הקישור חייב להיות 10 דקות, חצי שעה, שעה או 24 שעות",
   DOCUMENT_UNKNOWN: "סוג מסמך לא מוכר",

@@ -40,11 +40,20 @@ const stageOf = async (personId, kind) => (await Profile.findOne({ person: perso
 const dayStr = (daysFromNow) => new Date(Date.now() + daysFromNow * 86400000).toISOString().slice(0, 10);
 const NEXT_YEAR = dayStr(365);
 
-/** Staff tick - the dated report always carries its expiry. */
-const tick = (intakeId, key, body = {}) =>
-  request(app)
+/** A file of the staff's on a document (a dated report with no date only waits). */
+const staffFile = (intakeId, key, body = {}) =>
+  request(app).post(`/api/intakes/${intakeId}/documents`).send({ key, fileName: `${key}.png`, mime: "image/png", data: PNG_1PX, by: "ייטב", ...body });
+/**
+ * Staff tick - the dated report always carries its expiry. A document is received only when its file is in the
+ * record (2026-11-23), so a row with no file gets one first.
+ */
+const tick = async (intakeId, key, body = {}) => {
+  const row = (await Intake.findById(intakeId)).documents.find((d) => d.key === key);
+  if (!row?.file?.name) await staffFile(intakeId, key);
+  return request(app)
     .patch(`/api/intakes/${intakeId}/documents/${key}`)
     .send({ status: "received", by: "ייטב", ...(key === "psychiatric" && { validUntil: NEXT_YEAR }), ...body });
+};
 /** The coordinator entered the person in שקדיה. */
 const enterShkedia = (intakeId, body = {}) =>
   request(app).patch(`/api/intakes/${intakeId}/shkedia`).send({ enteredAt: dayStr(0), by: "נעה", decisionNo: "12345", ...body });
@@ -243,6 +252,26 @@ describe("temporary upload links", () => {
     const list = await request(app).get(`/api/intakes/${intakeId}/links`);
     expect(list.body.results).toBe(1);
   });
+
+  it("a link can be open until a named moment - a day and an hour - instead of a fixed span", async () => {
+    const { intakeId } = (await submit({})).body.data;
+    const post = (body) => request(app).post(`/api/intakes/${intakeId}/links`).send({ docs: ["waiver"], ...body });
+    // a moment that passed, one that is not a moment, one further than a year: refused
+    for (const until of [new Date(Date.now() - 3600000).toISOString(), "מחר", new Date(Date.now() + 400 * 86400000).toISOString()]) {
+      expect((await post({ until })).body.code).toBe("LINK_UNTIL_PAST");
+    }
+    const when = new Date(Date.now() + 3 * 86400000);
+    when.setUTCHours(15, 30, 0, 0); // 17:30 / 18:30 in Israel
+    const made = await post({ until: when.toISOString(), minutes: 10 });
+    expect(made.status).toBe(201);
+    const link = made.body.data.link;
+    expect(new Date(link.expiresAt).toISOString()).toBe(when.toISOString()); // the moment itself, whatever `minutes` said
+    expect(link.minutes).toBeUndefined();
+    expect(made.body.data.intake.log.at(-1).note).toMatch(/נוצר קישור להעלאה פתוח עד \d+\.\d+\.\d{4} בשעה 1[78]:30 · /);
+    expect((await request(app).get(`/api/public/join/${link.token}`)).status).toBe(200);
+    // the fixed spans still stand
+    expect((await post({ minutes: 60 })).body.data.link.minutes).toBe(60);
+  });
 });
 
 describe("the social worker's flow", () => {
@@ -303,20 +332,56 @@ describe("the social worker's flow", () => {
     expect(await stageOf(intake.person, "StudentCulture")).toBe("Placed");
   });
 
-  it("the waiver ticked at the meeting counts as signed there, good for a year; a student's own upload completes the rest", async () => {
+  it("a document is received only when its file is in the record; one marked before the rule keeps its mark", async () => {
+    const { intakeId } = (await submit({})).body.data;
+    const mark = (key, body = {}) => request(app).patch(`/api/intakes/${intakeId}/documents/${key}`).send({ status: "received", by: "ייטב", ...body });
+    for (const key of ["psychosocial", "socialClub"]) expect((await mark(key)).body.code).toBe("DOCUMENT_FILE_REQUIRED");
+    expect((await mark("psychiatric", { validUntil: NEXT_YEAR })).body.code).toBe("DOCUMENT_FILE_REQUIRED");
+    expect((await mark("waiver", { signedAt: dayStr(-1) })).body.code).toBe("DOCUMENT_FILE_REQUIRED");
+    expect((await Intake.findById(intakeId)).documents.every((d) => d.status !== "received")).toBe(true);
+    // "לא נדרש" and a reply need no file
+    expect((await request(app).patch(`/api/intakes/${intakeId}/documents/socialClub`).send({ status: "waived", by: "ייטב" })).status).toBe(200);
+    // with the file there, the same press is taken
+    await staffFile(intakeId, "psychiatric");
+    expect((await mark("psychiatric")).body.code).toBe("DOCUMENT_DATE_REQUIRED");
+    expect((await mark("psychiatric", { validUntil: NEXT_YEAR })).body.data.intake.documents.find((d) => d.key === "psychiatric").status).toBe("received");
+    // a row that was marked received with no file before the rule: it stays, and its date can still be renewed
+    await Intake.updateOne({ _id: intakeId, "documents.key": "waiver" }, { $set: { "documents.$.status": "received", "documents.$.signedAt": new Date("2026-01-10") } });
+    const renewed = await mark("waiver", { signedAt: dayStr(-2) });
+    expect(renewed.status).toBe(200);
+    expect(renewed.body.data.intake.documents.find((d) => d.key === "waiver").status).toBe("received");
+  });
+
+  it("the waiver ticked at the meeting is a fact of the meeting; the document is received once the signed form is in the record", async () => {
     const { token, intakeId } = (await submit({})).body.data;
     const intake = await Intake.findById(intakeId);
     await request(app).post("/api/intakes/schedule").send({ person: intake.person, at: "2026-09-15T10:00:00", by: "ייטב" });
     const done = await request(app).post(`/api/intakes/${intakeId}/done`).send({ by: "ייטב", waiverSigned: true, at: "2026-09-15T10:00:00" });
-    const waiver = done.body.data.intake.documents.find((d) => d.key === "waiver");
+    expect(done.body.data.intake.done.waiverSignedAt).toBeTruthy();
+    expect(done.body.data.intake.documents.find((d) => d.key === "waiver")?.status || "missing").toBe("missing");
+    expect(done.body.data.intake.log.some((l) => /נחתם על נייר בפגישה/.test(l.note || ""))).toBe(true);
+    // the signed form goes up with the date it was signed on: received, good for a year from there
+    const up = await staffFile(intakeId, "waiver", { signedAt: "2026-09-15T10:00:00" });
+    const waiver = up.body.data.intake.documents.find((d) => d.key === "waiver");
     expect(waiver.status).toBe("received");
     expect(waiver.validUntil.slice(0, 10)).toBe("2027-09-15");
     await tick(intakeId, "psychiatric");
     await enterShkedia(intakeId);
     expect(await stageOf(intake.person, "StudentCulture")).toBe("Intake");
-    const up = await request(app).post(`/api/public/join/${token}/documents`).send({ key: "psychosocial", fileName: "ps.png", mime: "image/png", data: PNG_1PX });
-    expect(up.body.data.view.complete).toBe(true);
+    const last = await request(app).post(`/api/public/join/${token}/documents`).send({ key: "psychosocial", fileName: "ps.png", mime: "image/png", data: PNG_1PX });
+    expect(last.body.data.view.complete).toBe(true);
     expect(await stageOf(intake.person, "StudentCulture")).toBe("Placed");
+  });
+
+  it("a signed form that already waits in the record is confirmed by the meeting's tick", async () => {
+    const { token, intakeId } = (await submit({})).body.data;
+    const intake = await Intake.findById(intakeId);
+    await request(app).post(`/api/public/join/${token}/documents`).send({ key: "waiver", fileName: "w.png", mime: "image/png", data: PNG_1PX });
+    await request(app).post("/api/intakes/schedule").send({ person: intake.person, at: "2026-09-15T10:00:00", by: "ייטב" });
+    const done = await request(app).post(`/api/intakes/${intakeId}/done`).send({ by: "ייטב", waiverSigned: true, at: "2026-09-15T10:00:00" });
+    const waiver = done.body.data.intake.documents.find((d) => d.key === "waiver");
+    expect(waiver.status).toBe("received");
+    expect(waiver.validUntil.slice(0, 10)).toBe("2027-09-15");
   });
 
   it("מכללה לכל: a reserved seat parks the lead at Intake; a complete file → AwaitingPlacement; the start date → Placed", async () => {
@@ -389,6 +454,7 @@ describe("the social worker's flow", () => {
 
   it("דוח פסיכיאטרי needs the date written in it; an expired one keeps the file open; a new date renews it", async () => {
     const { token, intakeId } = (await submit({})).body.data;
+    await staffFile(intakeId, "psychiatric"); // the report itself is in the record; what is asked now is its date
     const noDate = await request(app).patch(`/api/intakes/${intakeId}/documents/psychiatric`).send({ status: "received", by: "ייטב" });
     expect(noDate.body.code).toBe("DOCUMENT_DATE_REQUIRED");
     const badDate = await request(app).patch(`/api/intakes/${intakeId}/documents/psychiatric`).send({ status: "received", by: "ייטב", validUntil: "soon" });
@@ -398,6 +464,7 @@ describe("the social worker's flow", () => {
     const intake = await Intake.findById(intakeId);
     await request(app).post("/api/intakes/schedule").send({ person: intake.person, at: "2026-09-15T10:00:00", by: "ייטב" });
     await request(app).post(`/api/intakes/${intakeId}/done`).send({ by: "ייטב", waiverSigned: true });
+    await tick(intakeId, "waiver");
     await tick(intakeId, "psychosocial");
     await enterShkedia(intakeId);
     const expired = await tick(intakeId, "psychiatric", { validUntil: "2025-01-01" });
@@ -427,7 +494,7 @@ describe("the social worker's flow", () => {
     const intake = await Intake.findById(intakeId);
     await request(app).post("/api/intakes/schedule").send({ person: intake.person, at: "2026-09-15T10:00:00", by: "ייטב" });
     await request(app).post(`/api/intakes/${intakeId}/done`).send({ by: "ייטב", waiverSigned: true });
-    for (const key of ["psychiatric", "psychosocial"]) await tick(intakeId, key);
+    for (const key of ["psychiatric", "psychosocial", "waiver"]) await tick(intakeId, key);
     expect((await Intake.findById(intakeId)).status).toBe("documents");
     const entered = await enterShkedia(intakeId, { decisionNo: "77" });
     // the שקדיה entry, then the completion it caused
