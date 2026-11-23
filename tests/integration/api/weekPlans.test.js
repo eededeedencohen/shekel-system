@@ -133,4 +133,52 @@ describe("the hostels teachers' week census", () => {
     expect((await request(app).post(`/api/week-plans/${he._id}/lang`).send({ lang: "fr" })).status).toBe(400);
     expect((await request(app).get("/api/week-plans")).body.data.plans.map((p) => p.lang).sort()).toEqual(["ar", "ar"]);
   });
+
+  it("one person's form for several teachers: a fresh start sets the old aside, and every lesson names its teacher", async () => {
+    const w = await world();
+    const [mine, hers] = (await request(app).post("/api/week-plans").send({ teachers: [String(w.tomer._id), String(w.noa._id)] })).body.data.plans.sort((a) => (a.teacher.firstName === "תומר" ? -1 : 1));
+    const token = (await request(app).get(`/api/week-plans/${mine._id}/link`)).body.data.link.token;
+    const herToken = (await request(app).get(`/api/week-plans/${hers._id}/link`)).body.data.link.token;
+    // what stood before: a lesson of his handed in, a word of hers with no lesson
+    await request(app).post(`/api/public/week-plans/${token}/entries`).send(entry(w));
+    await request(app).post(`/api/public/week-plans/${token}/done`).send({ note: "" });
+    await request(app).post(`/api/public/week-plans/${herToken}/done`).send({ note: "בהוסטל משלוש עד ארבע" });
+    await request(app).post(`/api/week-plans/${mine._id}/sent`);
+
+    const fresh = (await request(app).post(`/api/week-plans/${mine._id}/aside`)).body.data.plan;
+    expect(fresh).toMatchObject({ entries: [], note: "", submittedAt: null, sentAt: null, opens: 0, openedAt: null });
+    expect(fresh.aside).toHaveLength(1);
+    expect(fresh.aside[0]).toMatchObject({ subject: "קרמיקה", by: "teacher" });
+    // twice sets nothing more aside
+    expect((await request(app).post(`/api/week-plans/${mine._id}/aside`)).body.data.plan.aside).toHaveLength(1);
+
+    expect((await request(app).post(`/api/week-plans/${mine._id}/cover`).send({ teachers: [] })).status).toBe(400);
+    expect((await request(app).post(`/api/week-plans/${mine._id}/cover`).send({ teachers: [String(w.noa._id)], hostel: String(w.subject._id) })).status).toBe(400);
+    const covered = (await request(app).post(`/api/week-plans/${mine._id}/cover`).send({ teachers: [String(w.noa._id)], hostel: String(w.hostel._id) })).body.data.plan;
+    expect(covered.covers.map((c) => c.firstName)).toEqual(["תומר", "נועה"]);
+    expect(covered.coversHostel).toMatchObject({ name: "השלום" });
+
+    // the filler's page: who the form is for, and what stands in each one's own form
+    const view = (await request(app).get(`/api/public/week-plans/${token}`)).body.data.view;
+    expect(view.covers.map((c) => c.name)).toEqual(["תומר דורון", "נועה שכטר"]);
+    expect(view.others).toEqual([{ _id: String(w.noa._id), name: "נועה שכטר", lessons: 0, note: "בהוסטל משלוש עד ארבע" }]);
+    expect(view).toMatchObject({ asideLessons: 1, entries: [], coversHostel: { name: "השלום" } });
+
+    // a lesson with no teacher, or with one who is not of the form, is refused - by the link and by the staff
+    const post = (body) => request(app).post(`/api/public/week-plans/${token}/entries`).send(body);
+    expect((await post(entry(w))).body.code).toBe("WEEK_PLAN_ENTRY_TEACHER");
+    expect((await post(entry(w, { teacher: String(w.hostel._id) }))).body.code).toBe("WEEK_PLAN_ENTRY_TEACHER");
+    expect((await request(app).post(`/api/week-plans/${mine._id}/entries`).send(entry(w))).body.code).toBe("WEEK_PLAN_ENTRY_TEACHER");
+    const one = await post(entry(w, { teacher: String(w.noa._id) }));
+    expect(one.status).toBe(201);
+    expect(one.body.data.view.entries[0]).toMatchObject({ teacher: { _id: String(w.noa._id), firstName: "נועה" }, by: "teacher", byName: "תומר דורון" });
+    // the staff correct it, and can hand the lesson to another teacher of the form
+    const id = one.body.data.view.entries[0]._id;
+    const turned = (await request(app).put(`/api/week-plans/${mine._id}/entries/${id}`).send(entry(w, { teacher: String(w.tomer._id), day: 3 }))).body.data.plan;
+    expect(turned.entries[0]).toMatchObject({ day: 3, by: "staff", teacher: { firstName: "תומר" } });
+    // a form of one teacher keeps no teacher on its lessons, whatever is sent
+    const plain = (await request(app).post(`/api/week-plans/${hers._id}/entries`).send(entry(w, { teacher: String(w.tomer._id) }))).body.data.plan;
+    expect(plain.entries[0].teacher).toBeNull();
+    expect(JSON.stringify((await request(app).get("/api/week-plans")).body)).not.toMatch(/"token"/);
+  });
 });

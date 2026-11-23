@@ -936,6 +936,7 @@ const ERROR_CODES = {
   HOSTEL_REPORT_NOT_IN_LIST: "האדם הזה לא ברשימת הקורס",
   HOSTEL_REPORT_REASON_REQUIRED: "על מי שלא הגיע/ה חובה לסמן סיבה",
   WEEK_PLAN_ENTRY_INVALID: "לשיעור צריך יום, שעת התחלה ושעת סיום אחריה, מה מלמדים, באיזה הוסטל ואיפה",
+  WEEK_PLAN_ENTRY_TEACHER: "בטופס הזה בוחרים לכל שיעור את המורה שמלמד אותו, מתוך המורים של הטופס",
   WEEK_PLAN_LINK_CLOSED: "הקישור נסגר. אפשר לבקש מהרכזת לפתוח אותו שוב",
   WEEK_PLAN_EMPTY: "אין עדיין שיעורים בשבוע. מוסיפים שיעור, או כותבים מילה אם אין שיעורים קבועים",
   HOSTEL_REPORT_APPROVED: "המפגש הזה כבר אושר",

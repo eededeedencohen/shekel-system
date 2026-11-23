@@ -10,6 +10,10 @@
  * sent, opened and handed in) and the entries of the week - each one
  * written by the teacher through the link or by the staff on their page,
  * and stamped with who wrote it.
+ *
+ * A form can also be ONE person's for several teachers (`covers`): then each
+ * lesson names its teacher. And what was written before a fresh start is set
+ * `aside`, kept but not counted.
  */
 
 const mongoose = require("mongoose");
@@ -30,6 +34,8 @@ const entrySchema = new mongoose.Schema(
     /** where the lesson takes place: in the house, or at שק״ל */
     place: { type: String, enum: ["hostel", "shekel"], required: true },
     note: { type: String, trim: true, maxlength: 200 },
+    /** the teacher of THIS lesson, in a form one person fills for several teachers (`covers`); null: the form's own teacher */
+    teacher: { type: mongoose.Schema.Types.ObjectId, ref: "Person", default: null },
     /** who wrote it last */
     by: { type: String, enum: ["teacher", "staff"], required: true },
     byName: { type: String, trim: true, maxlength: 80 },
@@ -61,6 +67,22 @@ const weekPlanSchema = new mongoose.Schema(
     /** the teacher's word with the form (also: "I have no fixed lessons") */
     note: { type: String, trim: true, maxlength: 500 },
     entries: [entrySchema],
+    /**
+     * A form ONE person fills for several teachers (Eden, 2026-11-23: "אני רוצה
+     * שחוסאם ימלא עבור כל המורים של הוסטל השלום"): the teachers it is filled
+     * for - the filler among them - and the house they are the teachers of.
+     * Every lesson of such a form names its teacher (`entries.teacher`).
+     */
+    covers: [{ type: mongoose.Schema.Types.ObjectId, ref: "Person" }],
+    coversHostel: { type: mongoose.Schema.Types.ObjectId, ref: "Hostel", default: null },
+    /**
+     * What was written before and is not counted any more ("את הדברים הישנים
+     * שלו לא נתייחס אליהם"): kept as it was, out of every view of the week.
+     */
+    aside: [entrySchema],
+    asideNote: { type: String, trim: true, maxlength: 500 },
+    asideAt: Date,
+    asideBy: { type: String, trim: true, maxlength: 80 },
   },
   { timestamps: true }
 );

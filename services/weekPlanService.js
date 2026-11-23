@@ -6,6 +6,11 @@
  *
  * Nothing here reads or writes a course: it is a list of what people SAY
  * their week is, to be settled into the real data later, by hand.
+ *
+ * A form can be ONE person's for several teachers (`cover`; Eden, 2026-11-23:
+ * "אני רוצה שחוסאם ימלא עבור כל המורים של הוסטל השלום… כל שיעור חייבים לשייך
+ * לו מורה"): then every lesson names its teacher, one of the form's. And what
+ * was written before a fresh start is set aside (`setAside`): kept, not counted.
  */
 
 const crypto = require("crypto");
@@ -31,10 +36,18 @@ const LANGS = ["he", "ar"];
 const langOf = (v) => (LANGS.includes(v) ? v : "he");
 
 const TEACHER_FIELDS = "firstName lastName gender phone";
+const NAME_FIELDS = "firstName lastName gender";
 const POP = [
   { path: "teacher", select: TEACHER_FIELDS },
   { path: "entries.hostel", select: "name kind" },
+  { path: "entries.teacher", select: NAME_FIELDS },
+  { path: "aside.hostel", select: "name kind" },
+  { path: "covers", select: NAME_FIELDS },
+  { path: "coversHostel", select: "name kind" },
 ];
+const nameView = (x) => (x && x._id ? { _id: String(x._id), firstName: x.firstName || "", lastName: x.lastName || "", gender: x.gender || null } : null);
+const houseView = (h) => (h && h._id ? { _id: String(h._id), name: h.name || "", kind: h.kind || "hostel" } : null);
+const fullName = (x) => `${x?.firstName || ""} ${x?.lastName || ""}`.trim();
 
 const entryView = (e) => ({
   _id: String(e._id),
@@ -46,6 +59,8 @@ const entryView = (e) => ({
   hostelName: e.hostelName || "",
   place: e.place,
   note: e.note || "",
+  // whose lesson it is, where the form is one person's for several teachers
+  teacher: nameView(e.teacher),
   by: e.by,
   byName: e.byName || "",
   at: e.at,
@@ -69,6 +84,13 @@ const planView = (p) => ({
   submittedAt: p.submittedAt || null,
   note: p.note || "",
   entries: sortEntries(p.entries || []).map(entryView),
+  // one person's form for several teachers: who they are, and of which house
+  covers: (p.covers || []).map(nameView).filter(Boolean),
+  coversHostel: houseView(p.coversHostel),
+  // what was written before and is not counted any more
+  aside: sortEntries(p.aside || []).map(entryView),
+  asideNote: p.asideNote || "",
+  asideAt: p.asideAt || null,
   createdAt: p.createdAt,
 });
 
@@ -79,8 +101,13 @@ const requirePlan = async (id) => {
 };
 const shaped = async (p) => planView(await p.populate(POP));
 
-/** An entry as it may be kept: every field checked, the house one of ours or a typed name. */
-async function entryOf(data, who) {
+const coverIds = (p) => (p.covers || []).map((x) => String(x._id || x));
+
+/**
+ * An entry as it may be kept: every field checked, the house one of ours or a typed name. In a form filled for
+ * several teachers (`plan.covers`) the lesson must name its teacher, one of them; in any other form it has none.
+ */
+async function entryOf(data, who, plan) {
   const d = data || {};
   const day = Number(d.day);
   const start = String(d.start || "");
@@ -95,7 +122,10 @@ async function entryOf(data, who) {
   }
   const good = Number.isInteger(day) && day >= 0 && day <= 4 && HHMM.test(start) && HHMM.test(end) && end > start && subject && ["hostel", "shekel"].includes(place) && (hostel || hostelName);
   if (!good) throw AppError.of("WEEK_PLAN_ENTRY_INVALID", 400);
-  return { day, start, end, subject, hostel, hostelName: hostel ? "" : hostelName, place, note: clean(d.note, 200), by: who.by, byName: clean(who.name, 80), at: new Date() };
+  const covered = coverIds(plan || {});
+  if (covered.length && !covered.includes(String(d.teacher || ""))) throw AppError.of("WEEK_PLAN_ENTRY_TEACHER", 400);
+  const teacher = covered.length ? String(d.teacher) : null;
+  return { day, start, end, subject, hostel, hostelName: hostel ? "" : hostelName, place, note: clean(d.note, 200), teacher, by: who.by, byName: clean(who.name, 80), at: new Date() };
 }
 
 function putEntry(p, entryId, fields) {
@@ -182,9 +212,46 @@ async function reopen({ id }) {
   return shaped(p);
 }
 
+/**
+ * The form becomes ONE person's for several teachers: `teachers` (the form's own teacher is always among them)
+ * and the house they are the teachers of. From here on every lesson written in it names its teacher.
+ */
+async function cover({ id, teachers, hostel }) {
+  const p = await requirePlan(id);
+  const ids = [...new Set([String(p.teacher), ...(Array.isArray(teachers) ? teachers : []).map(String)])].filter(isId);
+  const people = await Person.find({ _id: { $in: ids }, deletedAt: null }).select("_id").lean();
+  if (people.length !== ids.length || ids.length < 2) throw AppError.of("MISSING_FIELDS", 400, "teachers");
+  if (hostel && (!isId(hostel) || !(await Hostel.exists({ _id: hostel })))) throw AppError.of("MISSING_FIELDS", 400, "hostel");
+  p.covers = ids;
+  p.coversHostel = hostel || null;
+  // what stands in the form already is the form's own teacher's
+  for (const e of p.entries) if (!e.teacher) e.teacher = p.teacher;
+  await p.save();
+  return shaped(p);
+}
+
+/**
+ * A fresh start: what was written in the form so far (the lessons, the word, the handing in) is set aside -
+ * kept, and out of every view of the week - and the link's story begins again, as a form not sent yet.
+ */
+async function setAside({ id, by }) {
+  const p = await requirePlan(id);
+  if (!p.entries.length && !p.note) return shaped(p);
+  for (const e of p.entries) p.aside.push(e.toObject());
+  p.entries = [];
+  if (p.note) p.asideNote = [p.asideNote, p.note].filter(Boolean).join(" · ").slice(0, 500);
+  p.note = "";
+  p.asideAt = new Date();
+  p.asideBy = clean(by, 80);
+  for (const k of ["submittedAt", "teacherEditedAt", "sentAt", "sentBy", "openedAt", "lastOpenedAt"]) p[k] = undefined;
+  p.opens = 0;
+  await p.save();
+  return shaped(p);
+}
+
 async function saveEntry({ id, entryId, data, by }) {
   const p = await requirePlan(id);
-  putEntry(p, entryId, await entryOf(data, { by: "staff", name: by }));
+  putEntry(p, entryId, await entryOf(data, { by: "staff", name: by }, p));
   await p.save();
   return shaped(p);
 }
@@ -223,8 +290,20 @@ async function publicShape(p) {
     Subject.find().select("name").sort({ name: 1 }).lean(),
   ]);
   const own = (profile?.subjects || []).map((s) => s.name).filter(Boolean);
+  // a form filled for several teachers: who they are, and what stands in each one's OWN form so far
+  // (the filler is told, so nothing a colleague wrote is missed)
+  const covers = (p.covers || []).map(nameView).filter(Boolean);
+  const others = covers.filter((c) => c._id !== String(p.teacher?._id));
+  const theirs = others.length ? await WeekPlan.find({ teacher: { $in: others.map((c) => c._id) } }).select("teacher note entries._id").lean() : [];
   return {
-    teacher: { firstName: p.teacher?.firstName || "", gender: p.teacher?.gender || null },
+    teacher: { _id: String(p.teacher?._id || ""), firstName: p.teacher?.firstName || "", lastName: p.teacher?.lastName || "", gender: p.teacher?.gender || null },
+    covers: covers.map((c) => ({ _id: c._id, name: fullName(c) })),
+    coversHostel: houseView(p.coversHostel),
+    others: others.map((c) => {
+      const form = theirs.find((x) => String(x.teacher) === c._id);
+      return { _id: c._id, name: fullName(c), lessons: form?.entries?.length || 0, note: form?.note || "" };
+    }),
+    asideLessons: (p.aside || []).length,
     lang: langOf(p.lang),
     expiresAt: p.expiresAt,
     live: live(p),
@@ -253,7 +332,7 @@ async function publicSaveEntry({ token, entryId, data }) {
   const p = await byToken(token);
   assertOpen(p);
   await p.populate({ path: "teacher", select: TEACHER_FIELDS });
-  putEntry(p, entryId, await entryOf(data, { by: "teacher", name: `${p.teacher?.firstName || ""} ${p.teacher?.lastName || ""}`.trim() }));
+  putEntry(p, entryId, await entryOf(data, { by: "teacher", name: fullName(p.teacher) }, p));
   p.teacherEditedAt = new Date();
   await p.save();
   return publicShape(p);
@@ -283,4 +362,4 @@ async function publicDone({ token, note }) {
   return publicShape(p);
 }
 
-module.exports = { list, open, link, markSent, renew, reopen, setLang, saveEntry, removeEntry, remove, publicView, publicSaveEntry, publicRemoveEntry, publicDone, WEEK_PLAN_LINK_DAYS };
+module.exports = { list, open, link, markSent, renew, reopen, setLang, cover, setAside, saveEntry, removeEntry, remove, publicView, publicSaveEntry, publicRemoveEntry, publicDone, WEEK_PLAN_LINK_DAYS };

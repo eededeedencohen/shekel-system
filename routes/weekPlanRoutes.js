@@ -42,6 +42,10 @@ router.post("/:id/sent", catchAsync(async (req, res) => one(res, await plans.mar
 router.post("/:id/renew", catchAsync(async (req, res) => one(res, await plans.renew({ id: req.params.id, until: req.body?.until, days: req.body?.days }))));
 router.post("/:id/lang", catchAsync(async (req, res) => one(res, await plans.setLang({ id: req.params.id, lang: req.body?.lang }))));
 router.post("/:id/reopen", catchAsync(async (req, res) => one(res, await plans.reopen({ id: req.params.id }))));
+/** POST { teachers: [personId], hostel? } - the form becomes one person's for these teachers; each lesson then names its teacher. */
+router.post("/:id/cover", catchAsync(async (req, res) => one(res, await plans.cover({ id: req.params.id, teachers: req.body?.teachers, hostel: req.body?.hostel }))));
+/** A fresh start: what was written so far is set aside (kept, not counted), and the form stands as one not sent yet. */
+router.post("/:id/aside", catchAsync(async (req, res) => one(res, await plans.setAside({ id: req.params.id, by: by(req) }))));
 router.post("/:id/entries", catchAsync(async (req, res) => one(res, await plans.saveEntry({ id: req.params.id, data: req.body, by: by(req) }), 201)));
 router.put("/:id/entries/:eid", catchAsync(async (req, res) => one(res, await plans.saveEntry({ id: req.params.id, entryId: req.params.eid, data: req.body, by: by(req) }))));
 router.delete("/:id/entries/:eid", catchAsync(async (req, res) => one(res, await plans.removeEntry({ id: req.params.id, entryId: req.params.eid }))));
