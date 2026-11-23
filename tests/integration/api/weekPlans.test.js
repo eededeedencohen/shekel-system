@@ -176,6 +176,9 @@ describe("the hostels teachers' week census", () => {
     const id = one.body.data.view.entries[0]._id;
     const turned = (await request(app).put(`/api/week-plans/${mine._id}/entries/${id}`).send(entry(w, { teacher: String(w.tomer._id), day: 3 }))).body.data.plan;
     expect(turned.entries[0]).toMatchObject({ day: 3, by: "staff", teacher: { firstName: "תומר" } });
+    // "מטי" is a third place, of such a form only
+    expect((await post(entry(w, { teacher: String(w.noa._id), day: 4, place: "mati" }))).body.data.view.entries.some((e) => e.place === "mati")).toBe(true);
+    expect((await request(app).post(`/api/week-plans/${hers._id}/entries`).send(entry(w, { place: "mati" }))).body.code).toBe("WEEK_PLAN_ENTRY_INVALID");
     // a form of one teacher keeps no teacher on its lessons, whatever is sent
     const plain = (await request(app).post(`/api/week-plans/${hers._id}/entries`).send(entry(w, { teacher: String(w.tomer._id) }))).body.data.plan;
     expect(plain.entries[0].teacher).toBeNull();

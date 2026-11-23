@@ -31,8 +31,11 @@ const entrySchema = new mongoose.Schema(
     /** the house: one of ours, or a name typed when it is not on the list */
     hostel: { type: mongoose.Schema.Types.ObjectId, ref: "Hostel", default: null },
     hostelName: { type: String, trim: true, maxlength: 80 },
-    /** where the lesson takes place: in the house, or at שק״ל */
-    place: { type: String, enum: ["hostel", "shekel"], required: true },
+    /**
+     * where the lesson takes place: in the house, or at שק״ל - and, in a form one person fills for several
+     * teachers, also at "מטי" (Eden, 2026-11-23: "אצל חוסאם בטופס… או בשק״ל או מטי או בהוסטל עצמו")
+     */
+    place: { type: String, enum: ["hostel", "shekel", "mati"], required: true },
     note: { type: String, trim: true, maxlength: 200 },
     /** the teacher of THIS lesson, in a form one person fills for several teachers (`covers`); null: the form's own teacher */
     teacher: { type: mongoose.Schema.Types.ObjectId, ref: "Person", default: null },

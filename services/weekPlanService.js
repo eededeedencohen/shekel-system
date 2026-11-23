@@ -120,9 +120,11 @@ async function entryOf(data, who, plan) {
     if (!isId(d.hostel) || !(await Hostel.exists({ _id: d.hostel }))) throw AppError.of("WEEK_PLAN_ENTRY_INVALID", 400);
     hostel = d.hostel;
   }
-  const good = Number.isInteger(day) && day >= 0 && day <= 4 && HHMM.test(start) && HHMM.test(end) && end > start && subject && ["hostel", "shekel"].includes(place) && (hostel || hostelName);
-  if (!good) throw AppError.of("WEEK_PLAN_ENTRY_INVALID", 400);
   const covered = coverIds(plan || {});
+  // "מטי" is a place only of a form filled for several teachers (the form of הוסטל השלום)
+  const places = covered.length ? ["hostel", "shekel", "mati"] : ["hostel", "shekel"];
+  const good = Number.isInteger(day) && day >= 0 && day <= 4 && HHMM.test(start) && HHMM.test(end) && end > start && subject && places.includes(place) && (hostel || hostelName);
+  if (!good) throw AppError.of("WEEK_PLAN_ENTRY_INVALID", 400);
   if (covered.length && !covered.includes(String(d.teacher || ""))) throw AppError.of("WEEK_PLAN_ENTRY_TEACHER", 400);
   const teacher = covered.length ? String(d.teacher) : null;
   return { day, start, end, subject, hostel, hostelName: hostel ? "" : hostelName, place, note: clean(d.note, 200), teacher, by: who.by, byName: clean(who.name, 80), at: new Date() };
