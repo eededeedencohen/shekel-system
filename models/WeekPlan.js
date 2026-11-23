@@ -31,6 +31,8 @@ const entrySchema = new mongoose.Schema(
     /** the house: one of ours, or a name typed when it is not on the list */
     hostel: { type: mongoose.Schema.Types.ObjectId, ref: "Hostel", default: null },
     hostelName: { type: String, trim: true, maxlength: 80 },
+    /** which of the house's own houses, where the form's house is two ("1" / "2" of הוסטל השלום); "" otherwise */
+    unit: { type: String, trim: true, maxlength: 20, default: "" },
     /**
      * where the lesson takes place: in the house, or at שק״ל - and, in a form one person fills for several
      * teachers, also at "מטי" (Eden, 2026-11-23: "אצל חוסאם בטופס… או בשק״ל או מטי או בהוסטל עצמו")
@@ -78,6 +80,12 @@ const weekPlanSchema = new mongoose.Schema(
      */
     covers: [{ type: mongoose.Schema.Types.ObjectId, ref: "Person" }],
     coversHostel: { type: mongoose.Schema.Types.ObjectId, ref: "Hostel", default: null },
+    /**
+     * The house is more than one (Eden, 2026-11-23: "הוא יכול לבחור מעכשיו אחד מבין שני הוסטלים - הוסטל השלום 1
+     * ו-הוסטל השלום 2"): the names of its houses ("1", "2"). Every lesson then belongs to one of them
+     * (`entries.unit`), of `coversHostel`. A lesson written before keeps none until it is given one.
+     */
+    coversUnits: [{ type: String, trim: true, maxlength: 20 }],
     /**
      * What was written before and is not counted any more ("את הדברים הישנים
      * שלו לא נתייחס אליהם"): kept as it was, out of every view of the week.

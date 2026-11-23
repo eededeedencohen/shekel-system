@@ -179,6 +179,25 @@ describe("the hostels teachers' week census", () => {
     // "מטי" is a third place, of such a form only
     expect((await post(entry(w, { teacher: String(w.noa._id), day: 4, place: "mati" }))).body.data.view.entries.some((e) => e.place === "mati")).toBe(true);
     expect((await request(app).post(`/api/week-plans/${hers._id}/entries`).send(entry(w, { place: "mati" }))).body.code).toBe("WEEK_PLAN_ENTRY_INVALID");
+    // the house becomes two houses: what was written stays, and from now on a lesson is of one of the two
+    const before = (await request(app).get(`/api/week-plans`)).body.data.plans.find((p) => p._id === mine._id).entries.length;
+    const other = await makeHostel({ name: "אופק", kind: "hostel" });
+    expect((await request(app).post(`/api/week-plans/${mine._id}/cover`).send({ teachers: [String(w.noa._id)], hostel: String(w.hostel._id), units: ["1"] })).status).toBe(400);
+    const two = (await request(app).post(`/api/week-plans/${mine._id}/cover`).send({ teachers: [String(w.noa._id)], hostel: String(w.hostel._id), units: ["1", "2"] })).body.data.plan;
+    expect(two.coversUnits).toEqual(["1", "2"]);
+    expect(two.entries).toHaveLength(before);
+    expect(two.entries.every((e) => e.unit === "")).toBe(true);
+    expect((await request(app).get(`/api/public/week-plans/${token}`)).body.data.view.coversUnits).toEqual(["1", "2"]);
+    expect((await post(entry(w, { teacher: String(w.noa._id), day: 2 }))).body.code).toBe("WEEK_PLAN_ENTRY_INVALID");
+    expect((await post(entry(w, { teacher: String(w.noa._id), day: 2, unit: "3" }))).body.code).toBe("WEEK_PLAN_ENTRY_INVALID");
+    // whatever house is sent, the lesson is of the form's house, and of the unit named
+    const placed = (await post(entry(w, { teacher: String(w.noa._id), day: 2, unit: "2", hostel: String(other._id) }))).body.data.view.entries.find((e) => e.day === 2);
+    expect(placed).toMatchObject({ unit: "2", hostel: { name: "השלום" } });
+    // an old lesson is given its house by one write of the same lesson
+    const old = two.entries[0];
+    const given = (await request(app).put(`/api/public/week-plans/${token}/entries/${old._id}`).send({ day: old.day, start: old.start, end: old.end, subject: old.subject, place: old.place, teacher: old.teacher._id, unit: "1" })).body.data.view;
+    expect(given.entries.find((e) => e._id === old._id)).toMatchObject({ unit: "1", day: old.day, subject: old.subject });
+    expect(given.entries).toHaveLength(before + 1);
     // a form of one teacher keeps no teacher on its lessons, whatever is sent
     const plain = (await request(app).post(`/api/week-plans/${hers._id}/entries`).send(entry(w, { teacher: String(w.tomer._id) }))).body.data.plan;
     expect(plain.entries[0].teacher).toBeNull();

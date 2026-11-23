@@ -57,6 +57,7 @@ const entryView = (e) => ({
   subject: e.subject,
   hostel: e.hostel ? { _id: String(e.hostel._id || e.hostel), name: e.hostel.name || "", kind: e.hostel.kind || "hostel" } : null,
   hostelName: e.hostelName || "",
+  unit: e.unit || "",
   place: e.place,
   note: e.note || "",
   // whose lesson it is, where the form is one person's for several teachers
@@ -87,6 +88,7 @@ const planView = (p) => ({
   // one person's form for several teachers: who they are, and of which house
   covers: (p.covers || []).map(nameView).filter(Boolean),
   coversHostel: houseView(p.coversHostel),
+  coversUnits: (p.coversUnits || []).filter(Boolean),
   // what was written before and is not counted any more
   aside: sortEntries(p.aside || []).map(entryView),
   asideNote: p.asideNote || "",
@@ -114,9 +116,16 @@ async function entryOf(data, who, plan) {
   const end = String(d.end || "");
   const subject = clean(d.subject, 80);
   const place = d.place;
-  const hostelName = clean(d.hostelName, 80);
+  let hostelName = clean(d.hostelName, 80);
   let hostel = null;
-  if (d.hostel) {
+  // a form whose house is two houses: the lesson is of that house, and of one of the two
+  const units = (plan?.coversUnits || []).filter(Boolean);
+  const unit = units.length ? clean(d.unit, 20) : "";
+  if (units.length) {
+    if (!plan.coversHostel || !units.includes(unit)) throw AppError.of("WEEK_PLAN_ENTRY_INVALID", 400);
+    hostel = String(plan.coversHostel._id || plan.coversHostel);
+    hostelName = "";
+  } else if (d.hostel) {
     if (!isId(d.hostel) || !(await Hostel.exists({ _id: d.hostel }))) throw AppError.of("WEEK_PLAN_ENTRY_INVALID", 400);
     hostel = d.hostel;
   }
@@ -127,7 +136,7 @@ async function entryOf(data, who, plan) {
   if (!good) throw AppError.of("WEEK_PLAN_ENTRY_INVALID", 400);
   if (covered.length && !covered.includes(String(d.teacher || ""))) throw AppError.of("WEEK_PLAN_ENTRY_TEACHER", 400);
   const teacher = covered.length ? String(d.teacher) : null;
-  return { day, start, end, subject, hostel, hostelName: hostel ? "" : hostelName, place, note: clean(d.note, 200), teacher, by: who.by, byName: clean(who.name, 80), at: new Date() };
+  return { day, start, end, subject, hostel, hostelName: hostel ? "" : hostelName, unit, place, note: clean(d.note, 200), teacher, by: who.by, byName: clean(who.name, 80), at: new Date() };
 }
 
 function putEntry(p, entryId, fields) {
@@ -217,15 +226,20 @@ async function reopen({ id }) {
 /**
  * The form becomes ONE person's for several teachers: `teachers` (the form's own teacher is always among them)
  * and the house they are the teachers of. From here on every lesson written in it names its teacher.
+ * `units`: the house is several houses ("1", "2") - a lesson then belongs to one of them; what was written
+ * before stays as it is until it is given one.
  */
-async function cover({ id, teachers, hostel }) {
+async function cover({ id, teachers, hostel, units }) {
   const p = await requirePlan(id);
   const ids = [...new Set([String(p.teacher), ...(Array.isArray(teachers) ? teachers : []).map(String)])].filter(isId);
   const people = await Person.find({ _id: { $in: ids }, deletedAt: null }).select("_id").lean();
   if (people.length !== ids.length || ids.length < 2) throw AppError.of("MISSING_FIELDS", 400, "teachers");
   if (hostel && (!isId(hostel) || !(await Hostel.exists({ _id: hostel })))) throw AppError.of("MISSING_FIELDS", 400, "hostel");
+  const names = [...new Set((Array.isArray(units) ? units : []).map((u) => clean(u, 20)).filter(Boolean))];
+  if (names.length && (names.length < 2 || !hostel)) throw AppError.of("MISSING_FIELDS", 400, "units");
   p.covers = ids;
   p.coversHostel = hostel || null;
+  p.coversUnits = names;
   // what stands in the form already is the form's own teacher's
   for (const e of p.entries) if (!e.teacher) e.teacher = p.teacher;
   await p.save();
@@ -301,6 +315,7 @@ async function publicShape(p) {
     teacher: { _id: String(p.teacher?._id || ""), firstName: p.teacher?.firstName || "", lastName: p.teacher?.lastName || "", gender: p.teacher?.gender || null },
     covers: covers.map((c) => ({ _id: c._id, name: fullName(c) })),
     coversHostel: houseView(p.coversHostel),
+    coversUnits: (p.coversUnits || []).filter(Boolean),
     others: others.map((c) => {
       const form = theirs.find((x) => String(x.teacher) === c._id);
       return { _id: c._id, name: fullName(c), lessons: form?.entries?.length || 0, note: form?.note || "" };
