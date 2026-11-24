@@ -227,6 +227,8 @@ const RULES = [
   ["DELETE", "/tags/people/:id/*", "הסרת תגית מאדם", "tag", "delete"],
   // the activity page itself
   ["POST", "/audit/clear", "ניקוי היסטוריית הפעילות", "audit", "delete"],
+  // the students' tags plan (the super admin's page)
+  ["PUT", "/tag-plan", "החלטה או הערה בתכנון התגים", "tagPlan", "update"],
   // חדר כושר
   ["POST", "/gym", "הוספה לחדר הכושר", "gym", "create"],
   ["PATCH", "/gym/:id", "עריכת חבר/ת חדר כושר", "gym", "update"],
