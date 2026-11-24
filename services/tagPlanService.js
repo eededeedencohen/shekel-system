@@ -13,6 +13,15 @@
  *
  * Nothing in the app reads this to draw a tag: it is the record of a
  * discussion, read back by the page (and by whoever builds what was decided).
+ *
+ * A second row, "waitSheet" (2026-11-24: "תעשה לי דוגמא שם… עם הנתונים שבאמת
+ * יש לנועה"): the waiting lists of the staff's old sheet as they stand in
+ * it - a subject, the names in their order, the note beside each - for the
+ * model of the ideas page's waiting-lists tab. It holds REAL people's names,
+ * so it lives here, behind the super admin's door, and never in the code:
+ * the client's files are public and the repository is not the place for
+ * people. It is a picture of the sheet, not an import: no person, no
+ * student and no list of the app is made from it.
  */
 
 const AppSetting = require("../models/AppSetting");
@@ -25,6 +34,42 @@ const ANSWER_RE = /^[\w-]{1,40}$/;
 const NOTE_MAX = 800;
 
 const isMap = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+
+const SHEET_KEY = "waitSheet";
+const text = (v, max) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
+/** One row of a list: a name and the note written beside it. */
+function sheetRows(rows) {
+  if (rows === undefined) return [];
+  if (!Array.isArray(rows) || rows.length > 300) throw AppError.of("TAG_PLAN_INVALID", 400);
+  return rows.map((r) => {
+    if (!isMap(r) || typeof r.name !== "string" || !text(r.name, 120)) throw AppError.of("TAG_PLAN_INVALID", 400);
+    return { name: text(r.name, 120), note: text(r.note, 200) };
+  });
+}
+
+/** The old sheet's waiting lists, or null when none was loaded. */
+async function getSheet() {
+  const row = await AppSetting.findOne({ key: SHEET_KEY }).lean();
+  if (!row || !isMap(row.value) || !Array.isArray(row.value.lists)) return null;
+  return { title: row.value.title || "", lists: row.value.lists, loadedAt: row.updatedAt || null, loadedBy: row.updatedBy || "" };
+}
+
+/** Load the sheet (the whole of it, replacing what was there): { title, lists: [{ subject, waiting: [{ name, note }], existing: [...] }] }. */
+async function setSheet(body, by = "") {
+  if (!isMap(body) || !Array.isArray(body.lists) || !body.lists.length || body.lists.length > 60) throw AppError.of("TAG_PLAN_INVALID", 400);
+  const lists = body.lists.map((l) => {
+    if (!isMap(l) || !text(l.subject, 80)) throw AppError.of("TAG_PLAN_INVALID", 400);
+    return { subject: text(l.subject, 80), waiting: sheetRows(l.waiting), existing: sheetRows(l.existing) };
+  });
+  await AppSetting.findOneAndUpdate({ key: SHEET_KEY }, { $set: { value: { title: text(body.title, 120), lists }, updatedBy: by } }, { upsert: true });
+  return getSheet();
+}
+
+/** Take the sheet off (the model goes back to its invented people). */
+async function clearSheet() {
+  await AppSetting.deleteOne({ key: SHEET_KEY });
+  return null;
+}
 
 async function get() {
   const row = await AppSetting.findOne({ key: KEY }).lean();
@@ -61,4 +106,4 @@ async function set(patch, by = "") {
   return get();
 }
 
-module.exports = { get, set };
+module.exports = { get, set, getSheet, setSheet, clearSheet };

@@ -22,4 +22,18 @@ router.put(
   catchAsync(async (req, res) => ok(res, { plan: await tagPlan.set(req.body || {}, req.account?.name || req.account?.username || "") }))
 );
 
+// the old sheet's waiting lists, for the model of the waiting-lists tab (real names: kept in the database, never in the code)
+router.get(
+  "/sheet",
+  catchAsync(async (req, res) => ok(res, { sheet: await tagPlan.getSheet() }))
+);
+router.put(
+  "/sheet",
+  catchAsync(async (req, res) => ok(res, { sheet: await tagPlan.setSheet(req.body, req.account?.name || req.account?.username || "") }))
+);
+router.delete(
+  "/sheet",
+  catchAsync(async (req, res) => ok(res, { sheet: await tagPlan.clearSheet() }))
+);
+
 module.exports = router;

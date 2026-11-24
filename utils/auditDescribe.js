@@ -228,7 +228,10 @@ const RULES = [
   // the activity page itself
   ["POST", "/audit/clear", "ניקוי היסטוריית הפעילות", "audit", "delete"],
   // the students' tags plan (the super admin's page)
-  ["PUT", "/tag-plan", "החלטה או הערה בתכנון התגים", "tagPlan", "update"],
+  ["PUT", "/tag-plan", "החלטה או הערה בעמוד הרעיונות", "tagPlan", "update"],
+  // (the sheet holds people's names: the event says it happened, and keeps none of it)
+  ["PUT", "/tag-plan/sheet", "טעינת רשימות ההמתנה מהקובץ לעמוד הרעיונות", "tagPlan", "update", { payload: false }],
+  ["DELETE", "/tag-plan/sheet", "הסרת רשימות ההמתנה של הקובץ מעמוד הרעיונות", "tagPlan", "delete"],
   // חדר כושר
   ["POST", "/gym", "הוספה לחדר הכושר", "gym", "create"],
   ["PATCH", "/gym/:id", "עריכת חבר/ת חדר כושר", "gym", "update"],
