@@ -47,6 +47,15 @@ const personSchema = new mongoose.Schema(
       type: String,
       enum: { values: ["male", "female", "other"], message: "{VALUE} אינו ערך מין חוקי" },
     },
+    /**
+     * מספר תעודת הזהות (Eden, 2026-11-24: "חייבים תעודות זהות של כל
+     * הסטודנטים" - the social worker types it in שקדיה). Nine digits, the
+     * check digit verified on the way in (utils/israeliId). `select: false`:
+     * NO query of the app returns it - only GET /api/people/:id/id-number
+     * asks for it by name, and only for the kinds of domain.ID_NUMBER_KINDS.
+     * It is never in a list, a populate, a slice of the client or the audit.
+     */
+    idNumber: { type: String, trim: true, select: false },
     /** Stable senzey join key - idempotent re-import anchor. */
     senzeyId: { type: String, trim: true },
     joinedShekelDate: { type: Date },
@@ -87,6 +96,11 @@ const personSchema = new mongoose.Schema(
 personSchema.index(
   { email: 1 },
   { unique: true, partialFilterExpression: { email: { $exists: true } } }
+);
+// one person per ID number (only where one is written)
+personSchema.index(
+  { idNumber: 1 },
+  { unique: true, partialFilterExpression: { idNumber: { $type: "string" } } }
 );
 personSchema.index(
   { senzeyId: 1 },

@@ -90,6 +90,8 @@ const RULES = [
   ["DELETE", "/people/:id", "מחיקת אדם", "person", "delete"],
   ["POST", "/people/:id/profiles", "פתיחת פרופיל", "profile", "create"],
   ["PATCH", "/people/:id/availability", "עדכון זמינות", "person", "update"],
+  // the number itself never enters the audit - only that it was written
+  ["PUT", "/people/:id/id-number", "עדכון מספר תעודת הזהות", "person", "update", { payload: false }],
   ["POST", "/people/:id/documents", "העלאת מסמך", "document", "create"],
   ["DELETE", "/people/:id/documents/:id", "מחיקת מסמך", "document", "delete"],
   ["POST", "/people/:id/transfer", "העברה בין תוכניות", "person", "other"],

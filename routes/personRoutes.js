@@ -18,6 +18,8 @@ const {
   deletePerson,
   updateAvailability,
   getPersonEnrollments,
+  getIdNumber,
+  setIdNumber,
 } = require("../controllers/personController");
 const {
   getPersonProfiles,
@@ -45,6 +47,8 @@ router.route("/").get(getPeople).post(createPerson);
 router.route("/:id").get(getPersonById).put(updatePerson).delete(deletePerson);
 router.route("/:id/profiles").get(getPersonProfiles).post(createPersonProfile);
 router.patch("/:id/availability", updateAvailability);
+// מספר תעודת הזהות - the only door to it (the social worker and the super admin; controllers/personController)
+router.route("/:id/id-number").get(getIdNumber).put(setIdNumber);
 router.get("/:id/enrollments", getPersonEnrollments);
 router.route("/:id/documents").get(documents.listOfPerson).post(documents.add);
 router.delete("/:id/documents/:docId", documents.remove);

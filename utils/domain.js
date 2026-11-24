@@ -997,6 +997,9 @@ const ERROR_CODES = {
   GYM_SIGNED_ALREADY: "ההסכם הזה כבר נחתם",
   GYM_LINK_INVALID: "הקישור לחתימה לא תקין",
   GYM_ID_INVALID: "מספר הזהות לא תקין",
+  PERSON_ID_INVALID: "מספר תעודת הזהות לא תקין - כדאי לבדוק שלא התחלפה ספרה",
+  PERSON_ID_TAKEN: "מספר תעודת הזהות הזה כבר רשום אצל",
+  PERSON_ID_FORBIDDEN: "מספרי תעודות זהות פתוחים רק לעובד/ת הסוציאלי/ת ולמנהל המערכת",
   GYM_PHONE_INVALID: "מספר הטלפון לא תקין",
   GYM_SIGNATURE_REQUIRED: "חסרה חתימה",
   GYM_LEFT: "האדם הוסר מחדר הכושר - אפשר להוסיף אותו מחדש",
@@ -1059,6 +1062,11 @@ const STAFF_KINDS = [
   { key: "teacher", label: "מורה" },
 ];
 const STAFF_KIND_KEYS = STAFF_KINDS.map((k) => k.key);
+/**
+ * Who may read and write a person's ID number (Eden, 2026-11-24): the social worker, who types it in שקדיה, and
+ * the super admin. Nobody else is ever sent one - widening it is adding a kind here.
+ */
+const ID_NUMBER_KINDS = ["super", "social"];
 /** How long a password-reset link stays open. */
 const RESET_LINK_HOURS = 24;
 
@@ -1111,6 +1119,7 @@ const DOMAIN_META = {
   bookSources: BOOK_SOURCES.map((k) => ({ key: k, label: BOOK_SOURCE_LABELS[k] })),
   errorCodes: ERROR_CODES,
   staffKinds: STAFF_KINDS,
+  idNumberKinds: ID_NUMBER_KINDS,
   resetLinkHours: RESET_LINK_HOURS,
   suppliers: {
     genders: SUPPLIER_GENDERS,
@@ -1243,6 +1252,7 @@ module.exports = {
   ERROR_CODES,
   STAFF_KINDS,
   STAFF_KIND_KEYS,
+  ID_NUMBER_KINDS,
   STAFF_FEATURES,
   STAFF_FEATURE_KEYS,
   GYM_MEMBERSHIPS,

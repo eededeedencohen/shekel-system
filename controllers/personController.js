@@ -20,7 +20,8 @@ const { Profile } = require("../models/profiles");
 const Enrollment = require("../models/Enrollment");
 const AppError = require("../utils/AppError");
 const catchAsync = require("../utils/catchAsync");
-const { STUDENT_KINDS } = require("../utils/domain");
+const { STUDENT_KINDS, ID_NUMBER_KINDS } = require("../utils/domain");
+const { isValidIsraeliId, normalizeIsraeliId } = require("../utils/israeliId");
 const {
   IDENTITY_FIELDS,
   splitBody,
@@ -252,4 +253,48 @@ exports.getPersonEnrollments = catchAsync(async (req, res) => {
     })
     .sort({ createdAt: -1 });
   res.status(200).json({ status: "success", results: enrollments.length, data: { enrollments } });
+});
+
+/* ───────────────────────── מספר תעודת הזהות ───────────────────────── */
+
+/**
+ * A person's ID number (Eden, 2026-11-24). It lives on the person with
+ * `select: false`, so nothing else in the app ever carries it; these two
+ * are the only door, open to domain.ID_NUMBER_KINDS (the social worker and
+ * the super admin - as the ACTING persona) on a person of their lens
+ * (routes/personRoutes: lens.guardPerson).
+ */
+const mayIdNumber = (req) => !!req.actor && ID_NUMBER_KINDS.includes(req.actor.kind);
+
+/** GET /api/people/:id/id-number → { idNumber: "012345678" | null } */
+exports.getIdNumber = catchAsync(async (req, res, next) => {
+  if (!mayIdNumber(req)) return next(AppError.of("PERSON_ID_FORBIDDEN", 403));
+  const person = await Person.findOne({ _id: req.params.id }).select("+idNumber");
+  if (!person) return next(AppError.of("NOT_FOUND", 404, "אדם"));
+  res.status(200).json({ status: "success", data: { idNumber: person.idNumber || null } });
+});
+
+/**
+ * PUT /api/people/:id/id-number - { idNumber } (nine digits, the check digit
+ * verified; shorter is padded with zeros; an empty one takes the number
+ * off). Two people never hold one number: PERSON_ID_TAKEN names the other.
+ * The audit keeps that it was written, never the number (auditDescribe).
+ */
+exports.setIdNumber = catchAsync(async (req, res, next) => {
+  if (!mayIdNumber(req)) return next(AppError.of("PERSON_ID_FORBIDDEN", 403));
+  const person = await Person.findOne({ _id: req.params.id }).select("+idNumber");
+  if (!person) return next(AppError.of("NOT_FOUND", 404, "אדם"));
+  const typed = String(req.body?.idNumber ?? "").trim();
+  if (!typed) {
+    person.idNumber = undefined;
+    await person.save();
+    return res.status(200).json({ status: "success", data: { idNumber: null } });
+  }
+  if (!isValidIsraeliId(typed)) return next(AppError.of("PERSON_ID_INVALID", 400));
+  const idNumber = normalizeIsraeliId(typed);
+  const other = await Person.findOne({ idNumber, _id: { $ne: person._id } }).select("firstName lastName");
+  if (other) return next(AppError.of("PERSON_ID_TAKEN", 409, `${other.firstName} ${other.lastName || ""}`.trim()));
+  person.idNumber = idNumber;
+  await person.save();
+  res.status(200).json({ status: "success", data: { idNumber } });
 });
