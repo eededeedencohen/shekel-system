@@ -122,6 +122,7 @@ function requireSuper(req, res, next) {
  *   library    books and loans - the super admin alone for now (Eden, 2026-10-14)
  *   invoices   the teachers' invoices - whoever has the teachers page
  *   suppliers  פתיחת תיק ספק - the hostels coordinator (controllers/supplierController keeps its own gate)
+ *   waiting    the waiting lists of מכללה לכל - the college managers (2026-11-24)
  */
 const FAMILIES = {
   college: ["super", "manager", "social", "hostels"],
@@ -130,6 +131,7 @@ const FAMILIES = {
   library: ["super"],
   invoices: ["super", "manager", "hostels"],
   suppliers: ["super", "hostels"],
+  waiting: ["super", "manager"],
 };
 
 /** A router is this family's: the ACTING persona must be one of its kinds, else 403 OUT_OF_SCOPE. */

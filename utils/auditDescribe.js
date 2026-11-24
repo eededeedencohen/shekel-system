@@ -53,6 +53,7 @@ const NOUNS = {
   invoices: ["חשבונית", "invoice"],
   "invoice-rounds": ["סבב חשבוניות", "invoiceRound"],
   diary: ["רשומה ביומן", "diary"],
+  "wait-lists": ["רשימת המתנה", "waitList"],
   tags: ["תגית", "tag"],
   accounts: ["משתמש", "account"],
   auth: ["החשבון שלי", "account"],
@@ -232,6 +233,15 @@ const RULES = [
   // (the sheet holds people's names: the event says it happened, and keeps none of it)
   ["PUT", "/tag-plan/sheet", "טעינת רשימות ההמתנה מהקובץ לעמוד הרעיונות", "tagPlan", "update", { payload: false }],
   ["DELETE", "/tag-plan/sheet", "הסרת רשימות ההמתנה של הקובץ מעמוד הרעיונות", "tagPlan", "delete"],
+  // the waiting lists of מכללה לכל
+  ["POST", "/wait-lists", "רשימת המתנה חדשה", "waitList", "create"],
+  ["POST", "/wait-lists/entries", "הוספה לרשימת המתנה", "waitList", "create"],
+  ["PATCH", "/wait-lists/entries/:id", "עדכון רישום ברשימת המתנה", "waitList", "update"],
+  ["DELETE", "/wait-lists/entries/:id", "מחיקת רישום מרשימת המתנה", "waitList", "delete"],
+  ["POST", "/wait-lists/entries/:id/end", "יציאה מרשימת המתנה", "waitList", "update"],
+  ["POST", "/wait-lists/entries/:id/back", "החזרה לרשימת המתנה", "waitList", "update"],
+  ["PATCH", "/wait-lists/:id", "עריכת רשימת המתנה", "waitList", "update"],
+  ["DELETE", "/wait-lists/:id", "סגירת רשימת המתנה", "waitList", "delete"],
   // חדר כושר
   ["POST", "/gym", "הוספה לחדר הכושר", "gym", "create"],
   ["PATCH", "/gym/:id", "עריכת חבר/ת חדר כושר", "gym", "update"],

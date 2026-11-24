@@ -143,6 +143,8 @@ app.use("/api/db", requireSuper, require("./routes/dbRoutes"));
 app.use("/api/audit", requireSuper, require("./routes/auditRoutes"));
 // the students' tags plan (2026-11-24): today beside a proposal, with the super admin's decisions
 app.use("/api/tag-plan", requireSuper, require("./routes/tagPlanRoutes"));
+// the waiting lists of מכללה לכל (2026-11-24): a list per subject, a queue in each - the college managers'
+app.use("/api/wait-lists", requireFamily("waiting"), require("./routes/waitListRoutes"));
 
 // ── The client, served by this same process ──────────────────────────────
 // `client-dist/` is the React build that `npm run deploy` (in client/) drops
