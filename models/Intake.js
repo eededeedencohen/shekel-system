@@ -161,7 +161,7 @@ const intakeSchema = new mongoose.Schema(
       summary: { type: String, trim: true },
     },
 
-    /** Entered in שקדיה by the coordinator (her stage 5) - with the date and the committee's decision number. */
+    /** Entered in שקדיה by the social worker (her stage 5) - with the date (`decisionNo`: old rows only, not asked for since 2026-11-24). */
     shkedia: {
       enteredAt: { type: Date },
       by: { type: String, trim: true },

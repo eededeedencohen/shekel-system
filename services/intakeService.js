@@ -176,9 +176,10 @@ function expiredDocs(intake) {
 const labelsOf = (keys) => keys.map((k) => DOC_BY_KEY[k]?.label || k);
 /** What still keeps the file open, in Hebrew ("קליטה בשקדיה, דוח פסיכיאטרי"). */
 function missingLabels(intake) {
+  // the documents first and שקדיה last - the order they are done in (she enters שקדיה with a document's number)
   const out = [];
-  if (!intake.shkedia?.enteredAt) out.push("קליטה בשקדיה");
   for (const k of missingDocs(intake)) out.push(DOC_BY_KEY[k].label + (docExpired(rowOf(intake, k)) ? " (פג תוקף)" : ""));
+  if (!intake.shkedia?.enteredAt) out.push("קליטה בשקדיה");
   return out;
 }
 
@@ -573,7 +574,7 @@ async function attachDocument({ intake, key, stored, by, staff = false, validUnt
     d.signedAt = undefined;
     d.validUntil = undefined;
   }
-  const extra = until ? ` · בתוקף עד ${fmtDate(until)}` : signed ? ` · נחתם ${fmtDate(signed)}` : "";
+  const extra = until ? ` · דוח חדש עד ${fmtDate(until)}` : signed ? ` · נחתם ${fmtDate(signed)}` : "";
   intake.log.push({ action: "docUploaded", at: now, by: staff ? by : LANDING_ACTOR, note: def.label + extra });
   if (link) {
     link.usedAt.push(now);
@@ -729,7 +730,7 @@ async function setDocumentStatus({ intake, key, status, by, note, validUntil, si
       const until = parseDate(validUntil);
       if (!until) throw AppError.of("DOCUMENT_DATE_REQUIRED", 400);
       d.validUntil = until;
-      extra = ` · בתוקף עד ${fmtDate(until)}`;
+      extra = ` · דוח חדש עד ${fmtDate(until)}`;
     } else if (def.validity === "signed") {
       const signed = parseDate(signedAt) || now;
       d.signedAt = signed;
@@ -832,8 +833,10 @@ async function setCommitteeDate({ intake, committeeDate, by }) {
 }
 
 /**
- * Entered in שקדיה (her stage 5) - the coordinator did it herself; this is
- * the record of that, with the date and the committee's decision number.
+ * Entered in שקדיה (her stage 5) - the social worker did it herself; this
+ * is the record of that, with the date (the window offers today). The
+ * decision number is not asked for any more (2026-11-24: it stands in the
+ * social-club approval, a document of the file); one given is still kept.
  * `clear` takes it back (a mistake).
  */
 async function setShkedia({ intake, enteredAt, by, decisionNo, note, clear = false }) {

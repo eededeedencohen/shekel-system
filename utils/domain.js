@@ -69,34 +69,44 @@ const PRE_INTAKE_STAGES = ["Interested", "Matching"];
 /* ───────────────────────── קליטה (אינטייק) ───────────────────────── */
 
 /**
- * The intake file - the documents the social worker listed (2026-10-07):
- * the THREE she requires, with the validity each one carries, plus the
- * social-club letter as an optional extra (she never mentioned it; Eden
- * keeps it until she says otherwise). The tag on the student reads "X מתוך
- * 3 מסמכים התקבלו" / "כל המסמכים התקבלו".
+ * The intake file - the FOUR documents the social worker requires (her
+ * own words over the guided tour, 2026-11-24): three that arrive - the
+ * psychiatric report, the psychosocial report (from the accompanying
+ * social worker or the care coordinator - not a clinic, not the welfare
+ * office) and the social-club approval (the care coordinator brings it: the
+ * rehabilitation basket's approval of the service, with the decision number
+ * she types in שקדיה - she wants the FILE, never the number in a message) -
+ * and the waiver, signed in the intake meeting. The tag on the student
+ * reads "X מתוך 4 מסמכים התקבלו" / "כל המסמכים התקבלו". The list's order is
+ * the order they come in: the three that arrive, then the one signed.
  *
- *   validity "dated"   the report names its own expiry (6 months - 2 years):
- *                      the coordinator types the exact date when she
- *                      receives it (DOCUMENT_DATE_REQUIRED); expired = open
- *                      again, alerted FOLLOW_UP.psychiatricNoticeDays ahead
+ *   validity "dated"   the psychiatric report carries NO expiry of its own
+ *                      ("זה לא שיש לו תוקף"): at a first intake it has to be
+ *                      of the last half year, and every two years she asks
+ *                      for a new one. What is typed when it is received
+ *                      (DOCUMENT_DATE_REQUIRED) is the day to ask for the
+ *                      new report - offered FOLLOW_UP.psychiatricMonths
+ *                      ahead; past it = open again, alerted
+ *                      FOLLOW_UP.psychiatricNoticeDays ahead
  *   validity "signed"  valid exactly FOLLOW_UP.waiverMonths from the
  *                      signature - computed, never typed; expired = no
  *                      sharing with outsiders, alerted waiverNoticeDays ahead
  *
  * "אישור שקדייה" is NOT a document any more: there is no approval that
- * arrives from outside - the coordinator ENTERS the person in שקדיה and
- * marks it here with the date (`intake.shkedia`). The file is complete
+ * arrives from outside - the social worker ENTERS the person in שקדיה
+ * (with the decision number of the social-club approval) and marks it here;
+ * the day offered is today (`intake.shkedia`). The file is complete
  * when the intake was held, שקדיה was entered and every required document
  * is in and in force.
  */
 const INTAKE_DOCUMENTS = [
-  { key: "psychiatric", label: "דוח פסיכיאטרי", hint: "עדכני, חתום ע\"י פסיכיאטר/ית - עם תאריך התוקף הנקוב בו", upload: true, validity: "dated" },
-  { key: "psychosocial", label: "דוח פסיכוסוציאלי", hint: "מהעו\"ס המלווה - עם פרטי הקשר שלו/ה", upload: true },
+  { key: "psychiatric", label: "דוח פסיכיאטרי", hint: "חתום ע\"י פסיכיאטר/ית - מחצי השנה האחרונה", upload: true, validity: "dated" },
+  { key: "psychosocial", label: "דוח פסיכוסוציאלי", hint: "מהעו\"ס המלווה או ממתאם/ת הטיפול - עם פרטי הקשר", upload: true },
+  { key: "socialClub", label: "אישור מועדון חברתי", hint: "ממתאם/ת הטיפול - האישור של סל שיקום לשירות, עם מספר ההחלטה", upload: true },
   { key: "waiver", label: "טופס ויתור סודיות", hint: "נחתם בפגישת האינטייק או מועלה חתום · בתוקף שנה מהחתימה", upload: true, validity: "signed" },
-  { key: "socialClub", label: "אישור מועדון חברתי", hint: "אם יש", upload: true, optional: true },
 ];
 const INTAKE_DOCUMENT_KEYS = INTAKE_DOCUMENTS.map((d) => d.key);
-/** The documents behind the "מסמכים" tag (the optional one is not counted). */
+/** The documents behind the "מסמכים" tag (all four since 2026-11-24; an `optional` one would not be counted). */
 const INTAKE_REQUIRED_DOCUMENTS = INTAKE_DOCUMENTS.filter((d) => !d.optional);
 /** Legacy keys that may still sit on old records - dropped on save, migrated by scripts/migrateShkedia.js. */
 const RETIRED_DOCUMENT_KEYS = ["shkedia"];
@@ -115,7 +125,8 @@ const FOLLOW_UP = {
   /** ויתור סודיות: exactly a year from the signature; shown 45 days ahead. */
   waiverMonths: 12,
   waiverNoticeDays: 45,
-  /** דוח פסיכיאטרי: its own date; shown 60 days ahead. */
+  /** דוח פסיכיאטרי: a new one every two years (the day offered when it is received); shown 60 days ahead. */
+  psychiatricMonths: 24,
   psychiatricNoticeDays: 60,
   /** אינטייק בעיכוב: this many days at the social worker's stage without a held meeting. */
   intakeDelayDays: 14,

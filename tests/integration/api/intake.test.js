@@ -57,9 +57,9 @@ const tick = async (intakeId, key, body = {}) => {
 /** The coordinator entered the person in שקדיה. */
 const enterShkedia = (intakeId, body = {}) =>
   request(app).patch(`/api/intakes/${intakeId}/shkedia`).send({ enteredAt: dayStr(0), by: "נעה", decisionNo: "12345", ...body });
-/** The whole file: the three required documents + שקדיה. */
+/** The whole file: the four required documents (the club approval is one of them since 2026-11-24) + שקדיה. */
 const fillFile = async (intakeId) => {
-  for (const key of ["psychiatric", "psychosocial", "waiver"]) await tick(intakeId, key);
+  for (const key of ["psychiatric", "psychosocial", "socialClub", "waiver"]) await tick(intakeId, key);
   return enterShkedia(intakeId);
 };
 
@@ -71,9 +71,11 @@ describe("GET /api/public/join/options", () => {
     const o = res.body.data.options;
     expect(o.programs.map((p) => p.key)).toEqual(["StudentCollege", "StudentCulture"]);
     expect(o.subjects.map((s) => s.name)).toContain("ציור");
-    // the documents of the file - the social club letter is optional; שקדיה is not a document any more
-    expect(o.documents.map((d) => d.key)).toEqual(["psychiatric", "psychosocial", "waiver", "socialClub"]);
-    expect(o.documents.find((d) => d.key === "socialClub").optional).toBe(true);
+    // the documents of the file, in the order they come in - the club approval is required like the rest
+    // (the social worker, 2026-11-24); שקדיה is not a document any more
+    expect(o.documents.map((d) => d.key)).toEqual(["psychiatric", "psychosocial", "socialClub", "waiver"]);
+    expect(o.documents.find((d) => d.key === "socialClub").optional).toBeFalsy();
+    expect(o.documents.find((d) => d.key === "socialClub").hint).toMatch(/מספר ההחלטה/);
     expect(o.documents.find((d) => d.key === "psychiatric").validity).toBe("dated");
     expect(o.documents.find((d) => d.key === "waiver").validity).toBe("signed");
     expect(o.residences.length).toBeGreaterThan(3);
@@ -295,7 +297,7 @@ describe("the social worker's flow", () => {
     });
     expect(done.status).toBe(200);
     expect(done.body.data.intake.status).toBe("documents");
-    expect(done.body.data.intake.log.at(-1).note).toMatch(/עוד חסר: קליטה בשקדיה/);
+    expect(done.body.data.intake.log.at(-1).note).toMatch(/עוד חסר: דוח פסיכיאטרי, דוח פסיכוסוציאלי, אישור מועדון חברתי, טופס ויתור סודיות, קליטה בשקדיה/);
     expect(done.body.data.activity.kind).toBe("intake");
     expect(done.body.data.activity.fields.goals).toBe("קביעות");
     expect(await Activity.countDocuments({ person: personId, kind: "intake" })).toBe(1);
@@ -303,6 +305,12 @@ describe("the social worker's flow", () => {
 
     for (const key of ["psychiatric", "psychosocial"]) await tick(intakeId, key);
     await request(app).patch(`/api/intakes/${intakeId}/documents/waiver`).send({ status: "waived", by: "ייטב", note: "נחתם ידנית" });
+    // the club approval is required too: with שקדיה marked and it missing, the file stays open
+    const early = await enterShkedia(intakeId);
+    expect(early.body.data.intake.status).toBe("documents");
+    expect(early.body.data.intake.completedAt).toBeFalsy();
+    await request(app).patch(`/api/intakes/${intakeId}/shkedia`).send({ clear: true, by: "ייטב" });
+    await tick(intakeId, "socialClub");
     // every required document in, שקדיה still missing → still open
     expect((await Intake.findById(intakeId)).status).toBe("documents");
     const last = await enterShkedia(intakeId);
@@ -315,7 +323,7 @@ describe("the social worker's flow", () => {
 
   it("everything in up front → done goes straight to complete → Placed", async () => {
     const { token, intakeId } = (await submit({})).body.data;
-    for (const key of ["psychiatric", "psychosocial", "waiver"]) {
+    for (const key of ["psychiatric", "psychosocial", "socialClub", "waiver"]) {
       await request(app).post(`/api/public/join/${token}/documents`).send({ key, fileName: `${key}.png`, mime: "image/png", data: PNG_1PX });
     }
     // the dated / signed documents count only once the staff confirmed them with their dates
@@ -366,6 +374,7 @@ describe("the social worker's flow", () => {
     expect(waiver.status).toBe("received");
     expect(waiver.validUntil.slice(0, 10)).toBe("2027-09-15");
     await tick(intakeId, "psychiatric");
+    await tick(intakeId, "socialClub");
     await enterShkedia(intakeId);
     expect(await stageOf(intake.person, "StudentCulture")).toBe("Intake");
     const last = await request(app).post(`/api/public/join/${token}/documents`).send({ key: "psychosocial", fileName: "ps.png", mime: "image/png", data: PNG_1PX });
@@ -466,11 +475,12 @@ describe("the social worker's flow", () => {
     await request(app).post(`/api/intakes/${intakeId}/done`).send({ by: "ייטב", waiverSigned: true });
     await tick(intakeId, "waiver");
     await tick(intakeId, "psychosocial");
+    await tick(intakeId, "socialClub");
     await enterShkedia(intakeId);
     const expired = await tick(intakeId, "psychiatric", { validUntil: "2025-01-01" });
     expect(expired.body.data.intake.documents.find((d) => d.key === "psychiatric").status).toBe("received");
     expect(expired.body.data.intake.status).toBe("documents");
-    expect(expired.body.data.intake.log.at(-1).note).toMatch(/בתוקף עד 1\.1\.2025/);
+    expect(expired.body.data.intake.log.at(-1).note).toMatch(/דוח חדש עד 1\.1\.2025/);
     // the student sees the expiry on the personal link
     const view = (await request(app).get(`/api/public/join/${token}`)).body.data.view;
     expect(view.documents.find((d) => d.key === "psychiatric").expired).toBe(true);
@@ -494,7 +504,7 @@ describe("the social worker's flow", () => {
     const intake = await Intake.findById(intakeId);
     await request(app).post("/api/intakes/schedule").send({ person: intake.person, at: "2026-09-15T10:00:00", by: "ייטב" });
     await request(app).post(`/api/intakes/${intakeId}/done`).send({ by: "ייטב", waiverSigned: true });
-    for (const key of ["psychiatric", "psychosocial", "waiver"]) await tick(intakeId, key);
+    for (const key of ["psychiatric", "psychosocial", "socialClub", "waiver"]) await tick(intakeId, key);
     expect((await Intake.findById(intakeId)).status).toBe("documents");
     const entered = await enterShkedia(intakeId, { decisionNo: "77" });
     // the שקדיה entry, then the completion it caused
