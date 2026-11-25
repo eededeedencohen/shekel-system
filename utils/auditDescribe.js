@@ -234,6 +234,12 @@ const RULES = [
   // (the sheet holds people's names: the event says it happened, and keeps none of it)
   ["PUT", "/tag-plan/sheet", "טעינת רשימות ההמתנה מהקובץ לעמוד הרעיונות", "tagPlan", "update", { payload: false }],
   ["DELETE", "/tag-plan/sheet", "הסרת רשימות ההמתנה של הקובץ מעמוד הרעיונות", "tagPlan", "delete"],
+  // the tasks the super admin gives the staff (the talk itself stays out of the record: it is the two people's)
+  ["POST", "/staff-tasks", "משימה חדשה לעובד", "staffTask", "create"],
+  ["PATCH", "/staff-tasks/:id", "עריכת משימה", "staffTask", "update"],
+  ["PUT", "/staff-tasks/:id/done", "סימון משימה: בוצעה או נפתחה מחדש", "staffTask", "update"],
+  ["POST", "/staff-tasks/:id/messages", "הודעה בצ׳אט של משימה", "staffTask", "other", { payload: false }],
+  ["DELETE", "/staff-tasks/:id", "מחיקת משימה", "staffTask", "delete"],
   // the hostels teachers' week census: the staff's word on a lesson
   ["PUT", "/week-plans/:id/entries/:id/check", "סימון שיעור בשבוע של המורים: תקין או לא תקין", "weekPlan", "update"],
   // the waiting lists of מכללה לכל

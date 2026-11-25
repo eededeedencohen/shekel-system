@@ -133,6 +133,8 @@ app.use("/api/invoice-rounds", requireFamily("invoices"), require("./routes/invo
 app.use("/api/gym", requireFeature("gym"), require("./routes/gymRoutes"));
 // יומן - every staff member's own notes and tasks
 app.use("/api/diary", require("./routes/diaryRoutes"));
+// the tasks the super admin gives the staff, and the talk on each (2026-11-25): each account's own, the super admin's all
+app.use("/api/staff-tasks", require("./routes/staffTaskRoutes"));
 // תגיות - what a person or a cycle belongs to (roles, programs)
 app.use("/api/tags", require("./routes/tagRoutes"));
 app.use("/api/meta", require("./routes/metaRoutes"));
