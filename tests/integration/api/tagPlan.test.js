@@ -166,14 +166,14 @@ describe("the students' tags plan", () => {
     ]);
     const seats = await request(app).put("/api/tag-plan/old-list/seats").send({
       rows: [
-        { rid: 5000, course: 900, name: "דנה בדיקה", idNumber: "12345674", type: "מתמודד/ת", registered: "01/09/2026", from: "01/09/2026", until: "30/06/2027", weekday: "ג`", time: "10:00" },
+        { rid: 5000, course: 900, name: "דנה בדיקה", idNumber: "12345674", type: "מתמודד/ת", registered: "01/09/2026", from: "01/09/2026", until: "30/06/2027", weekday: "ג`", time: "10:00", timeEnd: "10:45" },
         { rid: 5001, course: 901, name: "אורי בדיקה", idNumber: "000000026" },
         { rid: 5002, course: 901, name: "בלי מספר" },
       ],
     });
     expect(seats.status).toBe(200);
     expect(seats.body.data.list.rows).toEqual([
-      { rid: "5000", course: "900", name: "דנה בדיקה", type: "מתמודד/ת", registered: "01/09/2026", from: "01/09/2026", until: "30/06/2027", weekday: "ג`", time: "10:00", hasId: true, idPerson: String(dana._id), idStudent: "7", idPotential: "70" },
+      { rid: "5000", course: "900", name: "דנה בדיקה", type: "מתמודד/ת", registered: "01/09/2026", from: "01/09/2026", until: "30/06/2027", weekday: "ג`", time: "10:00", timeEnd: "10:45", hasId: true, idPerson: String(dana._id), idStudent: "7", idPotential: "70" },
       { rid: "5001", course: "901", name: "אורי בדיקה", type: "", registered: "", from: "", until: "", weekday: "", time: "", hasId: true, idPerson: null, idStudent: null, idPotential: "71" },
       { rid: "5002", course: "901", name: "בלי מספר", type: "", registered: "", from: "", until: "", weekday: "", time: "", hasId: false, idPerson: null, idStudent: null, idPotential: null },
     ]);

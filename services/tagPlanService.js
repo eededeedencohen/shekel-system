@@ -144,7 +144,7 @@ function oldCourseRow(r) {
 /** A person's registration to a course of the old system; the ID number stays inside, as in every list here. */
 function oldSeatRow(r) {
   if (!isMap(r) || !text(r.name, 120) || !text(String(r.course ?? ""), 20)) throw AppError.of("TAG_PLAN_INVALID", 400);
-  return {
+  const row = {
     rid: text(String(r.rid ?? ""), 20),
     course: text(String(r.course), 20),
     name: text(r.name, 120),
@@ -156,6 +156,9 @@ function oldSeatRow(r) {
     weekday: text(r.weekday, 40),
     time: text(r.time, 20),
   };
+  // the person's own hour ends too, when the old list says it (a private lesson inside a course of many)
+  if (text(r.timeEnd, 20)) row.timeEnd = text(r.timeEnd, 20);
+  return row;
 }
 const OLD_ROW = { students: oldRow, potential: oldRow, courses: oldCourseRow, seats: oldSeatRow };
 
