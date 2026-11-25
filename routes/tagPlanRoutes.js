@@ -38,17 +38,21 @@ router.delete(
 
 // the old system's students list, for the cross-check tab (real people: kept in the database, never in the code;
 // the ID numbers it holds are used for the match alone and are never in an answer)
+// "/old-list" is its students; "/old-list/potential" its potential students (each row also names the students
+// list's row with the same ID number); "/old-list/courses" its courses; "/old-list/seats" who is registered to each
+const OLD = ["/old-list", "/old-list/:kind"];
+const kindOf = (req) => req.params.kind || "students";
 router.get(
-  "/old-list",
-  catchAsync(async (req, res) => ok(res, { list: await tagPlan.getOldList() }))
+  OLD,
+  catchAsync(async (req, res) => ok(res, { list: await tagPlan.getOldList(kindOf(req)) }))
 );
 router.put(
-  "/old-list",
-  catchAsync(async (req, res) => ok(res, { list: await tagPlan.setOldList(req.body, req.account?.name || req.account?.username || "") }))
+  OLD,
+  catchAsync(async (req, res) => ok(res, { list: await tagPlan.setOldList(req.body, req.account?.name || req.account?.username || "", kindOf(req)) }))
 );
 router.delete(
-  "/old-list",
-  catchAsync(async (req, res) => ok(res, { list: await tagPlan.clearOldList() }))
+  OLD,
+  catchAsync(async (req, res) => ok(res, { list: await tagPlan.clearOldList(kindOf(req)) }))
 );
 
 module.exports = router;

@@ -142,6 +142,53 @@ describe("the students' tags plan", () => {
     }
     expect((await list()).body.data.list.rows).toHaveLength(3);
 
+    // the potential list is another row, kept the same way: each of its rows names the students row with the same ID number
+    const pot = await request(app).put("/api/tag-plan/old-list/potential").send({
+      rows: [
+        { rid: 70, name: "דנה ב", idNumber: "012345674", status: "מתעניין-מכללה לכל", registered: "01/02/2026", lastActivity: "שיחת אינטייק" },
+        { rid: 71, name: "אורי בדיקה", idNumber: "000000026" },
+      ],
+    });
+    expect(pot.status).toBe(200);
+    expect(pot.body.data.list.rows).toEqual([
+      { rid: "70", name: "דנה ב", phone: "", type: "", status: "מתעניין-מכללה לכל", residence: "", frame: "", registered: "01/02/2026", lastActivity: "שיחת אינטייק", hasId: true, idPerson: String(dana._id), idStudent: "7" },
+      { rid: "71", name: "אורי בדיקה", phone: "", type: "", status: "", residence: "", frame: "", hasId: true, idPerson: null, idStudent: null },
+    ]);
+    expect(JSON.stringify(pot.body)).not.toContain("12345674");
+    expect((await list()).body.data.list.rows).toHaveLength(3);
+    expect((await request(app).get("/api/tag-plan/old-list/nothing")).status).toBe(404);
+
+    // the courses (no person in them) and who is registered to each (a name and an ID number - the number stays inside)
+    const courses = await request(app).put("/api/tag-plan/old-list/courses").send({ rows: [{ rid: 900, name: " גיטרה -  קבוצתי ", category: "מכללה לכל (קבוצתי)", manager: "רכזת", capacity: "8", start: "01/09/2026", finish: "30/06/2027", branch: "ירושלים" }, { rid: 901, name: "טיול", capacity: "" }] });
+    expect(courses.body.data.list.rows).toEqual([
+      { rid: "900", name: "גיטרה - קבוצתי", category: "מכללה לכל (קבוצתי)", manager: "רכזת", capacity: 8, start: "01/09/2026", finish: "30/06/2027", branch: "ירושלים" },
+      { rid: "901", name: "טיול", category: "", manager: "", capacity: null, start: "", finish: "", branch: "" },
+    ]);
+    const seats = await request(app).put("/api/tag-plan/old-list/seats").send({
+      rows: [
+        { rid: 5000, course: 900, name: "דנה בדיקה", idNumber: "12345674", type: "מתמודד/ת", registered: "01/09/2026", from: "01/09/2026", until: "30/06/2027", weekday: "ג`", time: "10:00" },
+        { rid: 5001, course: 901, name: "אורי בדיקה", idNumber: "000000026" },
+        { rid: 5002, course: 901, name: "בלי מספר" },
+      ],
+    });
+    expect(seats.status).toBe(200);
+    expect(seats.body.data.list.rows).toEqual([
+      { rid: "5000", course: "900", name: "דנה בדיקה", type: "מתמודד/ת", registered: "01/09/2026", from: "01/09/2026", until: "30/06/2027", weekday: "ג`", time: "10:00", hasId: true, idPerson: String(dana._id), idStudent: "7", idPotential: "70" },
+      { rid: "5001", course: "901", name: "אורי בדיקה", type: "", registered: "", from: "", until: "", weekday: "", time: "", hasId: true, idPerson: null, idStudent: null, idPotential: "71" },
+      { rid: "5002", course: "901", name: "בלי מספר", type: "", registered: "", from: "", until: "", weekday: "", time: "", hasId: false, idPerson: null, idStudent: null, idPotential: null },
+    ]);
+    expect(JSON.stringify(seats.body)).not.toContain("12345674");
+    expect(JSON.stringify(seats.body)).not.toContain("000000026");
+    for (const bad of [{ rows: [{ name: "בלי קורס" }] }, { rows: [{ course: 900 }] }]) expect((await request(app).put("/api/tag-plan/old-list/seats").send(bad)).status).toBe(400);
+    expect((await request(app).put("/api/tag-plan/old-list/courses").send({ rows: [{ name: "בלי מזהה" }] })).status).toBe(400);
+    for (const k of ["courses", "seats"]) expect((await request(app).delete(`/api/tag-plan/old-list/${k}`)).status).toBe(200);
+    TEST_ACCOUNT.kind = "manager";
+    expect((await request(app).get("/api/tag-plan/old-list/potential")).status).toBe(403);
+    TEST_ACCOUNT.kind = "super";
+    expect((await request(app).delete("/api/tag-plan/old-list/potential")).status).toBe(200);
+    expect((await request(app).get("/api/tag-plan/old-list/potential")).body.data.list).toBeNull();
+    expect((await list()).body.data.list.rows).toHaveLength(3);
+
     expect((await request(app).delete("/api/tag-plan/old-list")).status).toBe(200);
     expect((await list()).body.data.list).toBeNull();
   });

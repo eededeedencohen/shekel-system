@@ -33,6 +33,20 @@
  * this file: what is read back says only whether a row has one (`hasId`)
  * and which person of ours carries the same number (`idPerson`) - the
  * surest sign that two rows are one person.
+ *
+ * A fourth row, "oldPotential" (the same day: "עכשיו עוד טאב עבור מה שנקרא
+ * בסנזיי 'סטודנטים פוטנציאלים' שם תעשה הצלבה עם ה-510 סטודנטים מקודם"): the
+ * old system's list of potential students, kept the same way. Read back,
+ * each of its rows also says which row of the students list carries the
+ * same ID number (`idStudent`, that row's `rid`).
+ *
+ * And two more (the same day: "ואז טאב עבור קורסים… וקורסים של סטודנטים…
+ * לא לדרוס כמובן נתונים קיימים"): "oldCourses", the old system's courses (no
+ * person in them: an id, a name, a kind, the dates, how many it holds), and
+ * "oldSeats", who is registered to which course there - a name and an ID
+ * number per row, the number kept inside as everywhere here: read back, a
+ * row says which of our people (`idPerson`), which students row
+ * (`idStudent`) and which potential row (`idPotential`) carries it.
  */
 
 const AppSetting = require("../models/AppSetting");
@@ -84,13 +98,18 @@ async function clearSheet() {
   return null;
 }
 
-const OLD_KEY = "oldStudents";
+/** The old system's lists, by the kind the route names: its students, its potential students, its courses, and who sits in each. */
+const OLD_KEYS = { students: "oldStudents", potential: "oldPotential", courses: "oldCourses", seats: "oldSeats" };
 const OLD_MAX = 5000;
+const oldKey = (kind) => {
+  if (!Object.prototype.hasOwnProperty.call(OLD_KEYS, kind)) throw AppError.of("NOT_FOUND", 404, "רשימה");
+  return OLD_KEYS[kind];
+};
 
 /** One row of the old list as it is kept: what the cross-check reads, and the ID number for the match alone. */
 function oldRow(r) {
   if (!isMap(r) || !text(r.name, 120)) throw AppError.of("TAG_PLAN_INVALID", 400);
-  return {
+  const row = {
     rid: text(String(r.rid ?? ""), 20),
     name: text(r.name, 120),
     idNumber: normalizeIsraeliId(r.idNumber),
@@ -100,7 +119,45 @@ function oldRow(r) {
     residence: text(r.residence, 60),
     frame: text(r.frame, 120),
   };
+  // what only the potential list says: the day the person was written down, and the last thing done with them
+  if (text(r.registered, 30)) row.registered = text(r.registered, 30);
+  if (text(r.lastActivity, 80)) row.lastActivity = text(r.lastActivity, 80);
+  return row;
 }
+
+/** A course of the old system: no person in it. */
+function oldCourseRow(r) {
+  if (!isMap(r) || !text(r.name, 200) || !text(String(r.rid ?? ""), 20)) throw AppError.of("TAG_PLAN_INVALID", 400);
+  const capacity = Number(r.capacity);
+  return {
+    rid: text(String(r.rid), 20),
+    name: text(r.name, 200),
+    category: text(r.category, 80),
+    manager: text(r.manager, 80),
+    capacity: Number.isFinite(capacity) && capacity > 0 && capacity < 10000 ? Math.round(capacity) : null,
+    start: text(r.start, 20),
+    finish: text(r.finish, 20),
+    branch: text(r.branch, 60),
+  };
+}
+
+/** A person's registration to a course of the old system; the ID number stays inside, as in every list here. */
+function oldSeatRow(r) {
+  if (!isMap(r) || !text(r.name, 120) || !text(String(r.course ?? ""), 20)) throw AppError.of("TAG_PLAN_INVALID", 400);
+  return {
+    rid: text(String(r.rid ?? ""), 20),
+    course: text(String(r.course), 20),
+    name: text(r.name, 120),
+    idNumber: normalizeIsraeliId(r.idNumber),
+    type: text(r.type, 60),
+    registered: text(r.registered, 20),
+    from: text(r.from, 20),
+    until: text(r.until, 20),
+    weekday: text(r.weekday, 40),
+    time: text(r.time, 20),
+  };
+}
+const OLD_ROW = { students: oldRow, potential: oldRow, courses: oldCourseRow, seats: oldSeatRow };
 
 /**
  * The old system's students list beside our people, or null when none was loaded:
@@ -108,35 +165,49 @@ function oldRow(r) {
  * `idPerson` = the person of ours with the same ID number; `ourIds` = how many of our people have a number at all.
  * No ID number is in the answer.
  */
-async function getOldList() {
-  const row = await AppSetting.findOne({ key: OLD_KEY }).lean();
+async function getOldList(kind = "students") {
+  const row = await AppSetting.findOne({ key: oldKey(kind) }).lean();
   if (!row || !isMap(row.value) || !Array.isArray(row.value.rows)) return null;
+  const head = { source: row.value.source || "", takenAt: row.value.takenAt || null, loadedAt: row.updatedAt || null, loadedBy: row.updatedBy || "" };
+  // the courses hold no person: they are read back as they are kept
+  if (kind === "courses") return { ...head, rows: row.value.rows };
   const ids = [...new Set(row.value.rows.map((r) => r.idNumber).filter(Boolean))];
   const ours = ids.length ? await Person.find({ idNumber: { $in: ids } }).select("+idNumber").lean() : [];
   const byId = new Map(ours.map((p) => [p.idNumber, String(p._id)]));
   const ourIds = await Person.countDocuments({ idNumber: { $type: "string" } });
+  // the potential list beside the students list: the same ID number in both is one person written twice there
+  const ridById = async (key) => {
+    const other = await AppSetting.findOne({ key }).lean();
+    return new Map((other?.value?.rows || []).filter((r) => r.idNumber).map((r) => [r.idNumber, r.rid]));
+  };
+  const studentById = kind === "potential" || kind === "seats" ? await ridById(OLD_KEYS.students) : null;
+  const potentialById = kind === "seats" ? await ridById(OLD_KEYS.potential) : null;
   return {
-    source: row.value.source || "",
-    takenAt: row.value.takenAt || null,
-    loadedAt: row.updatedAt || null,
-    loadedBy: row.updatedBy || "",
+    ...head,
     ourIds,
-    rows: row.value.rows.map(({ idNumber, ...r }) => ({ ...r, hasId: Boolean(idNumber), idPerson: (idNumber && byId.get(idNumber)) || null })),
+    rows: row.value.rows.map(({ idNumber, ...r }) => ({
+      ...r,
+      hasId: Boolean(idNumber),
+      idPerson: (idNumber && byId.get(idNumber)) || null,
+      ...(studentById && { idStudent: (idNumber && studentById.get(idNumber)) || null }),
+      ...(potentialById && { idPotential: (idNumber && potentialById.get(idNumber)) || null }),
+    })),
   };
 }
 
 /** Load the old list (the whole of it, replacing what was there): { source, takenAt, rows: [{ rid, name, idNumber, phone, type, status, residence, frame }] }. */
-async function setOldList(body, by = "") {
+async function setOldList(body, by = "", kind = "students") {
+  const key = oldKey(kind);
   if (!isMap(body) || !Array.isArray(body.rows) || !body.rows.length || body.rows.length > OLD_MAX) throw AppError.of("TAG_PLAN_INVALID", 400);
-  const rows = body.rows.map(oldRow);
+  const rows = body.rows.map(OLD_ROW[kind]);
   const takenAt = body.takenAt && !Number.isNaN(new Date(body.takenAt).getTime()) ? new Date(body.takenAt).toISOString() : null;
-  await AppSetting.findOneAndUpdate({ key: OLD_KEY }, { $set: { value: { source: text(body.source, 120), takenAt, rows }, updatedBy: by } }, { upsert: true });
-  return getOldList();
+  await AppSetting.findOneAndUpdate({ key }, { $set: { value: { source: text(body.source, 120), takenAt, rows }, updatedBy: by } }, { upsert: true });
+  return getOldList(kind);
 }
 
 /** Take the old list off (the tab says there is none). */
-async function clearOldList() {
-  await AppSetting.deleteOne({ key: OLD_KEY });
+async function clearOldList(kind = "students") {
+  await AppSetting.deleteOne({ key: oldKey(kind) });
   return null;
 }
 
