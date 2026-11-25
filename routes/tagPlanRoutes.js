@@ -9,6 +9,7 @@
 const express = require("express");
 const catchAsync = require("../utils/catchAsync");
 const tagPlan = require("../services/tagPlanService");
+const recipients = require("../services/recipientsService");
 
 const router = express.Router();
 const ok = (res, data) => res.status(200).json({ status: "success", data });
@@ -54,6 +55,21 @@ router.put(
 router.delete(
   OLD,
   catchAsync(async (req, res) => ok(res, { list: await tagPlan.clearOldList(kindOf(req)) }))
+);
+
+// the staff's "service recipients" workbook beside the old system's lists (real people: kept in the database; the ID
+// numbers and the phones of both sides are used for the match alone and are never in an answer)
+router.get(
+  "/recipients",
+  catchAsync(async (req, res) => ok(res, { sheet: await recipients.get() }))
+);
+router.put(
+  "/recipients",
+  catchAsync(async (req, res) => ok(res, { sheet: await recipients.set(req.body, req.account?.name || req.account?.username || "") }))
+);
+router.delete(
+  "/recipients",
+  catchAsync(async (req, res) => ok(res, { sheet: await recipients.clear() }))
 );
 
 module.exports = router;
