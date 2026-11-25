@@ -17,6 +17,7 @@ const router = express.Router();
 const answer = (fn) => catchAsync(async (req, res) => res.status(200).json({ status: "success", data: await fn(req) }));
 
 router.get("/", answer(order.board));
+router.get("/rows", answer(order.slice));
 router.get("/log", requireSuper, answer(order.journal));
 router.post("/marks", answer(order.mark));
 router.post("/links", answer(order.link));

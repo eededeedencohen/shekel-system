@@ -238,6 +238,11 @@ describe("putting in order", () => {
     const seat = await makeEnrollment({ cycle: cycle._id, student: p._id });
     await makeLesson({ cycle: cycle._id });
     expect((await get()).courses[0].leans).toMatchObject({ lessons: 1 });
+    // what the app's store reads at its boot: the lines and what leans on a course - not the courses themselves
+    const slice = await get("/rows");
+    expect(Object.keys(slice).sort()).toEqual(["leans", "rows"]);
+    expect(slice.leans).toEqual([{ _id: String(cycle._id), lessons: 1, waits: 0, invoices: 0 }]);
+    expect(slice.rows.map((r) => r.key)).toEqual([`p:${p._id}`]);
     const res = await request(app).delete(`/api/order/courses/${cycle._id}`);
     expect(res.body.data).toMatchObject({ done: "closed" });
     const kept = await Cycle.findById(cycle._id).lean();

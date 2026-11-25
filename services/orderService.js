@@ -304,6 +304,16 @@ async function board(req) {
   return { rows: kept, courses, teachers, old: oldSetting ? { takenAt: oldSetting.value?.takenAt || null, count: oldRows.length } : null };
 }
 
+/**
+ * GET …/rows - what the app's own store holds of these pages (the client's DataContext slice "orderBoard", read once
+ * at the boot like every other list): the lines, and what still leans on each course. The courses themselves, their
+ * seats and the teachers are already in the store (cycles, enrollments, people) and are not sent twice.
+ */
+async function slice(req) {
+  const b = await board(req);
+  return { rows: b.rows, leans: b.courses.map((c) => ({ _id: c._id, ...c.leans })).filter((l) => l.lessons || l.waits || l.invoices) };
+}
+
 /* ───────────────────────── a word about a person ───────────────────────── */
 
 /** Whom a key names: { person, rid, name } - or a 404 when there is no such line. */
@@ -588,4 +598,4 @@ async function journal() {
   return { entries };
 }
 
-module.exports = { board, mark, link, seatOff, seatOn, windows, courseOff, journal };
+module.exports = { board, slice, mark, link, seatOff, seatOn, windows, courseOff, journal };
