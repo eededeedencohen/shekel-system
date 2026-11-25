@@ -45,6 +45,18 @@ const entrySchema = new mongoose.Schema(
     by: { type: String, enum: ["teacher", "staff"], required: true },
     byName: { type: String, trim: true, maxlength: 80 },
     at: { type: Date, default: Date.now },
+    /**
+     * The staff's word on the lesson as it is written (Eden, 2026-11-25: "לתת לשמרית ולי אפשרות לסמן… מה תקין ומה
+     * לא. ואם מסמנים מה לא אז… למה"): right, or not right - and then why: it belongs to מכללה לכל's program, or
+     * something else, said in words. Never shown to the teacher; cleared when the lesson itself is changed.
+     */
+    check: {
+      state: { type: String, enum: ["ok", "bad"] },
+      reason: { type: String, enum: ["college", "other"] },
+      note: { type: String, trim: true, maxlength: 300 },
+      by: { type: String, trim: true, maxlength: 80 },
+      at: Date,
+    },
   },
   { _id: true }
 );

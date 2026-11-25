@@ -9,7 +9,10 @@ const request = require("supertest");
 const app = require("../../../app");
 const Cycle = require("../../../models/Cycle");
 const WeekPlan = require("../../../models/WeekPlan");
+const { TEST_ACCOUNT } = require("../../../utils/auth");
 const { makeTeacher, makeHostel, makeCycle, makeSubject } = require("../../helpers/factories");
+
+afterEach(() => Object.assign(TEST_ACCOUNT, { name: "בדיקות", kind: "super" }));
 
 async function world() {
   const hostel = await makeHostel({ name: "השלום", kind: "hostel" });
@@ -202,5 +205,53 @@ describe("the hostels teachers' week census", () => {
     const plain = (await request(app).post(`/api/week-plans/${hers._id}/entries`).send(entry(w, { teacher: String(w.tomer._id) }))).body.data.plan;
     expect(plain.entries[0].teacher).toBeNull();
     expect(JSON.stringify((await request(app).get("/api/week-plans")).body)).not.toMatch(/"token"/);
+  });
+
+  it("the staff say of each lesson whether it is right - and why when it is not; the teacher is never told", async () => {
+    // (Eden, 2026-11-25: "לתת לשמרית ולי אפשרות לסמן… מה תקין ומה לא. ואם מסמנים מה לא אז… למה": it belongs to
+    // מכללה לכל's program, or something else, said in words)
+    const w = await world();
+    const plan = (await request(app).post("/api/week-plans").send({ teachers: [String(w.tomer._id)] })).body.data.plans[0];
+    const a = (await request(app).post(`/api/week-plans/${plan._id}/entries`).send(entry(w, { day: 0 }))).body.data.plan.entries[0];
+    const b = (await request(app).post(`/api/week-plans/${plan._id}/entries`).send(entry(w, { day: 2 }))).body.data.plan.entries.find((e) => e.day === 2);
+    expect(a.check).toBeNull();
+    const check = (id, body) => request(app).put(`/api/week-plans/${plan._id}/entries/${id}/check`).send(body);
+    const of = (r, id) => r.body.data.plan.entries.find((e) => e._id === id).check;
+
+    Object.assign(TEST_ACCOUNT, { name: "שמרית", kind: "hostels" });
+    const ok = await check(a._id, { state: "ok" });
+    expect(ok.status).toBe(200);
+    expect(of(ok, a._id)).toMatchObject({ state: "ok", reason: "", note: "", by: "שמרית" });
+    expect(of(ok, b._id)).toBeNull();
+
+    // not right: a reason is needed, and "other" must say what
+    for (const bad of [{ state: "bad" }, { state: "bad", reason: "whatever" }, { state: "bad", reason: "other", note: "   " }, { state: "maybe" }]) {
+      const r = await check(b._id, bad);
+      expect(r.status).toBe(400);
+      expect(r.body.code).toBe("WEEK_PLAN_CHECK_INVALID");
+    }
+    expect(of(await check(b._id, { state: "bad", reason: "college" }), b._id)).toMatchObject({ state: "bad", reason: "college", note: "" });
+    expect(of(await check(b._id, { state: "bad", reason: "other", note: "  השעה לא נכונה " }), b._id)).toMatchObject({ state: "bad", reason: "other", note: "השעה לא נכונה", by: "שמרית" });
+
+    // the teacher's form holds nothing of it
+    const token = (await request(app).get(`/api/week-plans/${plan._id}/link`)).body.data.link.token;
+    const view = (await request(app).get(`/api/public/week-plans/${token}`)).body.data.view;
+    expect(view.entries).toHaveLength(2);
+    expect(JSON.stringify(view)).not.toMatch(/check|השעה לא נכונה|שמרית/);
+
+    // a note beside the lesson leaves the word as it is; the lesson itself changed - nobody looked at it yet
+    const noted = await request(app).put(`/api/week-plans/${plan._id}/entries/${a._id}`).send(entry(w, { day: 0, note: "קבוצה ב׳" }));
+    expect(of(noted, a._id)).toMatchObject({ state: "ok" });
+    const moved = await request(app).put(`/api/week-plans/${plan._id}/entries/${a._id}`).send(entry(w, { day: 0, start: "12:00", end: "13:00" }));
+    expect(of(moved, a._id)).toBeNull();
+    // taken back
+    expect(of(await check(b._id, { state: null }), b._id)).toBeNull();
+    expect((await check("64b000000000000000000001", { state: "ok" })).status).toBe(404);
+
+    // the hostels coordinator's and the super admin's alone
+    Object.assign(TEST_ACCOUNT, { name: "ייטב", kind: "social" });
+    expect((await check(b._id, { state: "ok" })).status).toBe(403);
+    Object.assign(TEST_ACCOUNT, { name: "עדן", kind: "super" });
+    expect(of(await check(b._id, { state: "ok" }), b._id)).toMatchObject({ state: "ok", by: "עדן" });
   });
 });

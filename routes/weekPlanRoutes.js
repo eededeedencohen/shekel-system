@@ -51,6 +51,8 @@ router.post("/:id/cover", catchAsync(async (req, res) => one(res, await plans.co
 router.post("/:id/aside", catchAsync(async (req, res) => one(res, await plans.setAside({ id: req.params.id, by: by(req) }))));
 router.post("/:id/entries", catchAsync(async (req, res) => one(res, await plans.saveEntry({ id: req.params.id, data: req.body, by: by(req) }), 201)));
 router.put("/:id/entries/:eid", catchAsync(async (req, res) => one(res, await plans.saveEntry({ id: req.params.id, entryId: req.params.eid, data: req.body, by: by(req) }))));
+/** PUT { state: "ok" | "bad" | null, reason?, note? } - the staff's word on a lesson: right, not right and why, or taken back. */
+router.put("/:id/entries/:eid/check", catchAsync(async (req, res) => one(res, await plans.checkEntry({ id: req.params.id, entryId: req.params.eid, state: req.body?.state, reason: req.body?.reason, note: req.body?.note, actor: req.actor || req.account }))));
 router.delete("/:id/entries/:eid", catchAsync(async (req, res) => one(res, await plans.removeEntry({ id: req.params.id, entryId: req.params.eid }))));
 router.delete(
   "/:id",

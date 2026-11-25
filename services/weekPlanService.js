@@ -67,6 +67,9 @@ const entryView = (e) => ({
   at: e.at,
 });
 const sortEntries = (list) => list.slice().sort((a, b) => a.day - b.day || a.start.localeCompare(b.start));
+/** The staff's word on a lesson - for the staff's page alone (the teacher's form is never sent it). */
+const checkView = (c) => (c && c.state ? { state: c.state, reason: c.state === "bad" ? c.reason || "other" : "", note: c.state === "bad" ? c.note || "" : "", by: c.by || "", at: c.at || null } : null);
+const staffEntry = (e) => ({ ...entryView(e), check: checkView(e.check) });
 
 /** The plan as the staff read it - never the token (GET …/link hands it, alone). */
 const planView = (p) => ({
@@ -84,7 +87,7 @@ const planView = (p) => ({
   teacherEditedAt: p.teacherEditedAt || null,
   submittedAt: p.submittedAt || null,
   note: p.note || "",
-  entries: sortEntries(p.entries || []).map(entryView),
+  entries: sortEntries(p.entries || []).map(staffEntry),
   // one person's form for several teachers: who they are, and of which house
   covers: (p.covers || []).map(nameView).filter(Boolean),
   coversHostel: houseView(p.coversHostel),
@@ -139,11 +142,17 @@ async function entryOf(data, who, plan) {
   return { day, start, end, subject, hostel, hostelName: hostel ? "" : hostelName, unit, place, note: clean(d.note, 200), teacher, by: who.by, byName: clean(who.name, 80), at: new Date() };
 }
 
+/** What a lesson says - the things the staff's word on it was about (a note beside it is not one of them). */
+const said = (e) => [e.day, e.start, e.end, e.subject, String(e.hostel || ""), e.hostelName || "", e.unit || "", e.place, String(e.teacher || "")].join("|");
+
 function putEntry(p, entryId, fields) {
   if (entryId) {
     const e = p.entries.id(entryId);
     if (!e) throw AppError.of("NOT_FOUND", 404, "שיעור");
+    const before = said(e);
     Object.assign(e, fields);
+    // a lesson that was changed is a lesson nobody looked at yet
+    if (said(e) !== before) e.check = undefined;
   } else {
     if (p.entries.length >= MAX_ENTRIES) throw AppError.of("WEEK_PLAN_ENTRY_INVALID", 400);
     p.entries.push(fields);
@@ -272,6 +281,31 @@ async function saveEntry({ id, entryId, data, by }) {
   return shaped(p);
 }
 
+/** Who may say whether a lesson is right: the hostels coordinator and the super admin. */
+const CHECK_KINDS = ["super", "hostels"];
+const CHECK_REASONS = ["college", "other"];
+
+/**
+ * The staff's word on a lesson: `state` "ok" (right as written), "bad" (not right - `reason` "college": it belongs to
+ * מכללה לכל's program; "other": `note` says what), or nothing (the word is taken back).
+ */
+async function checkEntry({ id, entryId, state, reason, note, actor }) {
+  if (!CHECK_KINDS.includes(actor?.kind)) throw AppError.of("OUT_OF_SCOPE", 403);
+  const p = await requirePlan(id);
+  const e = p.entries.id(entryId);
+  if (!e) throw AppError.of("NOT_FOUND", 404, "שיעור");
+  const stamp = { by: actor?.name || "", at: new Date() };
+  if (state == null || state === "") e.check = undefined;
+  else if (state === "ok") e.check = { state: "ok", ...stamp };
+  else if (state === "bad") {
+    const why = clean(note, 300);
+    if (!CHECK_REASONS.includes(reason) || (reason === "other" && !why)) throw AppError.of("WEEK_PLAN_CHECK_INVALID", 400);
+    e.check = { state: "bad", reason, note: why, ...stamp };
+  } else throw AppError.of("WEEK_PLAN_CHECK_INVALID", 400);
+  await p.save();
+  return shaped(p);
+}
+
 async function removeEntry({ id, entryId }) {
   const p = await requirePlan(id);
   const e = p.entries.id(entryId);
@@ -379,4 +413,4 @@ async function publicDone({ token, note }) {
   return publicShape(p);
 }
 
-module.exports = { list, open, link, markSent, renew, reopen, setLang, cover, setAside, saveEntry, removeEntry, remove, publicView, publicSaveEntry, publicRemoveEntry, publicDone, WEEK_PLAN_LINK_DAYS };
+module.exports = { list, open, link, markSent, renew, reopen, setLang, cover, setAside, saveEntry, checkEntry, removeEntry, remove, publicView, publicSaveEntry, publicRemoveEntry, publicDone, WEEK_PLAN_LINK_DAYS };
