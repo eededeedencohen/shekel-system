@@ -36,4 +36,19 @@ router.delete(
   catchAsync(async (req, res) => ok(res, { sheet: await tagPlan.clearSheet() }))
 );
 
+// the old system's students list, for the cross-check tab (real people: kept in the database, never in the code;
+// the ID numbers it holds are used for the match alone and are never in an answer)
+router.get(
+  "/old-list",
+  catchAsync(async (req, res) => ok(res, { list: await tagPlan.getOldList() }))
+);
+router.put(
+  "/old-list",
+  catchAsync(async (req, res) => ok(res, { list: await tagPlan.setOldList(req.body, req.account?.name || req.account?.username || "") }))
+);
+router.delete(
+  "/old-list",
+  catchAsync(async (req, res) => ok(res, { list: await tagPlan.clearOldList() }))
+);
+
 module.exports = router;

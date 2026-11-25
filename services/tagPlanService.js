@@ -22,10 +22,23 @@
  * the client's files are public and the repository is not the place for
  * people. It is a picture of the sheet, not an import: no person, no
  * student and no list of the app is made from it.
+ *
+ * A third row, "oldStudents" (2026-11-25: "קח את רשימת כל הסטודנטים מכאן…
+ * אל תדרוס לי נתונים קיימים אלא אני רוצה בעמוד התכנונים טאב חדש - הצלבות
+ * סטודנטים"): the students list of the association's old system as it was
+ * taken that day - a name, a mobile, the kind and the status there, where
+ * the person lives - for the ideas page's cross-check tab. Again a picture,
+ * not an import: no person of the app is made or changed from it.
+ * Each row keeps the person's ID NUMBER too, and that number never leaves
+ * this file: what is read back says only whether a row has one (`hasId`)
+ * and which person of ours carries the same number (`idPerson`) - the
+ * surest sign that two rows are one person.
  */
 
 const AppSetting = require("../models/AppSetting");
+const { Person } = require("../models/Person");
 const AppError = require("../utils/AppError");
+const { normalizeIsraeliId } = require("../utils/israeliId");
 
 const KEY = "tagPlan";
 const MAX_KEYS = 300;
@@ -71,6 +84,62 @@ async function clearSheet() {
   return null;
 }
 
+const OLD_KEY = "oldStudents";
+const OLD_MAX = 5000;
+
+/** One row of the old list as it is kept: what the cross-check reads, and the ID number for the match alone. */
+function oldRow(r) {
+  if (!isMap(r) || !text(r.name, 120)) throw AppError.of("TAG_PLAN_INVALID", 400);
+  return {
+    rid: text(String(r.rid ?? ""), 20),
+    name: text(r.name, 120),
+    idNumber: normalizeIsraeliId(r.idNumber),
+    phone: text(r.phone, 30),
+    type: text(r.type, 60),
+    status: text(r.status, 80),
+    residence: text(r.residence, 60),
+    frame: text(r.frame, 120),
+  };
+}
+
+/**
+ * The old system's students list beside our people, or null when none was loaded:
+ *   { source, takenAt, loadedAt, loadedBy, ourIds, rows: [{ rid, name, phone, type, status, residence, frame, hasId, idPerson }] }
+ * `idPerson` = the person of ours with the same ID number; `ourIds` = how many of our people have a number at all.
+ * No ID number is in the answer.
+ */
+async function getOldList() {
+  const row = await AppSetting.findOne({ key: OLD_KEY }).lean();
+  if (!row || !isMap(row.value) || !Array.isArray(row.value.rows)) return null;
+  const ids = [...new Set(row.value.rows.map((r) => r.idNumber).filter(Boolean))];
+  const ours = ids.length ? await Person.find({ idNumber: { $in: ids } }).select("+idNumber").lean() : [];
+  const byId = new Map(ours.map((p) => [p.idNumber, String(p._id)]));
+  const ourIds = await Person.countDocuments({ idNumber: { $type: "string" } });
+  return {
+    source: row.value.source || "",
+    takenAt: row.value.takenAt || null,
+    loadedAt: row.updatedAt || null,
+    loadedBy: row.updatedBy || "",
+    ourIds,
+    rows: row.value.rows.map(({ idNumber, ...r }) => ({ ...r, hasId: Boolean(idNumber), idPerson: (idNumber && byId.get(idNumber)) || null })),
+  };
+}
+
+/** Load the old list (the whole of it, replacing what was there): { source, takenAt, rows: [{ rid, name, idNumber, phone, type, status, residence, frame }] }. */
+async function setOldList(body, by = "") {
+  if (!isMap(body) || !Array.isArray(body.rows) || !body.rows.length || body.rows.length > OLD_MAX) throw AppError.of("TAG_PLAN_INVALID", 400);
+  const rows = body.rows.map(oldRow);
+  const takenAt = body.takenAt && !Number.isNaN(new Date(body.takenAt).getTime()) ? new Date(body.takenAt).toISOString() : null;
+  await AppSetting.findOneAndUpdate({ key: OLD_KEY }, { $set: { value: { source: text(body.source, 120), takenAt, rows }, updatedBy: by } }, { upsert: true });
+  return getOldList();
+}
+
+/** Take the old list off (the tab says there is none). */
+async function clearOldList() {
+  await AppSetting.deleteOne({ key: OLD_KEY });
+  return null;
+}
+
 async function get() {
   const row = await AppSetting.findOne({ key: KEY }).lean();
   const v = row?.value || {};
@@ -106,4 +175,4 @@ async function set(patch, by = "") {
   return get();
 }
 
-module.exports = { get, set, getSheet, setSheet, clearSheet };
+module.exports = { get, set, getSheet, setSheet, clearSheet, getOldList, setOldList, clearOldList };

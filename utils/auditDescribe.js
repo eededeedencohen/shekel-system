@@ -234,6 +234,8 @@ const RULES = [
   // (the sheet holds people's names: the event says it happened, and keeps none of it)
   ["PUT", "/tag-plan/sheet", "טעינת רשימות ההמתנה מהקובץ לעמוד הרעיונות", "tagPlan", "update", { payload: false }],
   ["DELETE", "/tag-plan/sheet", "הסרת רשימות ההמתנה של הקובץ מעמוד הרעיונות", "tagPlan", "delete"],
+  ["PUT", "/tag-plan/old-list", "טעינת רשימת הסטודנטים של המערכת הישנה לעמוד הרעיונות", "tagPlan", "update", { payload: false }],
+  ["DELETE", "/tag-plan/old-list", "הסרת רשימת הסטודנטים של המערכת הישנה מעמוד הרעיונות", "tagPlan", "delete"],
   // the tasks the super admin gives the staff (the talk itself stays out of the record: it is the two people's)
   ["POST", "/staff-tasks", "משימה חדשה לעובד", "staffTask", "create"],
   ["PATCH", "/staff-tasks/:id", "עריכת משימה", "staffTask", "update"],
