@@ -136,7 +136,7 @@ function oldRow(r) {
 function oldCourseRow(r) {
   if (!isMap(r) || !text(r.name, 200) || !text(String(r.rid ?? ""), 20)) throw AppError.of("TAG_PLAN_INVALID", 400);
   const capacity = Number(r.capacity);
-  return {
+  const row = {
     rid: text(String(r.rid), 20),
     name: text(r.name, 200),
     category: text(r.category, 80),
@@ -146,6 +146,13 @@ function oldCourseRow(r) {
     finish: text(r.finish, 20),
     branch: text(r.branch, 60),
   };
+  // what the WHOLE list adds (2026-11-25): the course's status there ("פעיל", "הושלם", "בהמתנה", "בוטל"), its room,
+  // and how many people the old list itself counts in it
+  if (text(r.status, 40)) row.status = text(r.status, 40);
+  if (text(r.room, 60)) row.room = text(r.room, 60);
+  const people = r.people === "" || r.people == null ? NaN : Number(r.people);
+  if (Number.isFinite(people) && people >= 0 && people < 10000) row.people = Math.round(people);
+  return row;
 }
 
 /** A person's registration to a course of the old system; the ID number stays inside, as in every list here. */

@@ -159,9 +159,9 @@ describe("the students' tags plan", () => {
     expect((await request(app).get("/api/tag-plan/old-list/nothing")).status).toBe(404);
 
     // the courses (no person in them) and who is registered to each (a name and an ID number - the number stays inside)
-    const courses = await request(app).put("/api/tag-plan/old-list/courses").send({ rows: [{ rid: 900, name: " גיטרה -  קבוצתי ", category: "מכללה לכל (קבוצתי)", manager: "רכזת", capacity: "8", start: "01/09/2026", finish: "30/06/2027", branch: "ירושלים" }, { rid: 901, name: "טיול", capacity: "" }] });
+    const courses = await request(app).put("/api/tag-plan/old-list/courses").send({ rows: [{ rid: 900, name: " גיטרה -  קבוצתי ", category: "מכללה לכל (קבוצתי)", manager: "רכזת", capacity: "8", start: "01/09/2026", finish: "30/06/2027", branch: "ירושלים", status: " פעיל ", room: "חדר 2", people: "14" }, { rid: 901, name: "טיול", capacity: "", people: "" }] });
     expect(courses.body.data.list.rows).toEqual([
-      { rid: "900", name: "גיטרה - קבוצתי", category: "מכללה לכל (קבוצתי)", manager: "רכזת", capacity: 8, start: "01/09/2026", finish: "30/06/2027", branch: "ירושלים" },
+      { rid: "900", name: "גיטרה - קבוצתי", category: "מכללה לכל (קבוצתי)", manager: "רכזת", capacity: 8, start: "01/09/2026", finish: "30/06/2027", branch: "ירושלים", status: "פעיל", room: "חדר 2", people: 14 },
       { rid: "901", name: "טיול", category: "", manager: "", capacity: null, start: "", finish: "", branch: "" },
     ]);
     const seats = await request(app).put("/api/tag-plan/old-list/seats").send({
