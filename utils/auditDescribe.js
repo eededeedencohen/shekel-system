@@ -244,6 +244,11 @@ const RULES = [
   ["DELETE", "/tag-plan/old-list/seats", "הסרת הרישומים לקורסים של המערכת הישנה מעמוד הרעיונות", "tagPlan", "delete"],
   ["PUT", "/tag-plan/old-list/presence", "טעינת דוח הנוכחות של המערכת הישנה לעמוד הרעיונות", "tagPlan", "update", { payload: false }],
   ["DELETE", "/tag-plan/old-list/presence", "הסרת דוח הנוכחות של המערכת הישנה מעמוד הרעיונות", "tagPlan", "delete"],
+  // the prepared actions (the super admin's page): one event per press - what each step did is kept on the action itself
+  ["POST", "/prepared-actions", "נכתבה פעולה מוכנה, מחכה לאישור", "preparedAction", "create", { payload: false }],
+  ["PUT", "/prepared-actions/:id", "תיקון של פעולה מוכנה לפני האישור", "preparedAction", "update", { payload: false }],
+  ["POST", "/prepared-actions/:id/approve", "אישור וביצוע של פעולה מוכנה", "preparedAction", "update"],
+  ["POST", "/prepared-actions/:id/cancel", "ביטול של פעולה מוכנה", "preparedAction", "delete"],
   // the tasks the super admin gives the staff (the talk itself stays out of the record: it is the two people's)
   ["POST", "/staff-tasks", "משימה חדשה לעובד", "staffTask", "create"],
   ["PATCH", "/staff-tasks/:id", "עריכת משימה", "staffTask", "update"],

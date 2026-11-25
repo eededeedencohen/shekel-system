@@ -145,6 +145,8 @@ app.use("/api/db", requireSuper, require("./routes/dbRoutes"));
 app.use("/api/audit", requireSuper, require("./routes/auditRoutes"));
 // the students' tags plan (2026-11-24): today beside a proposal, with the super admin's decisions
 app.use("/api/tag-plan", requireSuper, require("./routes/tagPlanRoutes"));
+// the prepared actions (2026-11-25): a change to the data written down in full, run when the super admin approves
+app.use("/api/prepared-actions", requireSuper, require("./routes/preparedActionRoutes"));
 // the waiting lists of מכללה לכל (2026-11-24): a list per subject, a queue in each - the college managers'
 app.use("/api/wait-lists", requireFamily("waiting"), require("./routes/waitListRoutes"));
 
