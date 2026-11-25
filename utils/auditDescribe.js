@@ -198,6 +198,7 @@ const RULES = [
   // the staff's written templates
   ["POST", "/doc-templates", "תבנית חדשה", "docTemplate", "create"],
   ["PATCH", "/doc-templates/:id", "עריכת תבנית", "docTemplate", "update"],
+  ["PUT", "/doc-templates/:id/audience", "מי רואה את התבנית", "docTemplate", "update"],
   ["DELETE", "/doc-templates/:id", "מחיקת תבנית", "docTemplate", "delete"],
   ["POST", "/incidents", "דיווח אירוע חריג", "incident", "create"],
   ["PATCH", "/incidents/:id", "עריכת אירוע חריג", "incident", "update"],

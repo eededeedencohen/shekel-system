@@ -16,6 +16,14 @@
  * came from). `kind` says which entry of a person's record it was written
  * for (a follow-up call, an evaluation call…) - empty: any.
  *
+ * Who sees it (Eden, 2026-11-25: "יוצר התבנית יוכל להגדיר מי מהעובדים יוכל
+ * להשתמש בתבנית… אני יכול לראות הכול ולנהל"): `audience` "all" = everyone
+ * on the staff (how every template was until then, and what a row without
+ * the field means); "some" = the accounts in `viewers` alone - none there:
+ * the maker alone. The maker and the super admin always see it, and they
+ * are the two who may change it, delete it and say who sees it
+ * (services/docTemplateService).
+ *
  * Not to be confused with ActivityTemplate: that one is the FORM of a
  * kind of entry (its small fields, one per kind, the social worker's);
  * these are the texts people write from, as many as they like.
@@ -36,6 +44,10 @@ const docTemplateSchema = new mongoose.Schema(
     /** The acting account that made it (its id as text) - the only one that may change it. */
     owner: { type: String, required: true, index: true },
     ownerName: { type: String, trim: true, default: "" },
+    /** Who sees and uses it beside its maker and the super admin: everyone, or `viewers` alone. */
+    audience: { type: String, enum: ["all", "some"], default: "all" },
+    /** The accounts (their ids as text, like `owner`) that see it when `audience` is "some". */
+    viewers: { type: [String], default: [] },
     copiedFrom: {
       template: { type: mongoose.Schema.Types.ObjectId, ref: "DocTemplate" },
       name: { type: String, trim: true },

@@ -5,6 +5,11 @@
  * HTML; an entry of a person's record written with its design keeps the
  * tree and its plain lines. The bypass actor is borrowed (TEST_ACCOUNT):
  * another username is another person.
+ *
+ * Who sees and who manages (Eden, 2026-11-25): "אני יכול לראות הכול ולנהל
+ * מי יוכל לראות את התבניות. רק אני ויוצר התבנית יכולים לערוך… אחרים שיש
+ * להם הרשאות צפייה יכולים להשתמש בתבנית ולהעתיק אותה. ההעתק יהיה שייך
+ * אליהם. יוצר התבנית יוכל להגדיר מי מהעובדים יוכל להשתמש בתבנית".
  */
 
 const request = require("supertest");
@@ -49,18 +54,23 @@ describe("the staff's written templates", () => {
     expect(all.body.data.templates.map((x) => x.name)).toEqual(["שיחת הערכה שנתית"]);
   });
 
-  it("are changed and deleted by the one who made them, alone - the super admin too is refused", async () => {
+  it("are changed and deleted by the one who made them and by the super admin - nobody else", async () => {
     actAs({ username: "noa", name: "נעה", kind: "manager" });
     const id = (await request(app).post("/api/doc-templates").send({ name: "מעקב", kind: "followUp", doc: DOC })).body.data.template._id;
 
-    for (const other of [{ username: "hagai", name: "חגי", kind: "manager" }, { username: "eden", name: "עדן", kind: "super" }]) {
-      actAs(other);
-      const patch = await request(app).patch(`/api/doc-templates/${id}`).send({ name: "שלי עכשיו" });
-      expect(patch.status).toBe(403);
-      expect(patch.body.code).toBe("TEMPLATE_NOT_YOURS");
-      expect((await request(app).delete(`/api/doc-templates/${id}`)).status).toBe(403);
-    }
+    actAs({ username: "hagai", name: "חגי", kind: "manager" });
+    const patch = await request(app).patch(`/api/doc-templates/${id}`).send({ name: "שלי עכשיו" });
+    expect(patch.status).toBe(403);
+    expect(patch.body.code).toBe("TEMPLATE_NOT_YOURS");
+    expect((await request(app).delete(`/api/doc-templates/${id}`)).status).toBe(403);
+    expect((await request(app).put(`/api/doc-templates/${id}/audience`).send({ audience: "some", viewers: [] })).status).toBe(403);
     expect((await DocTemplate.findById(id)).name).toBe("מעקב");
+
+    // the super admin changes it - and it stays hers
+    actAs({ username: "eden", name: "עדן", kind: "super" });
+    const his = await request(app).patch(`/api/doc-templates/${id}`).send({ name: "מעקב חודשי" });
+    expect(his.status).toBe(200);
+    expect(his.body.data.template).toMatchObject({ name: "מעקב חודשי", owner: "noa", ownerName: "נעה" });
 
     actAs({ username: "noa", name: "נעה כהן", kind: "manager" });
     const mine = await request(app).patch(`/api/doc-templates/${id}`).send({ name: "מעקב רבעוני", kind: null, doc: docFromText("שורה אחת\nשורה שתיים") });
@@ -94,6 +104,62 @@ describe("the staff's written templates", () => {
     expect(loose.status).toBe(201);
     expect(loose.body.data.template.copiedFrom).toBeUndefined();
     expect(loose.body.data.template.text).toBe("");
+  });
+
+  it("is seen by whoever its maker named - everyone, some, or the maker alone - and always by the super admin", async () => {
+    const seen = async (who) => {
+      actAs(who);
+      return (await request(app).get("/api/doc-templates")).body.data.templates.map((x) => x.name).sort();
+    };
+    const noa = { username: "noa", name: "נעה", kind: "manager" };
+    const hagai = { username: "hagai", name: "חגי", kind: "manager" };
+    const yitav = { username: "yitav", name: "ייטב", kind: "social" };
+    const eden = { username: "eden", name: "עדן", kind: "super" };
+    actAs(noa);
+    const open = (await request(app).post("/api/doc-templates").send({ name: "לכולם", doc: DOC })).body.data.template;
+    expect(open).toMatchObject({ audience: "all", viewers: [] });
+    // said from the first save: hers alone
+    const shut = (await request(app).post("/api/doc-templates").send({ name: "פרטית", doc: DOC, audience: "some", viewers: [] })).body.data.template;
+    expect(shut).toMatchObject({ audience: "some", viewers: [] });
+    expect(await seen(hagai)).toEqual(["לכולם"]);
+    expect(await seen(eden)).toEqual(["לכולם", "פרטית"]);
+
+    // she names חגי: he sees it, ייטב does not. Her own name in the list is dropped - the maker always sees
+    actAs(noa);
+    const named = await request(app).put(`/api/doc-templates/${shut._id}/audience`).send({ audience: "some", viewers: ["hagai", "noa", "hagai", "<script>"] });
+    expect(named.status).toBe(200);
+    expect(named.body.data.template).toMatchObject({ audience: "some", viewers: ["hagai"] });
+    // (who reads it changed, the document did not: "last changed" stays)
+    expect(named.body.data.template.updatedAt).toBe(shut.updatedAt);
+    expect(await seen(hagai)).toEqual(["לכולם", "פרטית"]);
+    expect(await seen(yitav)).toEqual(["לכולם"]);
+
+    // for whoever does not see it, it does not exist: nothing to change, to share, or to copy the name of
+    actAs(yitav);
+    expect((await request(app).patch(`/api/doc-templates/${shut._id}`).send({ name: "x" })).status).toBe(404);
+    expect((await request(app).put(`/api/doc-templates/${shut._id}/audience`).send({ audience: "all" })).status).toBe(404);
+    const blind = await request(app).post("/api/doc-templates").send({ name: "ניחוש", copiedFrom: shut._id });
+    expect(blind.body.data.template.copiedFrom).toBeUndefined();
+    await request(app).delete(`/api/doc-templates/${blind.body.data.template._id}`);
+
+    // חגי sees it: he writes from it and copies it - the copy is his, and his alone until he says otherwise
+    actAs(hagai);
+    expect((await request(app).patch(`/api/doc-templates/${shut._id}`).send({ name: "x" })).body.code).toBe("TEMPLATE_NOT_YOURS");
+    const copy = (await request(app).post("/api/doc-templates").send({ name: "פרטית - עותק", doc: shut.doc, copiedFrom: shut._id })).body.data.template;
+    expect(copy).toMatchObject({ owner: "hagai", audience: "some", viewers: [] });
+    expect(await seen(noa)).toEqual(["לכולם", "פרטית"]);
+    // a copy of a template everyone sees is seen by everyone, as any new template
+    const openCopy = (await request(app).post("/api/doc-templates").send({ name: "לכולם - עותק", doc: open.doc, copiedFrom: open._id })).body.data.template;
+    expect(openCopy.audience).toBe("all");
+
+    // the super admin says who sees anyone's template
+    actAs(eden);
+    expect((await request(app).put(`/api/doc-templates/${shut._id}/audience`).send({ audience: "all" })).body.data.template).toMatchObject({ audience: "all", viewers: [] });
+    expect(await seen(yitav)).toEqual(["לכולם", "לכולם - עותק", "פרטית"]);
+    actAs(eden);
+    for (const bad of [{}, { audience: "nobody" }, { audience: "some", viewers: "hagai" }]) {
+      expect((await request(app).put(`/api/doc-templates/${shut._id}/audience`).send(bad)).body.code).toBe("TEMPLATE_AUDIENCE_INVALID");
+    }
   });
 
   it("keeps only what a document is made of", async () => {

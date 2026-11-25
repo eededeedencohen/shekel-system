@@ -841,6 +841,7 @@ const ERROR_CODES = {
   ACTIVITY_FIELD_REQUIRED: "חסר שדה חובה בפעילות",
   TEMPLATE_INVALID: "התבנית לא תקינה",
   TEMPLATE_NOT_YOURS: "התבנית הזו של מישהו אחר. אפשר להעתיק אותה לתבניות שלך ולשנות שם",
+  TEMPLATE_AUDIENCE_INVALID: "ההרשאות של התבנית לא נשמרו: בוחרים את כל הצוות, או עובדים מסוימים",
   DOC_INVALID: "המסמך לא תקין",
   DOC_TOO_LONG: "המסמך ארוך מדי",
   INCIDENT_INVALID: "בדיווח אירוע חריג חסרים פרטים: מתי, מי דיווח, סיווג ותיאור",
