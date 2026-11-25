@@ -181,7 +181,12 @@ describe("the students' tags plan", () => {
     expect(JSON.stringify(seats.body)).not.toContain("000000026");
     for (const bad of [{ rows: [{ name: "בלי קורס" }] }, { rows: [{ course: 900 }] }]) expect((await request(app).put("/api/tag-plan/old-list/seats").send(bad)).status).toBe(400);
     expect((await request(app).put("/api/tag-plan/old-list/courses").send({ rows: [{ name: "בלי מזהה" }] })).status).toBe(400);
-    for (const k of ["courses", "seats"]) expect((await request(app).delete(`/api/tag-plan/old-list/${k}`)).status).toBe(200);
+    // the attendance report of a period: a line per person per course, days of the month
+    const presence = await request(app).put("/api/tag-plan/old-list/presence").send({ source: "דוח נוכחות", period: "01/11/2026 עד 25/11/2026", rows: [{ course: 900, name: " דנה  בדיקה ", days: ["1", "08", "15", "x"], came: "01, 8", missed: ["15"] }, { course: 901, name: "אורי בדיקה", days: "03" }] });
+    expect(presence.status).toBe(200);
+    expect(presence.body.data.list).toMatchObject({ period: "01/11/2026 עד 25/11/2026", rows: [{ course: "900", name: "דנה בדיקה", days: "01,08,15", came: "01,08", missed: "15" }, { course: "901", name: "אורי בדיקה", days: "03", came: "", missed: "" }] });
+    expect((await request(app).put("/api/tag-plan/old-list/presence").send({ rows: [{ name: "בלי קורס" }] })).status).toBe(400);
+    for (const k of ["courses", "seats", "presence"]) expect((await request(app).delete(`/api/tag-plan/old-list/${k}`)).status).toBe(200);
     TEST_ACCOUNT.kind = "manager";
     expect((await request(app).get("/api/tag-plan/old-list/potential")).status).toBe(403);
     TEST_ACCOUNT.kind = "super";

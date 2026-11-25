@@ -47,6 +47,13 @@
  * number per row, the number kept inside as everywhere here: read back, a
  * row says which of our people (`idPerson`), which students row
  * (`idStudent`) and which potential row (`idPotential`) carries it.
+ *
+ * And "oldPresence" (the same day: "בקישור הזה אפשר לראות את הנוכחויות של
+ * חודש נובמבר עד להיום. תעשה עם זה הצלבה לקורסים"): the old system's
+ * attendance report of a period - a row per person per course: the course's
+ * old number, the name, the days the report shows for that course, and on
+ * which of them the person is marked as having come and as not. No ID
+ * number is in that report, so the rows are read back as they are kept.
  */
 
 const AppSetting = require("../models/AppSetting");
@@ -99,7 +106,7 @@ async function clearSheet() {
 }
 
 /** The old system's lists, by the kind the route names: its students, its potential students, its courses, and who sits in each. */
-const OLD_KEYS = { students: "oldStudents", potential: "oldPotential", courses: "oldCourses", seats: "oldSeats" };
+const OLD_KEYS = { students: "oldStudents", potential: "oldPotential", courses: "oldCourses", seats: "oldSeats", presence: "oldPresence" };
 const OLD_MAX = 5000;
 const oldKey = (kind) => {
   if (!Object.prototype.hasOwnProperty.call(OLD_KEYS, kind)) throw AppError.of("NOT_FOUND", 404, "רשימה");
@@ -160,7 +167,19 @@ function oldSeatRow(r) {
   if (text(r.timeEnd, 20)) row.timeEnd = text(r.timeEnd, 20);
   return row;
 }
-const OLD_ROW = { students: oldRow, potential: oldRow, courses: oldCourseRow, seats: oldSeatRow };
+/** A person's line in the old system's attendance report of one course: days of the month, as "01,08,15". */
+const daysText = (v) =>
+  (Array.isArray(v) ? v : String(v || "").split(","))
+    .map((d) => String(d).trim())
+    .filter((d) => /^\d{1,2}$/.test(d))
+    .map((d) => d.padStart(2, "0"))
+    .slice(0, 31)
+    .join(",");
+function oldPresenceRow(r) {
+  if (!isMap(r) || !text(r.name, 120) || !text(String(r.course ?? ""), 20)) throw AppError.of("TAG_PLAN_INVALID", 400);
+  return { course: text(String(r.course), 20), name: text(r.name, 120), days: daysText(r.days), came: daysText(r.came), missed: daysText(r.missed) };
+}
+const OLD_ROW = { students: oldRow, potential: oldRow, courses: oldCourseRow, seats: oldSeatRow, presence: oldPresenceRow };
 
 /**
  * The old system's students list beside our people, or null when none was loaded:
@@ -171,9 +190,9 @@ const OLD_ROW = { students: oldRow, potential: oldRow, courses: oldCourseRow, se
 async function getOldList(kind = "students") {
   const row = await AppSetting.findOne({ key: oldKey(kind) }).lean();
   if (!row || !isMap(row.value) || !Array.isArray(row.value.rows)) return null;
-  const head = { source: row.value.source || "", takenAt: row.value.takenAt || null, loadedAt: row.updatedAt || null, loadedBy: row.updatedBy || "" };
-  // the courses hold no person: they are read back as they are kept
-  if (kind === "courses") return { ...head, rows: row.value.rows };
+  const head = { source: row.value.source || "", period: row.value.period || "", takenAt: row.value.takenAt || null, loadedAt: row.updatedAt || null, loadedBy: row.updatedBy || "" };
+  // the courses hold no person and the attendance report no ID number: they are read back as they are kept
+  if (kind === "courses" || kind === "presence") return { ...head, rows: row.value.rows };
   const ids = [...new Set(row.value.rows.map((r) => r.idNumber).filter(Boolean))];
   const ours = ids.length ? await Person.find({ idNumber: { $in: ids } }).select("+idNumber").lean() : [];
   const byId = new Map(ours.map((p) => [p.idNumber, String(p._id)]));
@@ -204,7 +223,7 @@ async function setOldList(body, by = "", kind = "students") {
   if (!isMap(body) || !Array.isArray(body.rows) || !body.rows.length || body.rows.length > OLD_MAX) throw AppError.of("TAG_PLAN_INVALID", 400);
   const rows = body.rows.map(OLD_ROW[kind]);
   const takenAt = body.takenAt && !Number.isNaN(new Date(body.takenAt).getTime()) ? new Date(body.takenAt).toISOString() : null;
-  await AppSetting.findOneAndUpdate({ key }, { $set: { value: { source: text(body.source, 120), takenAt, rows }, updatedBy: by } }, { upsert: true });
+  await AppSetting.findOneAndUpdate({ key }, { $set: { value: { source: text(body.source, 120), period: text(body.period, 40), takenAt, rows }, updatedBy: by } }, { upsert: true });
   return getOldList(kind);
 }
 

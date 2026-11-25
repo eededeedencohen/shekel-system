@@ -242,6 +242,8 @@ const RULES = [
   ["DELETE", "/tag-plan/old-list/courses", "הסרת רשימת הקורסים של המערכת הישנה מעמוד הרעיונות", "tagPlan", "delete"],
   ["PUT", "/tag-plan/old-list/seats", "טעינת הרישומים לקורסים של המערכת הישנה לעמוד הרעיונות", "tagPlan", "update", { payload: false }],
   ["DELETE", "/tag-plan/old-list/seats", "הסרת הרישומים לקורסים של המערכת הישנה מעמוד הרעיונות", "tagPlan", "delete"],
+  ["PUT", "/tag-plan/old-list/presence", "טעינת דוח הנוכחות של המערכת הישנה לעמוד הרעיונות", "tagPlan", "update", { payload: false }],
+  ["DELETE", "/tag-plan/old-list/presence", "הסרת דוח הנוכחות של המערכת הישנה מעמוד הרעיונות", "tagPlan", "delete"],
   // the tasks the super admin gives the staff (the talk itself stays out of the record: it is the two people's)
   ["POST", "/staff-tasks", "משימה חדשה לעובד", "staffTask", "create"],
   ["PATCH", "/staff-tasks/:id", "עריכת משימה", "staffTask", "update"],

@@ -39,7 +39,8 @@ router.delete(
 // the old system's students list, for the cross-check tab (real people: kept in the database, never in the code;
 // the ID numbers it holds are used for the match alone and are never in an answer)
 // "/old-list" is its students; "/old-list/potential" its potential students (each row also names the students
-// list's row with the same ID number); "/old-list/courses" its courses; "/old-list/seats" who is registered to each
+// list's row with the same ID number); "/old-list/courses" its courses; "/old-list/seats" who is registered to each;
+// "/old-list/presence" its attendance report of a period
 const OLD = ["/old-list", "/old-list/:kind"];
 const kindOf = (req) => req.params.kind || "students";
 router.get(
