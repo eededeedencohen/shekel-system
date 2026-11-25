@@ -208,6 +208,8 @@ function checkAvailability(incoming, existing, actor) {
   }
   return null;
 }
+// the same rules for whoever else writes a teacher's windows (services/orderService: the college's "putting in order" pages)
+exports.checkAvailability = checkAvailability;
 
 exports.updateAvailability = catchAsync(async (req, res, next) => {
   const person = await Person.findOne({ _id: req.params.id });

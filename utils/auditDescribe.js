@@ -258,6 +258,13 @@ const RULES = [
   // the hostels teachers' week census: the staff's word on a lesson
   ["PUT", "/week-plans/:id/entries/:id/check", "סימון שיעור בשבוע של המורים: תקין או לא תקין", "weekPlan", "update"],
   // the waiting lists of מכללה לכל
+  // putting in order (the college's pages): what was before and what is after is kept in the pages' own journal
+  ["POST", "/order/marks", "עושים סדר: סימון על סטודנט", "order", "update"],
+  ["POST", "/order/links", "עושים סדר: שתי שורות הן אותו אדם, או שני אנשים", "order", "update"],
+  ["POST", "/order/seats/off", "עושים סדר: ירידה מקורס", "order", "update"],
+  ["POST", "/order/seats/on", "עושים סדר: שיבוץ לקורס", "order", "create"],
+  ["PUT", "/order/teachers/:id/windows", "עושים סדר: השעות הפנויות של מורה", "order", "update"],
+  ["DELETE", "/order/courses/:id", "עושים סדר: קורס נמחק או נסגר", "order", "delete"],
   ["POST", "/wait-lists", "רשימת המתנה חדשה", "waitList", "create"],
   ["POST", "/wait-lists/entries", "הוספה לרשימת המתנה", "waitList", "create"],
   ["PATCH", "/wait-lists/entries/:id", "עדכון רישום ברשימת המתנה", "waitList", "update"],

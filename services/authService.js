@@ -34,7 +34,7 @@ const CACHE_MS = 30 * 1000;
 const SEED_ACCOUNTS = [
   { username: "eden", name: "עדן כהן", title: "סופר-מנהל", kind: "super" },
   { username: "hagai", name: "חגי", title: "מנהל מכללה", kind: "manager" },
-  { username: "noa", name: "נעה", title: "מנהלת מכללה", kind: "manager" },
+  { username: "noa", name: "נעה", title: "רכזת תלמידים מכללה לכל", kind: "manager" },
   { username: "yetav", name: "ייטב", title: 'עו"ס', kind: "social" },
   { username: "tamar", name: "תמר צימרינג", title: "רכזת הוסטלים", kind: "hostels" },
   { username: "shiran", name: "שירן דרעי", title: "רכזת תרבות לכל", kind: "culture" },

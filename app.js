@@ -149,6 +149,9 @@ app.use("/api/tag-plan", requireSuper, require("./routes/tagPlanRoutes"));
 app.use("/api/prepared-actions", requireSuper, require("./routes/preparedActionRoutes"));
 // the waiting lists of מכללה לכל (2026-11-24): a list per subject, a queue in each - the college managers'
 app.use("/api/wait-lists", requireFamily("waiting"), require("./routes/waitListRoutes"));
+// putting the students and the courses in order (2026-11-25): the old system's students beside ours, a word on each,
+// who sits in which course - the college managers' and the super admin's; every change is kept with its before and after
+app.use("/api/order", requireFamily("order"), require("./routes/orderRoutes"));
 
 // ── The client, served by this same process ──────────────────────────────
 // `client-dist/` is the React build that `npm run deploy` (in client/) drops
