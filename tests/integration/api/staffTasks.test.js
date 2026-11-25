@@ -88,6 +88,27 @@ describe("the tasks the super admin gives the staff", () => {
     expect((await request(app).put(`${api}/${t._id}/done`).send({ done: false })).body.data.task).toMatchObject({ done: false, doneBy: "", doneAt: null });
   });
 
+  it("is new to the one who got it until their own first look - a look through their eyes is not theirs", async () => {
+    const tasks = require("../../../services/staffTaskService");
+    const s = await staff();
+    actAs(s.eden);
+    const t = (await request(app).post(api).send({ title: "לבדוק חשבוניות", assignee: String(s.shimrit._id) })).body.data.task;
+    // the one who gave it has looked at it; the one who got it has not
+    expect(t.seenAt).toBeTruthy();
+    actAs(s.shimrit);
+    expect((await mine())[0].seenAt).toBeNull();
+
+    // the super admin viewing as her opens the task: the answer reads as looked at, and nothing is written
+    const hers = { _id: s.shimrit._id, username: "shimrit", name: "שמרית", kind: "hostels" };
+    expect((await tasks.look({ id: t._id, actor: hers, viewing: true })).seenAt).toBeTruthy();
+    expect((await mine())[0].seenAt).toBeNull();
+
+    // her own look: the task is not new any more, and it still waits
+    expect((await request(app).put(`${api}/${t._id}/seen`)).body.data.task.seenAt).toBeTruthy();
+    expect((await mine())[0]).toMatchObject({ done: false });
+    expect((await mine())[0].seenAt).toBeTruthy();
+  });
+
   it("a task with a rule is done by the data, never by a tick: every lesson of the week census marked", async () => {
     const s = await staff();
     const tomer = await makeTeacher({ firstName: "תומר", lastName: "דורון" });

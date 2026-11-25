@@ -187,10 +187,16 @@ async function say({ id, text, actor }) {
   return shaped(row, actor);
 }
 
-/** This account looked at the task now: what was written until now is not new to it any more. */
-async function look({ id, actor }) {
+/**
+ * This account looked at the task now: what was written until now is not new to it any more - and a task it had
+ * never looked at stops being "new" (the dashboard's notice under the greeting stands until this first look).
+ * `viewing` = the super admin looking through this account's eyes ("צפה בתור"): that is not the account's own look,
+ * so nothing is written - the answer alone reads as looked at, and the next read says again what the person has
+ * not seen.
+ */
+async function look({ id, actor, viewing = false }) {
   const row = await load(id, actor);
-  await StaffTask.updateOne({ _id: row._id }, { $set: { [`seen.${idOfActor(actor)}`]: new Date() } }, { timestamps: false });
+  if (!viewing) await StaffTask.updateOne({ _id: row._id }, { $set: { [`seen.${idOfActor(actor)}`]: new Date() } }, { timestamps: false });
   row.seen.set(idOfActor(actor), new Date());
   return shaped(row, actor);
 }

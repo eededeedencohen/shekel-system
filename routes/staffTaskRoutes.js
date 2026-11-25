@@ -12,7 +12,7 @@
  *   PATCH  /:id            { title, body, linkTo, linkLabel } - the super admin changes its words
  *   PUT    /:id/done       { done } - one of the two says it is done, or open again
  *   POST   /:id/messages   { text } - a line in the talk about it
- *   PUT    /:id/seen       this account looked at it now
+ *   PUT    /:id/seen       this account looked at it now (viewing as someone, nothing is written)
  *   DELETE /:id            the super admin takes it away
  */
 
@@ -22,8 +22,10 @@ const tasks = require("../services/staffTaskService");
 
 const router = express.Router();
 const actorOf = (req) => req.actor || req.account;
+/** Is the signed-in account looking through another's eyes ("צפה בתור")? Then a look is not that other's own. */
+const viewingOf = (req) => Boolean(req.account && req.actor && String(req.account._id) !== String(req.actor._id));
 const one = (fn, status = 200) =>
-  catchAsync(async (req, res) => res.status(status).json({ status: "success", data: { task: await fn({ id: req.params.id, ...(req.body || {}), actor: actorOf(req) }) } }));
+  catchAsync(async (req, res) => res.status(status).json({ status: "success", data: { task: await fn({ id: req.params.id, ...(req.body || {}), actor: actorOf(req), viewing: viewingOf(req) }) } }));
 
 router.get(
   "/",
